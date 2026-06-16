@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import SearchBar from "./components/SearchBar";
 import EntityPanel, {
   type BalancesData,
@@ -45,6 +45,10 @@ export default function Home() {
       setBalances(null);
       setGraph(null);
       setDemo(isDemo);
+      // Reflect the search in the URL so the view is shareable.
+      const params = new URLSearchParams({ address });
+      if (isDemo) params.set("demo", "1");
+      window.history.replaceState(null, "", `?${params.toString()}`);
       try {
         const graphRes = fetch(`/api/graph?${qs(address, isDemo)}`);
         await loadPanel(address, isDemo);
@@ -59,6 +63,20 @@ export default function Home() {
     },
     [loadPanel]
   );
+
+  // Replay a shared URL (?address=...&demo=1) on first load.
+  const replayed = useRef(false);
+  useEffect(() => {
+    if (replayed.current) return;
+    replayed.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const address = params.get("address");
+    if (address) {
+      const isDemo = params.get("demo") === "1";
+      // Defer so the bootstrap search runs after mount, not synchronously in the effect.
+      queueMicrotask(() => search(address, isDemo));
+    }
+  }, [search]);
 
   // Clicking a node both re-focuses the panel on it and expands its neighbors.
   const focusAndExpand = useCallback(
