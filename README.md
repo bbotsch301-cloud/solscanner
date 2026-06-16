@@ -9,13 +9,22 @@ a `ChainAdapter` interface so an EVM/Alchemy backend can slot in later.
 ## Quick start
 
 ```bash
-cp .env.local.example .env.local   # then add your Helius key
 npm install
-npm run dev                        # http://localhost:3000
+npm run dev          # http://localhost:3000
 ```
 
-Get a free Helius key at <https://dashboard.helius.dev>. The key is used
-**server-side only** (in the API routes); it is never exposed to the browser.
+**No key? Click "Demo wallet".** The app ships a zero-config demo mode (a
+simulated pump.fun launch) so the graph, click-to-expand, holder concentration,
+funding trail, and all the heuristic badges work with nothing to configure.
+
+For live Solana data, add a Helius key:
+
+```bash
+cp .env.local.example .env.local   # paste your key into HELIUS_API_KEY
+```
+
+Get a free key at <https://dashboard.helius.dev>. The key is used **server-side
+only** (in the API routes); it is never exposed to the browser.
 
 ## How it works
 
@@ -23,8 +32,18 @@ Get a free Helius key at <https://dashboard.helius.dev>. The key is used
   and returns a summary + heuristic flags.
 - **Balances** → `/api/balances` returns token balances (wallet) or top holders (mint).
 - **Graph** → `/api/graph` returns a **one-hop** graph centered on the address.
-  Click any node to fetch *its* neighbors and merge them in. On-demand expansion is
-  what keeps a busy wallet from melting into a hairball.
+  Click any node to refocus the panel on it *and* fetch its neighbors. On-demand
+  expansion is what keeps a busy wallet from melting into a hairball. Hover to
+  highlight a node's edges; a colour legend and zoom-to-fit are built in.
+
+Extra forensic signal, derived from data already fetched (no extra API calls):
+
+- **Holder concentration** (mints): holder count, top-1 / top-10 share, and a
+  low/medium/high risk band.
+- **First funding** (wallets): the earliest inbound transfer — a cheap "who
+  funded this first" hint, with the source labeled if known (e.g. a CEX).
+
+Add `?demo=1` to any API route to serve the demo dataset instead of Helius.
 
 ### Architecture
 

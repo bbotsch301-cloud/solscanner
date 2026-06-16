@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { HeuristicFlag } from "@/lib/analysis/heuristics";
+import type { Concentration } from "@/lib/analysis/forensics";
 import type { Holder, TokenBalance } from "@/lib/chains/types";
 
 export interface EntitySummary {
@@ -9,6 +11,14 @@ export interface EntitySummary {
   label?: { name: string; type: string };
   info?: { firstSeen?: number; txCount?: number; lamports?: number };
   flags: HeuristicFlag[];
+  concentration?: Concentration;
+  funding?: {
+    source: string;
+    timestamp: number;
+    mint: string;
+    amount: number;
+    sourceLabel?: { name: string; type: string };
+  };
 }
 
 export interface BalancesData {
@@ -26,10 +36,20 @@ const FLAG_STYLE: Record<HeuristicFlag, string> = {
   burn: "bg-neutral-500/20 text-neutral-300 border-neutral-500/40",
 };
 
+const FLAG_TOOLTIP: Record<HeuristicFlag, string> = {
+  fresh: "First seen < 7 days ago",
+  whale: "Holds > 1% of supply",
+  sniper: "First buy within 5 min of mint creation",
+  cex: "Known centralized-exchange hot wallet",
+  program: "Known program / AMM / system account",
+  burn: "Known burn address",
+};
+
 function Badge({ flag }: { flag: HeuristicFlag }) {
   return (
     <span
-      className={`rounded border px-2 py-0.5 text-xs font-medium ${FLAG_STYLE[flag]}`}
+      title={FLAG_TOOLTIP[flag]}
+      className={`cursor-help rounded border px-2 py-0.5 text-xs font-medium ${FLAG_STYLE[flag]}`}
     >
       {flag}
     </span>
@@ -40,13 +60,45 @@ function short(id: string) {
   return id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-6)}` : id;
 }
 
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        } catch {
+          /* clipboard unavailable */
+        }
+      }}
+      className="text-neutral-500 hover:text-neutral-200"
+      title="Copy address"
+    >
+      {copied ? "✓" : "⧉"}
+    </button>
+  );
+}
+
+function pctColor(risk: Concentration["risk"]) {
+  return risk === "high"
+    ? "text-red-300"
+    : risk === "medium"
+      ? "text-amber-300"
+      : "text-emerald-300";
+}
+
 export default function EntityPanel({
   entity,
   balances,
+  isDemo,
 }: {
   entity: EntitySummary;
   balances?: BalancesData;
+  isDemo?: boolean;
 }) {
+  const solscanPath = entity.type === "mint" ? "token" : "account";
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -60,9 +112,23 @@ export default function EntityPanel({
             </span>
           )}
         </div>
-        <p className="mt-1 break-all font-mono text-xs text-neutral-400">
-          {entity.address}
-        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="break-all font-mono text-xs text-neutral-400">
+            {entity.address}
+          </p>
+          <CopyButton value={entity.address} />
+        </div>
+        {!isDemo && (
+          <a
+            href={`https://solscan.io/${solscanPath}/${entity.address}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block text-xs text-sky-400 hover:underline"
+          >
+            View on Solscan ↗
+          </a>
+        )}
+
         {entity.flags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {entity.flags.map((f) => (
@@ -70,6 +136,7 @@ export default function EntityPanel({
             ))}
           </div>
         )}
+
         {entity.info && (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-neutral-400">
             {entity.info.firstSeen != null && (
@@ -98,6 +165,71 @@ export default function EntityPanel({
         )}
       </div>
 
+      {entity.funding && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            First funded by
+          </h3>
+          <p className="mt-1 text-sm">
+            <span
+              className={
+                entity.funding.sourceLabel
+                  ? "font-medium text-orange-300"
+                  : "font-mono text-neutral-200"
+              }
+            >
+              {entity.funding.sourceLabel?.name ?? short(entity.funding.source)}
+            </span>
+          </p>
+          <p className="text-xs text-neutral-500">
+            {entity.funding.amount.toLocaleString(undefined, {
+              maximumFractionDigits: 4,
+            })}{" "}
+            {entity.funding.mint === "SOL" ? "SOL" : short(entity.funding.mint)} ·{" "}
+            {new Date(entity.funding.timestamp * 1000).toLocaleString()}
+          </p>
+        </div>
+      )}
+
+      {entity.concentration && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+              Holder concentration
+            </h3>
+            <span
+              className={`text-xs font-semibold uppercase ${pctColor(
+                entity.concentration.risk
+              )}`}
+            >
+              {entity.concentration.risk} risk
+            </span>
+          </div>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-neutral-400">
+            <dt>Holders</dt>
+            <dd className="text-neutral-200">
+              {entity.concentration.holderCount}
+            </dd>
+            {entity.concentration.top1Pct != null && (
+              <>
+                <dt>Top holder</dt>
+                <dd className="text-neutral-200">
+                  {(entity.concentration.top1Pct * 100).toFixed(2)}%
+                </dd>
+              </>
+            )}
+            {entity.concentration.top10Pct != null && (
+              <>
+                <dt>Top 10</dt>
+                <dd className={pctColor(entity.concentration.risk)}>
+                  {(entity.concentration.top10Pct * 100).toFixed(2)}%
+                </dd>
+              </>
+            )}
+          </dl>
+        </div>
+      )}
+
       {balances?.kind === "wallet" && balances.balances && (
         <div>
           <h3 className="mb-2 text-sm font-semibold text-neutral-200">
@@ -118,7 +250,8 @@ export default function EntityPanel({
                   })}
                   {b.usdValue != null && (
                     <span className="ml-2 text-neutral-500">
-                      ${b.usdValue.toLocaleString(undefined, {
+                      $
+                      {b.usdValue.toLocaleString(undefined, {
                         maximumFractionDigits: 2,
                       })}
                     </span>
@@ -139,21 +272,21 @@ export default function EntityPanel({
             Top holders
           </h3>
           <ul className="flex flex-col gap-1 text-xs">
-            {balances.holders.slice(0, 25).map((h) => (
+            {balances.holders.slice(0, 25).map((hld) => (
               <li
-                key={h.owner}
+                key={hld.owner}
                 className="flex items-center justify-between gap-2 rounded bg-neutral-900 px-2 py-1"
               >
                 <span className="truncate font-mono text-neutral-300">
-                  {short(h.owner)}
+                  {short(hld.owner)}
                 </span>
                 <span className="font-mono text-neutral-400">
-                  {h.amount.toLocaleString(undefined, {
+                  {hld.amount.toLocaleString(undefined, {
                     maximumFractionDigits: 2,
                   })}
-                  {h.pct != null && (
+                  {hld.pct != null && (
                     <span className="ml-2 text-neutral-500">
-                      {(h.pct * 100).toFixed(2)}%
+                      {(hld.pct * 100).toFixed(2)}%
                     </span>
                   )}
                 </span>

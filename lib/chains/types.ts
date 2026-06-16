@@ -66,6 +66,12 @@ export interface GetTransfersOptions {
   before?: string;
 }
 
+/** Per-address context used to enrich graph node flags (whale/fresh). */
+export interface NodeMeta {
+  firstSeen?: number;
+  holdingPct?: number;
+}
+
 export interface ChainAdapter {
   readonly chain: string;
   classify(address: string): Promise<EntityType>;
@@ -73,4 +79,10 @@ export interface ChainAdapter {
   getHolders(mint: string, limit?: number): Promise<Holder[]>;
   getTransfers(address: string, opts?: GetTransfersOptions): Promise<Transfer[]>;
   getAccountInfo(address: string): Promise<AccountInfo>;
+  /**
+   * Optional: per-address metadata for richer graph flags. Cheap adapters (demo,
+   * or future cached backends) implement it; the live Helius adapter omits it to
+   * avoid an API call per node, so graph nodes fall back to label-only flags.
+   */
+  getGraphMeta?(address: string): Promise<Record<string, NodeMeta>>;
 }
