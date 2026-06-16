@@ -1,0 +1,29 @@
+{
+  "_note": "Curated seed of well-known Solana addresses. Program/system IDs are stable; CEX hot-wallet addresses are best-effort from public explorer labels and should be verified/updated over time. type: cex | amm | program | system | burn.",
+  "labels": [
+    { "address": "11111111111111111111111111111111", "name": "System Program", "type": "system" },
+    { "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "name": "Token Program", "type": "system" },
+    { "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "name": "Token-2022 Program", "type": "system" },
+    { "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", "name": "Associated Token Account Program", "type": "system" },
+    { "address": "ComputeBudget111111111111111111111111111111", "name": "Compute Budget Program", "type": "system" },
+    { "address": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr", "name": "Memo Program", "type": "system" },
+    { "address": "1nc1nerator11111111111111111111111111111111", "name": "Incinerator (Burn)", "type": "burn" },
+
+    { "address": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "name": "pump.fun", "type": "program" },
+    { "address": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA", "name": "PumpSwap AMM", "type": "amm" },
+    { "address": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", "name": "Raydium AMM v4", "type": "amm" },
+    { "address": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", "name": "Raydium CLMM", "type": "amm" },
+    { "address": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "name": "Jupiter Aggregator v6", "type": "amm" },
+    { "address": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "name": "Orca Whirlpools", "type": "amm" },
+    { "address": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", "name": "Meteora DLMM", "type": "amm" },
+
+    { "address": "2ojv9BAiHUrvsm9gxDe7fJSzbNZSJcxZvf8dqmWGHG8S", "name": "Binance (hot)", "type": "cex" },
+    { "address": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9", "name": "Binance 2 (hot)", "type": "cex" },
+    { "address": "H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS", "name": "Coinbase (hot)", "type": "cex" },
+    { "address": "2AQdpHJ2JpcEgPiATUXjQxA8QmafFegfQwSLWSprPicm", "name": "Coinbase 2 (hot)", "type": "cex" },
+    { "address": "FWznbcNXWQuHTawe9RxvQ2LdCENssh12dsznf4RiouN5", "name": "Kraken (hot)", "type": "cex" },
+    { "address": "5VCwKtCXgCJ6kit5FybXjvriW3xELsFDhYrPSqtJNmcD", "name": "OKX (hot)", "type": "cex" },
+    { "address": "AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2", "name": "Bybit (hot)", "type": "cex" },
+    { "address": "u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w", "name": "Gate.io (hot)", "type": "cex" }
+  ]
+}
