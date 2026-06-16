@@ -1,0 +1,4 @@
+[
+  { "mint": "T0kenMint11111111111111111111111111111111111", "amount": 350000, "rawAmount": "350000000000", "decimals": 6, "symbol": "MOCK", "name": "Mock Token", "usdValue": 1750 },
+  { "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "amount": 1200.5, "rawAmount": "1200500000", "decimals": 6, "symbol": "USDC", "name": "USD Coin", "usdValue": 1200.5 }
+]
