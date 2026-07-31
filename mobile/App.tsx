@@ -7,6 +7,7 @@ import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { TreasuryScreen } from "./src/screens/TreasuryScreen";
+import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
@@ -26,6 +27,7 @@ const Tab = createBottomTabNavigator();
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "wallet",
   Treasury: "business",
+  Govern: "people",
   Activity: "time",
   Settings: "settings",
 };
@@ -51,6 +53,7 @@ function Tabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Treasury" component={TreasuryScreen} />
+      <Tab.Screen name="Govern" component={GovernScreen} />
       <Tab.Screen name="Activity" component={ActivityScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>

@@ -37,10 +37,25 @@ export async function getTransferFee(mint: string): Promise<TransferFee | null> 
   }
 }
 
+/** Total UI supply of a Token-2022 mint (for share-of-supply math). */
+export async function getSupply(mint: string): Promise<number | null> {
+  try {
+    const mintAccount = await getMint(
+      connection,
+      new PublicKey(mint),
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID
+    );
+    return Number(mintAccount.supply) / 10 ** mintAccount.decimals;
+  } catch {
+    return null;
+  }
+}
+
 /** Fee (in UI units) charged on a transfer of `amount`. */
 export function computeFee(amount: number, decimals: number, fee: TransferFee): number {
   const raw = BigInt(Math.round(amount * 10 ** decimals));
-  let feeRaw = (raw * BigInt(fee.bps)) / 10_000n;
+  let feeRaw = (raw * BigInt(fee.bps)) / BigInt(10_000);
   if (feeRaw > fee.maxFee) feeRaw = fee.maxFee;
   return Number(feeRaw) / 10 ** decimals;
 }
