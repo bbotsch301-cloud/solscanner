@@ -77,3 +77,26 @@ export function erc20TransferData(to: string, amount: bigint): string {
 export function erc20BalanceOfData(owner: string): string {
   return "0x70a08231" + owner.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 }
+
+const pad32 = (hexNo0x: string) => hexNo0x.padStart(64, "0");
+
+/** calldata for ERC-20 approve(spender,uint256). */
+export function erc20ApproveData(spender: string, amount: bigint): string {
+  return (
+    "0x095ea7b3" +
+    pad32(spender.toLowerCase().replace(/^0x/, "")) +
+    pad32(amount.toString(16))
+  );
+}
+
+/** calldata for ERC-20 allowance(owner,spender). */
+export function erc20AllowanceData(owner: string, spender: string): string {
+  return (
+    "0xdd62ed3e" +
+    pad32(owner.toLowerCase().replace(/^0x/, "")) +
+    pad32(spender.toLowerCase().replace(/^0x/, ""))
+  );
+}
+
+/** Max uint256 — used for a one-time "infinite" ERC-20 approval. */
+export const MAX_UINT256 = (1n << 256n) - 1n;

@@ -17,17 +17,27 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
-import { SWAP_TOKENS, executeSwap, fetchQuote, type Quote, type SwapToken } from "../solana/swap";
-import { IS_MAINNET, solscanTx } from "../solana/connection";
+import { SWAP_TOKENS, type SwapToken } from "../solana/swap";
+import { evmSwapTokens } from "../evm/tokenList";
+import { quoteSwap } from "../swap";
+import { EVM_NATIVE, type UnifiedQuote } from "../swap/types";
+import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { useWallet } from "../wallet/WalletContext";
-import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
+import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
+import type { ChainDef } from "../chains/registry";
 import type { RootNav } from "../navigation";
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
 const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112";
-// SOL to keep back for the network fee + token-account rent a swap may create.
-const SWAP_SOL_RESERVE = 0.005;
+const SWAP_SOL_RESERVE = 0.005; // SOL kept back for fee + rent
+const EVM_GAS_RESERVE = 0.002; // native kept back for gas
+
+function defaultsFor(chain: ChainDef): [SwapToken, SwapToken] {
+  if (chain.kind === "solana") return [SWAP_TOKENS[0], SWAP_TOKENS[1]];
+  const list = evmSwapTokens(chain.id);
+  return [list[0], list[1]];
+}
 
 /** The token chip that opens the full selector sheet. */
 function TokenButton({ token, onPress }: { token: SwapToken; onPress: () => void }) {
@@ -44,58 +54,58 @@ export function SwapScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
-  const { keypair, solBalance, tokens, priceOf } = useWallet();
-  const [from, setFrom] = useState<SwapToken>(SWAP_TOKENS[0]);
-  const [to, setTo] = useState<SwapToken>(SWAP_TOKENS[1]);
+  const { activeChain, activeAddress, native, assets, swapExecute } = useWallet();
+  const isSolana = activeChain.kind === "solana";
+
+  const [from, setFrom] = useState<SwapToken>(() => defaultsFor(activeChain)[0]);
+  const [to, setTo] = useState<SwapToken>(() => defaultsFor(activeChain)[1]);
   const [amt, setAmt] = useState("");
   const [slippageBps, setSlippageBps] = useState(100);
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quote, setQuote] = useState<UnifiedQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<"from" | "to" | null>(null);
 
   const amtNum = parseFloat(amt) || 0;
+  const nativeMint = isSolana ? SOL_MINT_ADDR : EVM_NATIVE;
 
-  // Wallet-owned tokens (SOL + SPL), richest first, for the picker's "Your tokens".
+  // Reset the pair to the active chain's defaults when the chain changes.
+  useEffect(() => {
+    const [a, b] = defaultsFor(activeChain);
+    setFrom(a);
+    setTo(b);
+    setAmt("");
+    setQuote(null);
+  }, [activeChain]);
+
+  // Owned assets for the picker (native + tokens on the active chain).
   const owned = useMemo<OwnedToken[]>(() => {
-    const list: OwnedToken[] = [];
-    const solUsd = priceOf(SOL_MINT_ADDR);
-    if (solBalance != null && solBalance > 0) {
-      list.push({
-        token: { mint: SOL_MINT_ADDR, symbol: "SOL", name: "Solana", decimals: 9, logoURI: SWAP_TOKENS[0].logoURI, verified: true },
-        balance: solBalance,
-        usd: solUsd != null ? solBalance * solUsd : null,
-      });
-    }
-    for (const t of tokens) {
-      const p = priceOf(t.mint);
-      list.push({
+    const list: OwnedToken[] = [
+      {
+        token: { mint: nativeMint, symbol: native.symbol, decimals: activeChain.decimals, verified: true },
+        balance: native.balance ?? 0,
+        usd: native.usd,
+      },
+      ...assets.map((a) => ({
         token: {
-          mint: t.mint,
-          symbol: t.symbol ?? shortAddress(t.mint, 4, 4),
-          name: t.name,
-          decimals: t.decimals,
-          logoURI: t.logoURI,
+          mint: (a.kind === "spl" ? a.mint : a.address) ?? a.key,
+          symbol: a.symbol,
+          name: a.name,
+          decimals: a.decimals,
+          logoURI: a.logoURI,
         },
-        balance: t.amount,
-        usd: p != null ? t.amount * p : null,
-      });
-    }
-    return list.sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
-  }, [solBalance, tokens, priceOf]);
+        balance: a.balance,
+        usd: a.usd,
+      })),
+    ];
+    return list;
+  }, [native, assets, activeChain.decimals, nativeMint]);
 
-  const onSelectToken = (t: SwapToken) => {
-    if (pickerFor === "from") {
-      if (t.mint === to.mint) setTo(from); // picked the other side → flip it
-      setFrom(t);
-    } else if (pickerFor === "to") {
-      if (t.mint === from.mint) setFrom(to);
-      setTo(t);
-    }
-  };
+  const balanceOf = (mint: string): number => owned.find((o) => o.token.mint === mint)?.balance ?? 0;
 
-  // Debounced live quote from Jupiter (mainnet rates).
+  // Debounced live quote (Jupiter on Solana, meta-aggregator on EVM).
   useEffect(() => {
     setQuote(null);
     setError(null);
@@ -104,7 +114,7 @@ export function SwapScreen() {
     setLoading(true);
     const id = setTimeout(async () => {
       try {
-        const q = await fetchQuote(from, to, amtNum, slippageBps);
+        const q = await quoteSwap(activeChain, from, to, amtNum, slippageBps, activeAddress);
         if (!cancelled) setQuote(q);
       } catch (e) {
         if (!cancelled) setError(humanizeError(e, { action: "swap", symbol: to.symbol }));
@@ -116,7 +126,7 @@ export function SwapScreen() {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [from, to, amtNum, slippageBps]);
+  }, [activeChain, from, to, amtNum, slippageBps, activeAddress]);
 
   const flip = () => {
     setFrom(to);
@@ -124,27 +134,38 @@ export function SwapScreen() {
     setAmt("");
   };
 
-  const rate = quote && amtNum > 0 ? quote.outAmount / amtNum : null;
+  const rate = quote && amtNum > 0 ? quote.outUi / amtNum : null;
 
-  // Fast, specific check before we ever build/sign — so the common "not enough SOL"
-  // case shows real numbers instead of a cryptic on-chain simulation failure.
   const preflightError = (): string | null => {
-    const sol = solBalance ?? 0;
-    if (from.mint === SOL_MINT_ADDR) {
-      const need = amtNum + SWAP_SOL_RESERVE;
-      if (sol < need)
-        return `You have ${fmtAmount(sol)} SOL. Swapping ${fmtAmount(amtNum)} SOL needs about ${fmtAmount(need)} SOL — the extra (~${SWAP_SOL_RESERVE}) covers the network fee and token-account rent. Add SOL or lower the amount.`;
+    const bal = balanceOf(from.mint);
+    const nativeBal = native.balance ?? 0;
+    const fromIsNative = from.mint === nativeMint;
+    if (isSolana) {
+      if (fromIsNative) {
+        const need = amtNum + SWAP_SOL_RESERVE;
+        if (nativeBal < need)
+          return `You have ${fmtAmount(nativeBal)} SOL. Swapping ${fmtAmount(amtNum)} SOL needs about ${fmtAmount(need)} SOL — the extra (~${SWAP_SOL_RESERVE}) covers the network fee and token-account rent.`;
+      } else {
+        if (amtNum > bal) return `You only have ${fmtAmount(bal)} ${from.symbol}.`;
+        if (nativeBal < SWAP_SOL_RESERVE)
+          return `You need a little SOL (~${SWAP_SOL_RESERVE}) for the network fee, even when swapping ${from.symbol}.`;
+      }
     } else {
-      const bal = tokens.find((t) => t.mint === from.mint)?.amount ?? 0;
-      if (amtNum > bal) return `You only have ${fmtAmount(bal)} ${from.symbol}. Lower the amount.`;
-      if (sol < SWAP_SOL_RESERVE)
-        return `You need a little SOL (about ${SWAP_SOL_RESERVE}) to pay the network fee, even when swapping ${from.symbol}. Add some SOL and try again.`;
+      if (fromIsNative) {
+        const need = amtNum + EVM_GAS_RESERVE;
+        if (nativeBal < need)
+          return `You have ${fmtAmount(nativeBal)} ${native.symbol}. Swapping ${fmtAmount(amtNum)} needs about ${fmtAmount(need)} — the extra (~${EVM_GAS_RESERVE}) covers gas.`;
+      } else {
+        if (amtNum > bal) return `You only have ${fmtAmount(bal)} ${from.symbol}.`;
+        if (nativeBal < EVM_GAS_RESERVE)
+          return `You need a little ${native.symbol} (~${EVM_GAS_RESERVE}) for gas to swap ${from.symbol}.`;
+      }
     }
     return null;
   };
 
   const doSwap = () => {
-    if (!quote || !keypair) return;
+    if (!quote) return;
     const pre = preflightError();
     if (pre) {
       Alert.alert("Can't swap yet", pre);
@@ -152,23 +173,25 @@ export function SwapScreen() {
     }
     Alert.alert(
       "Confirm swap",
-      `Swap ${amtNum} ${from.symbol} for about ${fmtAmount(quote.outAmount)} ${to.symbol}? This uses real funds.`,
+      `Swap ${amtNum} ${from.symbol} for about ${fmtAmount(quote.outUi)} ${to.symbol} via ${quote.provider}? This uses real funds.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Swap",
           onPress: async () => {
             setSwapping(true);
+            setStatus(null);
             try {
-              const sig = await executeSwap(quote.raw, keypair);
+              const sig = await swapExecute(quote, (s) => setStatus(s));
               Alert.alert("Swap submitted", "Your swap is confirmed.", [
-                { text: "View on Solscan", onPress: () => Linking.openURL(solscanTx(sig)) },
+                { text: "View on explorer", onPress: () => Linking.openURL(activeChain.explorerTx(sig)) },
                 { text: "Done", onPress: () => nav.goBack() },
               ]);
             } catch (e) {
               Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol }));
             } finally {
               setSwapping(false);
+              setStatus(null);
             }
           },
         },
@@ -176,10 +199,12 @@ export function SwapScreen() {
     );
   };
 
+  const canSwap = !isSolana || IS_MAINNET; // EVM is always mainnet
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.title}>Swap</Text>
+        <Text style={styles.title}>Swap · {activeChain.name}</Text>
         <Pressable onPress={() => nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
@@ -213,7 +238,7 @@ export function SwapScreen() {
                 <ActivityIndicator color={colors.primary} />
               ) : (
                 <Text style={styles.receiveAmount} numberOfLines={1} adjustsFontSizeToFit>
-                  {quote ? fmtAmount(quote.outAmount) : "0.0"}
+                  {quote ? fmtAmount(quote.outUi) : "0.0"}
                 </Text>
               )}
             </View>
@@ -230,9 +255,7 @@ export function SwapScreen() {
                 onPress={() => setSlippageBps(bps)}
                 style={[styles.slipChip, slippageBps === bps && styles.slipChipActive]}
               >
-                <Text style={[styles.slipText, slippageBps === bps && { color: colors.bg }]}>
-                  {bps / 100}%
-                </Text>
+                <Text style={[styles.slipText, slippageBps === bps && { color: colors.bg }]}>{bps / 100}%</Text>
               </Pressable>
             ))}
           </View>
@@ -243,11 +266,9 @@ export function SwapScreen() {
         {quote && (
           <View style={styles.details}>
             <Row label="Rate" value={rate ? `1 ${from.symbol} ≈ ${fmtAmount(rate)} ${to.symbol}` : "—"} />
-            <Row
-              label="Price impact"
-              value={`${quote.priceImpactPct < 0.01 ? "<0.01" : quote.priceImpactPct.toFixed(2)}%`}
-            />
-            <Row label="Route" value={quote.routeLabels.join(" → ") || "Direct"} />
+            <Row label="Price impact" value={`${quote.priceImpactPct < 0.01 ? "<0.01" : quote.priceImpactPct.toFixed(2)}%`} />
+            <Row label="Best route via" value={quote.provider} />
+            <Row label="Min received" value={`${fmtAmount(quote.minReceivedUi)} ${to.symbol}`} />
             <Row
               label="Community fee"
               value={
@@ -258,8 +279,6 @@ export function SwapScreen() {
                     : "None"
               }
             />
-            <View style={styles.feeDivider} />
-            <Row label="Network fee" value="~0.000005 SOL" />
           </View>
         )}
 
@@ -276,8 +295,7 @@ export function SwapScreen() {
             <Ionicons name="git-branch-outline" size={16} color={colors.warning} />
             <Text style={styles.venueFallbackText}>
               Treasury pool price was off by
-              {quote.gapBps != null ? ` ${(quote.gapBps / 100).toFixed(2)}%` : ""} — routed
-              to the best available price to protect your trade.
+              {quote.gapBps != null ? ` ${(quote.gapBps / 100).toFixed(2)}%` : ""} — routed to the best price.
             </Text>
           </View>
         )}
@@ -285,21 +303,25 @@ export function SwapScreen() {
         <View style={styles.banner}>
           <Ionicons name="pricetags-outline" size={16} color={colors.primary} />
           <Text style={styles.bannerText}>
-            Live mainnet rates via Jupiter. Executing swaps unlocks when the wallet
-            moves to mainnet — devnet has no swap liquidity.
+            {isSolana
+              ? "Live rates via Jupiter. Executing swaps needs mainnet — devnet has no liquidity."
+              : "Best rate across aggregators. ERC-20 swaps ask for a one-time approval first."}
           </Text>
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
-        {IS_MAINNET ? (
+        {canSwap ? (
           <Pressable
             disabled={!quote || swapping}
             onPress={doSwap}
             style={[styles.primaryBtn, styles.primaryEnabled, (!quote || swapping) && styles.primaryDim]}
           >
             {swapping ? (
-              <ActivityIndicator color={colors.bg} />
+              <View style={styles.swappingRow}>
+                <ActivityIndicator color={colors.bg} />
+                {status && <Text style={styles.swappingText}>{status}</Text>}
+              </View>
             ) : (
               <Text style={styles.primaryTextEnabled}>{quote ? "Swap" : "Enter an amount"}</Text>
             )}
@@ -314,9 +336,18 @@ export function SwapScreen() {
       <TokenSelectSheet
         visible={pickerFor !== null}
         onClose={() => setPickerFor(null)}
-        onSelect={onSelectToken}
+        onSelect={(t) => {
+          if (pickerFor === "from") {
+            if (t.mint === to.mint) setTo(from);
+            setFrom(t);
+          } else if (pickerFor === "to") {
+            if (t.mint === from.mint) setFrom(to);
+            setTo(t);
+          }
+        }}
         exclude={pickerFor === "from" ? to.mint : from.mint}
         owned={owned}
+        chain={activeChain}
       />
     </KeyboardAvoidingView>
   );
@@ -335,14 +366,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  panel: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: radius.md,
-    padding: spacing(4),
-    gap: spacing(3),
-  },
+  panel: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(3) },
   panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   panelRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
   tokenBtn: {
@@ -374,47 +398,21 @@ const styles = StyleSheet.create({
   receiveRow: { flex: 1, flexDirection: "row", alignItems: "center", minHeight: 40 },
   receiveAmount: { flex: 1, color: colors.text, fontSize: font.h1, fontWeight: "800" },
   error: { color: colors.negative, fontSize: font.small, paddingHorizontal: spacing(1) },
-  details: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: radius.md,
-    padding: spacing(4),
-    gap: spacing(2),
-  },
+  details: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(2) },
   slippageRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   slipChips: { flexDirection: "row", gap: spacing(2) },
   slipChip: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(3), paddingVertical: spacing(1.5), borderRadius: radius.pill },
   slipChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   slipText: { color: colors.text, fontSize: font.small, fontWeight: "700" },
-  feeDivider: { height: 1, backgroundColor: colors.cardBorder, marginVertical: spacing(1) },
   detailRow: { flexDirection: "row", justifyContent: "space-between" },
   detailLabel: { color: colors.textMuted, fontSize: font.small },
   detailValue: { color: colors.text, fontSize: font.small, fontWeight: "700", flexShrink: 1, textAlign: "right", marginLeft: spacing(4) },
-  banner: {
-    flexDirection: "row",
-    gap: spacing(2),
-    backgroundColor: colors.primary + "14",
-    borderRadius: radius.md,
-    padding: spacing(4),
-  },
-  bannerText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
-  venueTreasury: {
-    flexDirection: "row",
-    gap: spacing(2),
-    backgroundColor: colors.accent + "18",
-    borderRadius: radius.md,
-    padding: spacing(4),
-  },
+  venueTreasury: { flexDirection: "row", gap: spacing(2), backgroundColor: colors.accent + "18", borderRadius: radius.md, padding: spacing(4) },
   venueTreasuryText: { flex: 1, color: colors.accent, fontSize: font.small, lineHeight: 18 },
-  venueFallback: {
-    flexDirection: "row",
-    gap: spacing(2),
-    backgroundColor: colors.warning + "18",
-    borderRadius: radius.md,
-    padding: spacing(4),
-  },
+  venueFallback: { flexDirection: "row", gap: spacing(2), backgroundColor: colors.warning + "18", borderRadius: radius.md, padding: spacing(4) },
   venueFallbackText: { flex: 1, color: colors.warning, fontSize: font.small, lineHeight: 18 },
+  banner: { flexDirection: "row", gap: spacing(2), backgroundColor: colors.primary + "14", borderRadius: radius.md, padding: spacing(4) },
+  bannerText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
   footer: { paddingHorizontal: spacing(4), paddingTop: spacing(3), borderTopWidth: 1, borderTopColor: colors.cardBorder },
   primaryBtn: { paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
@@ -422,4 +420,6 @@ const styles = StyleSheet.create({
   primaryEnabled: { backgroundColor: colors.primary },
   primaryDim: { opacity: 0.5 },
   primaryTextEnabled: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
+  swappingRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  swappingText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
 });

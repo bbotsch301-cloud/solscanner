@@ -33,6 +33,8 @@ import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
 import { fetchEvmNativePrices, stableUsd } from "../evm/prices";
 import { sendNativeEvm, sendTokenEvm } from "../evm/send";
+import { executeUnifiedSwap } from "../swap";
+import type { UnifiedQuote } from "../swap/types";
 import {
   clearKeypair,
   createKeypair,
@@ -122,6 +124,8 @@ interface WalletState {
   sendNative: (to: string, uiAmount: number) => Promise<string>;
   /** Send any asset (native or token) on its chain. */
   sendAsset: (asset: UnifiedAsset, to: string, uiAmount: number) => Promise<string>;
+  /** Execute a swap on the active chain (signs with the right key), returns tx id/sig. */
+  swapExecute: (quote: UnifiedQuote, onStatus?: (s: string) => void) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -415,6 +419,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [sendNative, sendToken, loadChain]
   );
 
+  const swapExecute = useCallback(
+    async (quote: UnifiedQuote, onStatus?: (s: string) => void): Promise<string> => {
+      const chain = getChain(activeChainRef.current);
+      const signer = chain.kind === "solana" ? keypairRef.current : evmAccountRef.current;
+      if (!signer) throw new Error("No wallet for this chain.");
+      const sig = await executeUnifiedSwap(chain, quote, signer, onStatus);
+      loadChain(chain.id);
+      return sig;
+    },
+    [loadChain]
+  );
+
   const value = useMemo<WalletState>(() => {
     const solPrice = prices[WSOL_MINT]?.usdPrice ?? null;
     const solChange24h = prices[WSOL_MINT]?.priceChange24h ?? null;
@@ -510,6 +526,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       assets,
       sendNative,
       sendAsset,
+      swapExecute,
     };
   }, [
     initializing,
@@ -537,6 +554,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setActiveChain,
     sendNative,
     sendAsset,
+    swapExecute,
   ]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

@@ -14,6 +14,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "./TokenAvatar";
 import { SWAP_TOKENS, type SwapToken } from "../solana/swap";
 import { looksLikeMint, resolveMint, searchTokens } from "../solana/tokenSearch";
+import { evmSwapTokens, resolveEvmToken } from "../evm/tokenList";
+import { isEvmAddress } from "../wallet/evm";
+import type { ChainDef } from "../chains/registry";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
 
 /** A token the wallet holds, with its balance, for the "Your tokens" section. */
@@ -29,6 +32,7 @@ export function TokenSelectSheet({
   onSelect,
   exclude,
   owned,
+  chain,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -36,6 +40,7 @@ export function TokenSelectSheet({
   /** The other side's mint — hidden from the lists so both sides can't match. */
   exclude?: string;
   owned: OwnedToken[];
+  chain: ChainDef;
 }) {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
@@ -53,7 +58,7 @@ export function TokenSelectSheet({
     setLoading(false);
   };
 
-  // Debounced live search; falls back to an on-chain lookup for a pasted mint. All
+  // Debounced live search; falls back to an on-chain lookup for a pasted address. All
   // state changes happen inside the timeout, so nothing runs synchronously here.
   useEffect(() => {
     const q = query.trim();
@@ -66,10 +71,26 @@ export function TokenSelectSheet({
         return;
       }
       setLoading(true);
-      let found = await searchTokens(q);
-      if (!found.length && looksLikeMint(q)) {
-        const resolved = await resolveMint(q);
-        if (resolved) found = [resolved];
+      let found: SwapToken[];
+      if (chain.kind === "solana") {
+        found = await searchTokens(q);
+        if (!found.length && looksLikeMint(q)) {
+          const resolved = await resolveMint(q);
+          if (resolved) found = [resolved];
+        }
+      } else {
+        // EVM: filter the curated list, then resolve a pasted contract on-chain.
+        const ql = q.toLowerCase();
+        found = evmSwapTokens(chain.id).filter(
+          (t) =>
+            t.symbol.toLowerCase().includes(ql) ||
+            (t.name ?? "").toLowerCase().includes(ql) ||
+            t.mint.toLowerCase() === ql
+        );
+        if (!found.length && isEvmAddress(q)) {
+          const resolved = await resolveEvmToken(chain, q);
+          if (resolved) found = [resolved];
+        }
       }
       if (!cancelled) {
         setResults(found);
@@ -80,7 +101,7 @@ export function TokenSelectSheet({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [query]);
+  }, [query, chain]);
 
   const pick = (t: SwapToken) => {
     onSelect(t);
@@ -88,9 +109,8 @@ export function TokenSelectSheet({
   };
 
   const searching = query.trim().length > 0;
-  const popular = SWAP_TOKENS.filter(
-    (t) => t.mint !== exclude && !ownedByMint.has(t.mint)
-  );
+  const popularSource = chain.kind === "solana" ? SWAP_TOKENS : evmSwapTokens(chain.id);
+  const popular = popularSource.filter((t) => t.mint !== exclude && !ownedByMint.has(t.mint));
 
   return (
     <Modal

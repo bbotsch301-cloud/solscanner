@@ -41,6 +41,26 @@ export async function sendRawTransaction(chain: ChainDef, rawHex: string): Promi
   return call<string>(chain, "eth_sendRawTransaction", [rawHex]);
 }
 
+export async function getReceipt(
+  chain: ChainDef,
+  hash: string
+): Promise<{ status?: string } | null> {
+  return call<{ status?: string } | null>(chain, "eth_getTransactionReceipt", [hash]);
+}
+
+/** Poll until a tx is mined (or timeout). Resolves on inclusion; throws if it reverted. */
+export async function waitForTx(chain: ChainDef, hash: string, tries = 40): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    const r = await getReceipt(chain, hash).catch(() => null);
+    if (r) {
+      if (r.status === "0x0") throw new Error("Transaction reverted on-chain.");
+      return;
+    }
+    await new Promise((res) => setTimeout(res, 3000));
+  }
+  throw new Error("Timed out waiting for the transaction to confirm.");
+}
+
 /** EIP-1559 fee suggestion: 2×baseFee headroom + a priority tip, with fallbacks. */
 export async function getFees(
   chain: ChainDef
