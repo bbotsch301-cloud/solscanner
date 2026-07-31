@@ -31,12 +31,22 @@ import type { RootNav } from "../navigation";
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
 const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112";
 const SWAP_SOL_RESERVE = 0.005; // SOL kept back for fee + rent
-const EVM_GAS_RESERVE = 0.002; // native kept back for gas
+
+/**
+ * Native to keep back for gas. Ethereum gas is far pricier than BSC, and an ERC-20
+ * swap needs TWO txs (a one-time approval + the swap) vs one for a native-in swap —
+ * so token-in reserves more. These are preflight floors; the on-chain error backstops.
+ */
+function gasReserve(chain: ChainDef, tokenIn: boolean): number {
+  const base = chain.id === "ethereum" ? 0.004 : 0.002;
+  return tokenIn ? base + (chain.id === "ethereum" ? 0.004 : 0.001) : base;
+}
 
 function defaultsFor(chain: ChainDef): [SwapToken, SwapToken] {
   if (chain.kind === "solana") return [SWAP_TOKENS[0], SWAP_TOKENS[1]];
   const list = evmSwapTokens(chain.id);
-  return [list[0], list[1]];
+  const usdc = list.find((t) => t.symbol === "USDC") ?? list[1];
+  return [list[0], usdc];
 }
 
 /** The token chip that opens the full selector sheet. */
@@ -152,13 +162,15 @@ export function SwapScreen() {
       }
     } else {
       if (fromIsNative) {
-        const need = amtNum + EVM_GAS_RESERVE;
+        const reserve = gasReserve(activeChain, false);
+        const need = amtNum + reserve;
         if (nativeBal < need)
-          return `You have ${fmtAmount(nativeBal)} ${native.symbol}. Swapping ${fmtAmount(amtNum)} needs about ${fmtAmount(need)} — the extra (~${EVM_GAS_RESERVE}) covers gas.`;
+          return `You have ${fmtAmount(nativeBal)} ${native.symbol}. Swapping ${fmtAmount(amtNum)} needs about ${fmtAmount(need)} — the extra (~${reserve}) covers gas.`;
       } else {
+        const reserve = gasReserve(activeChain, true);
         if (amtNum > bal) return `You only have ${fmtAmount(bal)} ${from.symbol}.`;
-        if (nativeBal < EVM_GAS_RESERVE)
-          return `You need a little ${native.symbol} (~${EVM_GAS_RESERVE}) for gas to swap ${from.symbol}.`;
+        if (nativeBal < reserve)
+          return `You need about ${reserve} ${native.symbol} for gas — swapping ${from.symbol} needs a one-time approval plus the swap.`;
       }
     }
     return null;
