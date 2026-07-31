@@ -34,6 +34,9 @@ export function HomeScreen() {
   const usd = (n: number) =>
     n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
   return (
     <ScrollView
       style={styles.screen}
@@ -43,6 +46,13 @@ export function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
       }
     >
+      <View style={styles.greetRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greet}>{greeting}</Text>
+          <Text style={styles.greetSub}>Building a Better Tomorrow Together</Text>
+        </View>
+      </View>
+
       <BalanceCard
         solBalance={solBalance}
         address={address ?? ""}
@@ -130,6 +140,9 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  greetRow: { marginBottom: spacing(4) },
+  greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
+  greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, fontWeight: "600" },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",

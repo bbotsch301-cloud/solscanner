@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { GhostLogo } from "../components/GhostLogo";
+import { XGOLogo } from "../components/XGOLogo";
 import { ImportWallet } from "./ImportWallet";
 import { useAuth } from "../auth";
 import { useWallet } from "../wallet/WalletContext";
@@ -60,17 +60,18 @@ export function OnboardingScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(8), paddingBottom: insets.bottom + spacing(6) }]}>
       <View style={styles.hero}>
-        <GhostLogo size={104} />
-        <Text style={styles.title}>SolWallet</Text>
+        <XGOLogo size={108} />
+        <Text style={styles.title}>XGO</Text>
+        <Text style={styles.kicker}>The Treasury · The Mission · The Future</Text>
         <Text style={styles.tagline}>
-          A friendlier Solana wallet. Secured by your face, not a password.
+          A self-custody wallet powering a stronger tomorrow through the XGO ecosystem.
         </Text>
       </View>
 
       <View style={styles.features}>
-        <Feature icon="finger-print" title="Passkey security" sub="Unlock with Face ID — no seed phrase to lose." />
-        <Feature icon="flash" title="Live on devnet" sub="Real balances and transactions on Solana's test network." />
-        <Feature icon="shield-checkmark" title="Self-custody" sub="Your key is generated and stored on this device." />
+        <Feature icon="shield-checkmark" title="Self-custody" sub="Your keys are generated and stay on this device." />
+        <Feature icon="business" title="Transparent treasury" sub="Every figure is verifiable on-chain." />
+        <Feature icon="people" title="Community governed" sub="Hold XGO to earn and to vote on the mission." />
       </View>
 
       <View style={styles.actions}>
@@ -93,8 +94,9 @@ export function OnboardingScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(6), justifyContent: "space-between" },
   hero: { alignItems: "center", gap: spacing(3) },
-  title: { color: colors.text, fontSize: 40, fontWeight: "900", marginTop: spacing(3) },
-  tagline: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 22, paddingHorizontal: spacing(4) },
+  title: { color: colors.primary, fontSize: 48, fontWeight: "900", marginTop: spacing(3), letterSpacing: 2 },
+  kicker: { color: colors.accent, fontSize: font.small, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase" },
+  tagline: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 22, paddingHorizontal: spacing(4), marginTop: spacing(1) },
   features: { gap: spacing(4) },
   feature: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
   featureIcon: {

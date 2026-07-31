@@ -2,7 +2,7 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { GhostLogo } from "../components/GhostLogo";
+import { XGOLogo } from "../components/XGOLogo";
 import { useAuth } from "../auth";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -49,8 +49,8 @@ export function LockScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.center}>
-        <GhostLogo size={88} />
-        <Text style={styles.title}>SolWallet</Text>
+        <XGOLogo size={92} />
+        <Text style={styles.title}>XGO</Text>
         <Text style={styles.sub}>Locked</Text>
       </View>
 
@@ -76,7 +76,7 @@ export function LockScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, padding: spacing(6), justifyContent: "space-between" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing(3) },
-  title: { color: colors.text, fontSize: font.h1, fontWeight: "900", marginTop: spacing(3) },
+  title: { color: colors.primary, fontSize: 40, fontWeight: "900", marginTop: spacing(3), letterSpacing: 3 },
   sub: { color: colors.textMuted, fontSize: font.body },
   bottom: { gap: spacing(3), alignItems: "center" },
   error: { color: colors.negative, fontSize: font.small },

@@ -46,7 +46,7 @@ export function BalanceCard({
             {solBalance == null ? "—" : solBalance.toLocaleString("en-US", { maximumFractionDigits: 5 })}
           </Text>
           <Text style={styles.unit}>SOL</Text>
-          {refreshing && <ActivityIndicator color="#1A1130" style={{ marginLeft: 8 }} />}
+          {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
         </View>
 
         {usd != null && (
@@ -66,23 +66,23 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, padding: 1 },
   overlay: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(3) },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  label: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
+  label: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   amountRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing(2) },
-  total: { color: "#1A1130", fontSize: 44, fontWeight: "900", letterSpacing: -1 },
-  unit: { color: "#1A1130", fontSize: font.h2, fontWeight: "800", marginBottom: spacing(1.5) },
+  total: { color: "#0A0A0C", fontSize: 44, fontWeight: "900", letterSpacing: -1 },
+  unit: { color: "#0A0A0C", fontSize: font.h2, fontWeight: "800", marginBottom: spacing(1.5) },
   usdRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
-  usd: { color: "#1A1130", fontSize: font.body, fontWeight: "800" },
-  change: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
-  address: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
+  usd: { color: "#0A0A0C", fontSize: font.body, fontWeight: "800" },
+  change: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
+  address: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   netPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing(1.5),
-    backgroundColor: "#1A113022",
+    backgroundColor: "#0A0A0C22",
     paddingHorizontal: spacing(2.5),
     paddingVertical: spacing(1),
     borderRadius: radius.pill,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#1A1130" },
-  netText: { color: "#1A1130", fontSize: font.tiny, fontWeight: "800" },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0A0A0C" },
+  netText: { color: "#0A0A0C", fontSize: font.tiny, fontWeight: "800" },
 });

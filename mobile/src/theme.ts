@@ -1,31 +1,31 @@
 /**
- * Design tokens for the wallet. Dark-first, Solana-flavored palette.
+ * Design tokens — XGO / Global Goshens: warm black with metallic gold.
+ * Premium, mission-driven, "the treasury, the mission, the future".
  */
 export const colors = {
-  // Phantom-flavored: near-black with a violet cast, lavender as the hero accent.
-  bg: "#12121A",
-  bgElevated: "#1B1B26",
-  card: "#20202C",
-  cardBorder: "#2C2C3A",
-  text: "#F7F7FB",
-  textMuted: "#9B9BAC",
-  textFaint: "#63636E",
+  bg: "#0A0A0C",
+  bgElevated: "#141109",
+  card: "#17140C",
+  cardBorder: "#2E2613",
+  text: "#F6F1E4",
+  textMuted: "#A99F86",
+  textFaint: "#6B6351",
 
-  primary: "#AB9FF2", // Phantom lavender
-  primaryDim: "#7A6FD6",
-  accent: "#AB9FF2",
+  primary: "#E7B838", // XGO gold
+  primaryDim: "#B8901F",
+  accent: "#F3D27A", // light gold highlight
 
-  positive: "#21E56F",
-  negative: "#FF6B6B",
-  warning: "#FFB020",
+  positive: "#3FCF8E",
+  negative: "#F0616D",
+  warning: "#F0A93B",
 
-  // Violet → lavender gradient for the balance card / hero surfaces.
-  gradA: "#5A4FCF",
-  gradB: "#AB9FF2",
+  // Gold gradient for hero surfaces (treasury value, balance, voting power).
+  gradA: "#8A6A12",
+  gradB: "#F3D27A",
 } as const;
 
-/** Text/icon color that reads well on the lavender gradient and primary buttons. */
-export const onPrimary = "#1A1130";
+/** Text/icon color that reads well on gold surfaces and primary buttons. */
+export const onPrimary = "#0A0A0C";
 
 export const spacing = (n: number) => n * 4;
 

@@ -77,7 +77,7 @@ export function TreasuryScreen() {
               }}
               hitSlop={10}
             >
-              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={16} color="#1A1130" />
+              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={16} color="#0A0A0C" />
             </Pressable>
           </View>
         </View>
@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
   header: { color: colors.text, fontSize: font.h1, fontWeight: "900", marginBottom: spacing(4) },
   card: { borderRadius: radius.lg, padding: 1 },
   cardInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(2) },
-  cardLabel: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
-  total: { color: "#1A1130", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
+  cardLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
+  total: { color: "#0A0A0C", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
   addrRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
-  addr: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
+  addr: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   verify: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(3) },
   verifyText: { color: colors.primary, fontSize: font.small, fontWeight: "600" },
   sectionTitle: {
