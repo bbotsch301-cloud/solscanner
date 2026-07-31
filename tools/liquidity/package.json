@@ -1,0 +1,27 @@
+{
+  "name": "xgo-liquidity-tools",
+  "private": true,
+  "description": "Treasury-run scripts to create + manage XGO's protocol-owned liquidity on Raydium CPMM. Mainnet only.",
+  "scripts": {
+    "create-pool": "tsx createPool.ts",
+    "add": "tsx addLiquidity.ts",
+    "remove": "tsx removeLiquidity.ts",
+    "info": "tsx poolInfo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raydium-io/raydium-sdk-v2": "^0.2.19-alpha",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.1",
+    "bs58": "^6.0.0",
+    "dotenv": "^16.4.7",
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.6",
+    "@types/node": "^20",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}
