@@ -1,4 +1,5 @@
 import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -22,6 +23,7 @@ import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
+import { loadNetworkPref } from "./src/solana/connection";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
 
@@ -113,13 +115,23 @@ function Root() {
 }
 
 export default function App() {
+  // Apply the saved network choice before anything uses the connection.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadNetworkPref().finally(() => setReady(true));
+  }, []);
+
   return (
     <SafeAreaProvider>
-      <WalletProvider>
-        <AuthProvider>
-          <Root />
-        </AuthProvider>
-      </WalletProvider>
+      {ready ? (
+        <WalletProvider>
+          <AuthProvider>
+            <Root />
+          </AuthProvider>
+        </WalletProvider>
+      ) : (
+        <Splash />
+      )}
     </SafeAreaProvider>
   );
 }

@@ -1,12 +1,12 @@
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER, solscanAccount } from "../solana/connection";
+import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 function Row({
@@ -40,6 +40,29 @@ export function SettingsScreen() {
   const { lock } = useAuth();
   const { address, reset } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
+
+  const switchTo = (n: Network) => {
+    if ((n === "mainnet-beta") === IS_MAINNET) return; // already there
+    const doIt = async () => {
+      await setNetwork(n);
+      try {
+        DevSettings.reload();
+      } catch {
+        Alert.alert("Restart needed", "Close and reopen the app to apply the change.");
+      }
+    };
+    if (n === "mainnet-beta") {
+      Alert.alert("Switch to Mainnet?", "This uses REAL funds. The app will reload.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Switch", style: "destructive", onPress: doIt },
+      ]);
+    } else {
+      Alert.alert("Switch to Devnet?", "Test network (no real funds). The app will reload.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Switch", onPress: doIt },
+      ]);
+    }
+  };
 
   const confirmReset = () => {
     Alert.alert(
@@ -79,7 +102,24 @@ export function SettingsScreen() {
 
       <Text style={styles.sectionTitle}>Network</Text>
       <View style={styles.group}>
-        <Row icon="git-network-outline" label="Cluster" value={network} />
+        <View style={styles.netRow}>
+          <Ionicons name="git-network-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Cluster</Text>
+          <View style={styles.netToggle}>
+            <Pressable
+              onPress={() => switchTo("devnet")}
+              style={[styles.netOpt, !IS_MAINNET && styles.netOptActive]}
+            >
+              <Text style={[styles.netOptText, !IS_MAINNET && { color: colors.bg }]}>Devnet</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => switchTo("mainnet-beta")}
+              style={[styles.netOpt, IS_MAINNET && styles.netOptActive]}
+            >
+              <Text style={[styles.netOptText, IS_MAINNET && { color: colors.bg }]}>Mainnet</Text>
+            </Pressable>
+          </View>
+        </View>
         <View style={styles.divider} />
         <Row
           icon="open-outline"
@@ -161,6 +201,11 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3.5) },
   rowLabel: { flex: 1, color: colors.text, fontSize: font.body, fontWeight: "600" },
+  netRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
+  netToggle: { flexDirection: "row", backgroundColor: colors.bgElevated, borderRadius: radius.pill, padding: 3 },
+  netOpt: { paddingHorizontal: spacing(3), paddingVertical: spacing(1.5), borderRadius: radius.pill },
+  netOptActive: { backgroundColor: colors.primary },
+  netOptText: { color: colors.textMuted, fontSize: font.small, fontWeight: "800" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rowValue: { color: colors.textMuted, fontSize: font.body },
   divider: { height: 1, backgroundColor: colors.cardBorder },
