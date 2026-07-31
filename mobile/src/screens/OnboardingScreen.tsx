@@ -4,6 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { GhostLogo } from "../components/GhostLogo";
+import { ImportWallet } from "./ImportWallet";
 import { useAuth } from "../auth";
 import { useWallet } from "../wallet/WalletContext";
 import { colors, font, radius, spacing } from "../theme";
@@ -27,6 +28,11 @@ export function OnboardingScreen() {
   const { create } = useWallet();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  if (showImport) {
+    return <ImportWallet onDone={unlock} onCancel={() => setShowImport(false)} />;
+  }
 
   const createWithPasskey = async () => {
     if (busy) return;
@@ -76,10 +82,7 @@ export function OnboardingScreen() {
           <Ionicons name="finger-print" size={20} color={colors.bg} />
           <Text style={styles.primaryText}>{busy ? "Creating…" : "Create with passkey"}</Text>
         </Pressable>
-        <Pressable
-          onPress={() => Alert.alert("Import", "Importing an existing wallet is coming soon.")}
-          style={styles.secondaryBtn}
-        >
+        <Pressable onPress={() => setShowImport(true)} style={styles.secondaryBtn}>
           <Text style={styles.secondaryText}>I already have a wallet</Text>
         </Pressable>
       </View>

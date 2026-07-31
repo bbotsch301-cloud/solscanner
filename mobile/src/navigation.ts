@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Send: { asset?: string } | undefined;
   Receive: undefined;
   Swap: undefined;
+  Backup: undefined;
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

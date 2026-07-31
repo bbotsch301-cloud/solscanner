@@ -24,7 +24,7 @@ import {
 import { connection } from "../solana/connection";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas } from "../solana/tokens";
-import { clearKeypair, createKeypair, loadKeypair } from "./keystore";
+import { clearKeypair, createKeypair, importMnemonic, loadKeypair } from "./keystore";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -61,6 +61,7 @@ interface WalletState {
   busy: boolean;
   error: string | null;
   create: () => Promise<void>;
+  importWallet: (mnemonic: string) => Promise<void>;
   reset: () => Promise<void>;
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
@@ -156,6 +157,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setTokens([]);
     refresh();
   }, [refresh]);
+
+  const importWallet = useCallback(
+    async (mnemonic: string) => {
+      const kp = await importMnemonic(mnemonic); // throws on invalid phrase
+      setKeypair(kp);
+      keypairRef.current = kp;
+      setSolBalance(0);
+      setTokens([]);
+      refresh();
+    },
+    [refresh]
+  );
 
   const reset = useCallback(async () => {
     await clearKeypair();
@@ -262,13 +275,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       busy,
       error,
       create,
+      importWallet,
       reset,
       refresh,
       airdrop,
       send,
       sendToken,
     };
-  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, reset, refresh, airdrop, send, sendToken]);
+  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, importWallet, reset, refresh, airdrop, send, sendToken]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

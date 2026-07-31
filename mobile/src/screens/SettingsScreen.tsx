@@ -1,8 +1,10 @@
 import * as Clipboard from "expo-clipboard";
+import { useNavigation } from "@react-navigation/native";
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
+import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, solscanAccount } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
@@ -34,6 +36,7 @@ function Row({
 
 export function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<RootNav>();
   const { lock } = useAuth();
   const { address, reset } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
@@ -82,6 +85,12 @@ export function SettingsScreen() {
 
       <Text style={styles.sectionTitle}>Security</Text>
       <View style={styles.group}>
+        <Row
+          icon="key-outline"
+          label="Recovery phrase"
+          onPress={() => nav.navigate("Backup")}
+        />
+        <View style={styles.divider} />
         <Row icon="finger-print-outline" label="Face ID / passcode" value="On" />
         <View style={styles.divider} />
         <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
