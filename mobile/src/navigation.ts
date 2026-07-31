@@ -6,6 +6,7 @@ export type RootStackParamList = {
   Send: { asset?: string } | undefined;
   Receive: undefined;
   Swap: undefined;
+  Buy: undefined;
   Backup: undefined;
   Activity: undefined;
 };

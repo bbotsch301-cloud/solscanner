@@ -1,17 +1,27 @@
 import { useNavigation } from "@react-navigation/native";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { fetchHistory, type TxSummary } from "../solana/history";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER } from "../solana/connection";
-import { amount as fmtAmount, compact, colors, font, shortAddress, spacing } from "../theme";
+import { CLUSTER, solscanTx } from "../solana/connection";
+import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 const SOL_LOGO =
   "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
+
+function timeAgo(ts: number | null): string {
+  if (!ts) return "";
+  const s = Math.floor(Date.now() / 1000) - ts;
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86_400)}d ago`;
+}
 
 export function HomeScreen() {
   const nav = useNavigation<RootNav>();
@@ -34,6 +44,19 @@ export function HomeScreen() {
   const empty = (solBalance ?? 0) === 0 && tokens.length === 0;
   const usd = (n: number) =>
     n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+  const [recent, setRecent] = useState<TxSummary[]>([]);
+  const loadRecent = useCallback(async () => {
+    if (!address) return;
+    try {
+      setRecent(await fetchHistory(address, 4));
+    } catch {
+      /* best-effort */
+    }
+  }, [address]);
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
 
   return (
     <ScrollView
@@ -63,8 +86,8 @@ export function HomeScreen() {
       <View style={styles.actions}>
         <ActionButton icon="arrow-up" label="Send" onPress={() => nav.navigate("Send")} />
         <ActionButton icon="arrow-down" label="Receive" onPress={() => nav.navigate("Receive")} />
+        <ActionButton icon="card-outline" label="Buy" onPress={() => nav.navigate("Buy")} />
         <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />
-        <ActionButton icon="water" label={busy ? "…" : "Get SOL"} onPress={airdrop} />
       </View>
 
       {busy && <Text style={styles.status}>Requesting test SOL from the faucet…</Text>}
@@ -74,9 +97,13 @@ export function HomeScreen() {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Fund your wallet</Text>
           <Text style={styles.emptySub}>
-            This is a fresh devnet wallet. Tap “Get SOL” to airdrop 1 test SOL — it’s
-            free and not real money.
+            This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free
+            and not real money.
           </Text>
+          <Pressable onPress={airdrop} style={styles.emptyBtn}>
+            <Ionicons name="water" size={16} color={colors.bg} />
+            <Text style={styles.emptyBtnText}>Get test SOL</Text>
+          </Pressable>
         </View>
       )}
 
@@ -132,6 +159,41 @@ export function HomeScreen() {
           );
         })}
       </View>
+
+      {recent.length > 0 && (
+        <>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Recent activity</Text>
+            <Pressable onPress={() => nav.navigate("Activity")}>
+              <Text style={styles.viewAll}>View all →</Text>
+            </Pressable>
+          </View>
+          <View style={styles.card}>
+            {recent.map((tx, i) => (
+              <View key={tx.signature}>
+                {i > 0 && <View style={styles.divider} />}
+                <Pressable
+                  onPress={() => Linking.openURL(solscanTx(tx.signature))}
+                  style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+                >
+                  <View style={[styles.actIcon, { backgroundColor: (tx.failed ? colors.negative : colors.primary) + "22" }]}>
+                    <Ionicons
+                      name={tx.failed ? "close" : "swap-horizontal"}
+                      size={16}
+                      color={tx.failed ? colors.negative : colors.primary}
+                    />
+                  </View>
+                  <View style={styles.mid}>
+                    <Text style={styles.symbol}>{tx.failed ? "Failed" : "Transaction"}</Text>
+                    <Text style={styles.sub}>{shortAddress(tx.signature, 6, 6)} · {timeAgo(tx.blockTime)}</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={15} color={colors.textFaint} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -159,6 +221,11 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   emptySub: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
+  emptyBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), backgroundColor: colors.primary, paddingVertical: spacing(3), borderRadius: radius.pill, marginTop: spacing(3) },
+  emptyBtnText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
+  sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing(6), marginBottom: spacing(3) },
+  viewAll: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
+  actIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.small,

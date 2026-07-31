@@ -18,6 +18,8 @@ import { SWAP_TOKENS, fetchQuote, type Quote, type SwapToken } from "../solana/s
 import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
+const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
+
 function TokenPicker({
   selected,
   exclude,
@@ -51,6 +53,7 @@ export function SwapScreen() {
   const [from, setFrom] = useState<SwapToken>(SWAP_TOKENS[0]);
   const [to, setTo] = useState<SwapToken>(SWAP_TOKENS[1]);
   const [amt, setAmt] = useState("");
+  const [slippageBps, setSlippageBps] = useState(100);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export function SwapScreen() {
     setLoading(true);
     const id = setTimeout(async () => {
       try {
-        const q = await fetchQuote(from, to, amtNum);
+        const q = await fetchQuote(from, to, amtNum, slippageBps);
         if (!cancelled) setQuote(q);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -78,7 +81,7 @@ export function SwapScreen() {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [from, to, amtNum]);
+  }, [from, to, amtNum, slippageBps]);
 
   const flip = () => {
     setFrom(to);
@@ -130,6 +133,23 @@ export function SwapScreen() {
           </View>
         </View>
 
+        <View style={styles.slippageRow}>
+          <Text style={styles.detailLabel}>Slippage tolerance</Text>
+          <View style={styles.slipChips}>
+            {SLIPPAGE_OPTIONS.map((bps) => (
+              <Pressable
+                key={bps}
+                onPress={() => setSlippageBps(bps)}
+                style={[styles.slipChip, slippageBps === bps && styles.slipChipActive]}
+              >
+                <Text style={[styles.slipText, slippageBps === bps && { color: colors.bg }]}>
+                  {bps / 100}%
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         {error && <Text style={styles.error}>{error}</Text>}
 
         {quote && (
@@ -140,6 +160,8 @@ export function SwapScreen() {
               value={`${quote.priceImpactPct < 0.01 ? "<0.01" : quote.priceImpactPct.toFixed(2)}%`}
             />
             <Row label="Route" value={quote.routeLabels.join(" → ") || "Direct"} />
+            <View style={styles.feeDivider} />
+            <Row label="Network fee" value="~0.000005 SOL" />
           </View>
         )}
 
@@ -223,6 +245,12 @@ const styles = StyleSheet.create({
     padding: spacing(4),
     gap: spacing(2),
   },
+  slippageRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  slipChips: { flexDirection: "row", gap: spacing(2) },
+  slipChip: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(3), paddingVertical: spacing(1.5), borderRadius: radius.pill },
+  slipChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  slipText: { color: colors.text, fontSize: font.small, fontWeight: "700" },
+  feeDivider: { height: 1, backgroundColor: colors.cardBorder, marginVertical: spacing(1) },
   detailRow: { flexDirection: "row", justifyContent: "space-between" },
   detailLabel: { color: colors.textMuted, fontSize: font.small },
   detailValue: { color: colors.text, fontSize: font.small, fontWeight: "700", flexShrink: 1, textAlign: "right", marginLeft: spacing(4) },

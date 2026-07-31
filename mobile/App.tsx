@@ -14,6 +14,7 @@ import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
 import { ReceiveScreen } from "./src/screens/ReceiveScreen";
 import { SwapScreen } from "./src/screens/SwapScreen";
+import { BuyScreen } from "./src/screens/BuyScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
@@ -98,6 +99,7 @@ function Root() {
           <Stack.Screen name="Send" component={SendScreen} />
           <Stack.Screen name="Receive" component={ReceiveScreen} />
           <Stack.Screen name="Swap" component={SwapScreen} />
+          <Stack.Screen name="Buy" component={BuyScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
         </Stack.Group>
