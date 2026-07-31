@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,11 +16,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
 import { SWAP_TOKENS, executeSwap, fetchQuote, type Quote, type SwapToken } from "../solana/swap";
 import { IS_MAINNET, solscanTx } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { useWallet } from "../wallet/WalletContext";
-import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
+import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
@@ -28,29 +29,14 @@ const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112";
 // SOL to keep back for the network fee + token-account rent a swap may create.
 const SWAP_SOL_RESERVE = 0.005;
 
-function TokenPicker({
-  selected,
-  exclude,
-  onSelect,
-}: {
-  selected: SwapToken;
-  exclude: string;
-  onSelect: (t: SwapToken) => void;
-}) {
+/** The token chip that opens the full selector sheet. */
+function TokenButton({ token, onPress }: { token: SwapToken; onPress: () => void }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -spacing(1) }}>
-      <View style={styles.chips}>
-        {SWAP_TOKENS.filter((t) => t.mint !== exclude).map((t) => {
-          const active = t.mint === selected.mint;
-          return (
-            <Pressable key={t.mint} onPress={() => onSelect(t)} style={[styles.chip, active && styles.chipActive]}>
-              <TokenAvatar symbol={t.symbol} color={colors.primary} size={22} logoURI={t.logoURI} />
-              <Text style={[styles.chipText, active && { color: colors.bg }]}>{t.symbol}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </ScrollView>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.tokenBtn, pressed && { opacity: 0.6 }]}>
+      <TokenAvatar symbol={token.symbol} color={colors.primary} size={24} logoURI={token.logoURI} />
+      <Text style={styles.tokenBtnText}>{token.symbol}</Text>
+      <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+    </Pressable>
   );
 }
 
@@ -58,7 +44,7 @@ export function SwapScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
-  const { keypair, solBalance, tokens } = useWallet();
+  const { keypair, solBalance, tokens, priceOf } = useWallet();
   const [from, setFrom] = useState<SwapToken>(SWAP_TOKENS[0]);
   const [to, setTo] = useState<SwapToken>(SWAP_TOKENS[1]);
   const [amt, setAmt] = useState("");
@@ -67,8 +53,47 @@ export function SwapScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
+  const [pickerFor, setPickerFor] = useState<"from" | "to" | null>(null);
 
   const amtNum = parseFloat(amt) || 0;
+
+  // Wallet-owned tokens (SOL + SPL), richest first, for the picker's "Your tokens".
+  const owned = useMemo<OwnedToken[]>(() => {
+    const list: OwnedToken[] = [];
+    const solUsd = priceOf(SOL_MINT_ADDR);
+    if (solBalance != null && solBalance > 0) {
+      list.push({
+        token: { mint: SOL_MINT_ADDR, symbol: "SOL", name: "Solana", decimals: 9, logoURI: SWAP_TOKENS[0].logoURI, verified: true },
+        balance: solBalance,
+        usd: solUsd != null ? solBalance * solUsd : null,
+      });
+    }
+    for (const t of tokens) {
+      const p = priceOf(t.mint);
+      list.push({
+        token: {
+          mint: t.mint,
+          symbol: t.symbol ?? shortAddress(t.mint, 4, 4),
+          name: t.name,
+          decimals: t.decimals,
+          logoURI: t.logoURI,
+        },
+        balance: t.amount,
+        usd: p != null ? t.amount * p : null,
+      });
+    }
+    return list.sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
+  }, [solBalance, tokens, priceOf]);
+
+  const onSelectToken = (t: SwapToken) => {
+    if (pickerFor === "from") {
+      if (t.mint === to.mint) setTo(from); // picked the other side → flip it
+      setFrom(t);
+    } else if (pickerFor === "to") {
+      if (t.mint === from.mint) setFrom(to);
+      setTo(t);
+    }
+  };
 
   // Debounced live quote from Jupiter (mainnet rates).
   useEffect(() => {
@@ -163,15 +188,17 @@ export function SwapScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }} keyboardShouldPersistTaps="handled">
         <View style={styles.panel}>
           <Text style={styles.panelLabel}>You pay</Text>
-          <TokenPicker selected={from} exclude={to.mint} onSelect={setFrom} />
-          <TextInput
-            value={amt}
-            onChangeText={setAmt}
-            placeholder="0.0"
-            placeholderTextColor={colors.textFaint}
-            keyboardType="decimal-pad"
-            style={styles.amountInput}
-          />
+          <View style={styles.panelRow}>
+            <TextInput
+              value={amt}
+              onChangeText={setAmt}
+              placeholder="0.0"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="decimal-pad"
+              style={styles.amountInput}
+            />
+            <TokenButton token={from} onPress={() => setPickerFor("from")} />
+          </View>
         </View>
 
         <Pressable onPress={flip} style={styles.flipBtn}>
@@ -180,16 +207,17 @@ export function SwapScreen() {
 
         <View style={styles.panel}>
           <Text style={styles.panelLabel}>You receive</Text>
-          <TokenPicker selected={to} exclude={from.mint} onSelect={setTo} />
-          <View style={styles.receiveRow}>
-            {loading ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={styles.receiveAmount}>
-                {quote ? fmtAmount(quote.outAmount) : "0.0"}
-              </Text>
-            )}
-            <Text style={styles.receiveUnit}>{to.symbol}</Text>
+          <View style={styles.panelRow}>
+            <View style={styles.receiveRow}>
+              {loading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.receiveAmount} numberOfLines={1} adjustsFontSizeToFit>
+                  {quote ? fmtAmount(quote.outAmount) : "0.0"}
+                </Text>
+              )}
+            </View>
+            <TokenButton token={to} onPress={() => setPickerFor("to")} />
           </View>
         </View>
 
@@ -272,6 +300,14 @@ export function SwapScreen() {
           </View>
         )}
       </View>
+
+      <TokenSelectSheet
+        visible={pickerFor !== null}
+        onClose={() => setPickerFor(null)}
+        onSelect={onSelectToken}
+        exclude={pickerFor === "from" ? to.mint : from.mint}
+        owned={owned}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -298,8 +334,8 @@ const styles = StyleSheet.create({
     gap: spacing(3),
   },
   panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
-  chips: { flexDirection: "row", gap: spacing(2), paddingHorizontal: spacing(1) },
-  chip: {
+  panelRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
+  tokenBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing(2),
@@ -310,9 +346,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing(2),
     borderRadius: radius.pill,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { color: colors.text, fontSize: font.body, fontWeight: "700" },
-  amountInput: { color: colors.text, fontSize: font.h1, fontWeight: "800", padding: 0 },
+  tokenBtnText: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
+  amountInput: { flex: 1, color: colors.text, fontSize: font.h1, fontWeight: "800", padding: 0 },
   flipBtn: {
     alignSelf: "center",
     width: 40,
@@ -326,9 +361,8 @@ const styles = StyleSheet.create({
     marginVertical: -spacing(1),
     zIndex: 1,
   },
-  receiveRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), minHeight: 40 },
-  receiveAmount: { color: colors.text, fontSize: font.h1, fontWeight: "800" },
-  receiveUnit: { color: colors.textMuted, fontSize: font.h3, fontWeight: "800" },
+  receiveRow: { flex: 1, flexDirection: "row", alignItems: "center", minHeight: 40 },
+  receiveAmount: { flex: 1, color: colors.text, fontSize: font.h1, fontWeight: "800" },
   error: { color: colors.negative, fontSize: font.small, paddingHorizontal: spacing(1) },
   details: {
     backgroundColor: colors.card,

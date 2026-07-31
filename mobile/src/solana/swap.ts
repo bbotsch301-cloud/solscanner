@@ -54,6 +54,10 @@ export interface SwapToken {
   symbol: string;
   decimals: number;
   logoURI?: string;
+  /** Full token name, for the picker subtitle. */
+  name?: string;
+  /** True when Jupiter lists the token as verified. Undefined = unknown. */
+  verified?: boolean;
 }
 
 /** A small curated set of liquid mainnet tokens to swap between. */
