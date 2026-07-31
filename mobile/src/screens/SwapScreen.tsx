@@ -2,7 +2,9 @@ import { useNavigation } from "@react-navigation/native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +16,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { SWAP_TOKENS, fetchQuote, type Quote, type SwapToken } from "../solana/swap";
+import { SWAP_TOKENS, executeSwap, fetchQuote, type Quote, type SwapToken } from "../solana/swap";
+import { IS_MAINNET, solscanTx } from "../solana/connection";
+import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -50,6 +54,7 @@ export function SwapScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
+  const { keypair } = useWallet();
   const [from, setFrom] = useState<SwapToken>(SWAP_TOKENS[0]);
   const [to, setTo] = useState<SwapToken>(SWAP_TOKENS[1]);
   const [amt, setAmt] = useState("");
@@ -57,6 +62,7 @@ export function SwapScreen() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState(false);
 
   const amtNum = parseFloat(amt) || 0;
 
@@ -90,6 +96,34 @@ export function SwapScreen() {
   };
 
   const rate = quote && amtNum > 0 ? quote.outAmount / amtNum : null;
+
+  const doSwap = () => {
+    if (!quote || !keypair) return;
+    Alert.alert(
+      "Confirm swap",
+      `Swap ${amtNum} ${from.symbol} for about ${fmtAmount(quote.outAmount)} ${to.symbol}? This uses real funds.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Swap",
+          onPress: async () => {
+            setSwapping(true);
+            try {
+              const sig = await executeSwap(quote.raw, keypair);
+              Alert.alert("Swap submitted", "Your swap is confirmed.", [
+                { text: "View on Solscan", onPress: () => Linking.openURL(solscanTx(sig)) },
+                { text: "Done", onPress: () => nav.goBack() },
+              ]);
+            } catch (e) {
+              Alert.alert("Swap failed", (e as Error).message);
+            } finally {
+              setSwapping(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
@@ -175,9 +209,23 @@ export function SwapScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
-        <View style={[styles.primaryBtn, styles.primaryDisabled]}>
-          <Text style={styles.primaryTextDisabled}>Swap · available on mainnet</Text>
-        </View>
+        {IS_MAINNET ? (
+          <Pressable
+            disabled={!quote || swapping}
+            onPress={doSwap}
+            style={[styles.primaryBtn, styles.primaryEnabled, (!quote || swapping) && styles.primaryDim]}
+          >
+            {swapping ? (
+              <ActivityIndicator color={colors.bg} />
+            ) : (
+              <Text style={styles.primaryTextEnabled}>{quote ? "Swap" : "Enter an amount"}</Text>
+            )}
+          </Pressable>
+        ) : (
+          <View style={[styles.primaryBtn, styles.primaryDisabled]}>
+            <Text style={styles.primaryTextDisabled}>Swap · available on mainnet</Text>
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -263,7 +311,10 @@ const styles = StyleSheet.create({
   },
   bannerText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
   footer: { paddingHorizontal: spacing(4), paddingTop: spacing(3), borderTopWidth: 1, borderTopColor: colors.cardBorder },
-  primaryBtn: { paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center" },
+  primaryBtn: { paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
   primaryTextDisabled: { color: colors.textMuted, fontSize: font.h3, fontWeight: "800" },
+  primaryEnabled: { backgroundColor: colors.primary },
+  primaryDim: { opacity: 0.5 },
+  primaryTextEnabled: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
 });

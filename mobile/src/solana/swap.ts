@@ -1,8 +1,12 @@
 /**
- * Jupiter swap quotes (mainnet). Jupiter only has liquidity/routing on
+ * Jupiter swap quotes + execution. Jupiter only has liquidity/routing on
  * mainnet-beta, so quotes reflect real mainnet rates even while the wallet runs
- * on devnet. Execution is intentionally not wired until we move to mainnet.
+ * on devnet; executeSwap only does anything real once NETWORK is mainnet.
  */
+import { Buffer } from "buffer";
+import { Keypair, VersionedTransaction } from "@solana/web3.js";
+import { connection } from "./connection";
+
 const LOGO = (mint: string) =>
   `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`;
 
@@ -29,6 +33,8 @@ export interface Quote {
   priceImpactPct: number;
   /** AMM labels the route goes through. */
   routeLabels: string[];
+  /** Full Jupiter quote response, needed to build the swap transaction. */
+  raw: unknown;
 }
 
 export async function fetchQuote(
@@ -59,5 +65,35 @@ export async function fetchQuote(
     routeLabels: (j.routePlan ?? [])
       .map((r) => r.swapInfo?.label)
       .filter((l): l is string => !!l),
+    raw: j,
   };
+}
+
+/**
+ * Execute a swap on the CURRENT network. Only meaningful on mainnet — Jupiter has
+ * no devnet liquidity. Builds the swap transaction from the quote, signs it with
+ * the wallet keypair, and submits it. Returns the transaction signature.
+ */
+export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<string> {
+  const res = await fetch("https://lite-api.jup.ag/swap/v1/swap", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      quoteResponse: rawQuote,
+      userPublicKey: keypair.publicKey.toBase58(),
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+    }),
+  });
+  if (!res.ok) throw new Error(`Swap build failed (${res.status})`);
+  const { swapTransaction } = (await res.json()) as { swapTransaction?: string };
+  if (!swapTransaction) throw new Error("No swap transaction returned");
+
+  const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, "base64"));
+  tx.sign([keypair]);
+
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+  const bh = await connection.getLatestBlockhash();
+  await connection.confirmTransaction({ signature: sig, ...bh }, "confirmed");
+  return sig;
 }

@@ -8,7 +8,7 @@ import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER, solscanTx } from "../solana/connection";
+import { CLUSTER, IS_MAINNET, solscanTx } from "../solana/connection";
 import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -74,6 +74,13 @@ export function HomeScreen() {
         </Pressable>
       </View>
 
+      {IS_MAINNET && (
+        <View style={styles.mainnetBanner}>
+          <Ionicons name="warning" size={15} color={colors.negative} />
+          <Text style={styles.mainnetText}>Mainnet — real funds. Double-check every transaction.</Text>
+        </View>
+      )}
+
       <BalanceCard
         solBalance={solBalance}
         address={address ?? ""}
@@ -97,13 +104,16 @@ export function HomeScreen() {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Fund your wallet</Text>
           <Text style={styles.emptySub}>
-            This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free
-            and not real money.
+            {IS_MAINNET
+              ? "Send SOL or tokens to your address (tap Receive) to get started."
+              : "This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free and not real money."}
           </Text>
-          <Pressable onPress={airdrop} style={styles.emptyBtn}>
-            <Ionicons name="water" size={16} color={colors.bg} />
-            <Text style={styles.emptyBtnText}>Get test SOL</Text>
-          </Pressable>
+          {!IS_MAINNET && (
+            <Pressable onPress={airdrop} style={styles.emptyBtn}>
+              <Ionicons name="water" size={16} color={colors.bg} />
+              <Text style={styles.emptyBtnText}>Get test SOL</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -202,6 +212,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   headerTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
+  mainnetBanner: { flexDirection: "row", alignItems: "center", gap: spacing(2), backgroundColor: colors.negative + "1A", borderWidth: 1, borderColor: colors.negative + "44", borderRadius: radius.md, padding: spacing(3), marginBottom: spacing(4) },
+  mainnetText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "700" },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",
