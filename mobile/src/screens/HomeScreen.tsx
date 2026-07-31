@@ -6,14 +6,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { fetchHistory, type TxSummary } from "../solana/history";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
+import { ChainSwitcher } from "../components/ChainSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, solscanTx } from "../solana/connection";
 import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
-
-const SOL_LOGO =
-  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
 
 function timeAgo(ts: number | null): string {
   if (!ts) return "";
@@ -27,13 +25,12 @@ export function HomeScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
   const {
-    address,
-    solBalance,
-    tokens,
-    solPrice,
+    activeChain,
+    activeAddress,
+    native,
+    assets,
     solChange24h,
     totalUsd,
-    priceOf,
     refreshing,
     busy,
     error,
@@ -41,19 +38,23 @@ export function HomeScreen() {
     airdrop,
   } = useWallet();
 
-  const empty = (solBalance ?? 0) === 0 && tokens.length === 0;
-  const usd = (n: number) =>
-    n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const isSolana = activeChain.kind === "solana";
+  const empty = (native.balance ?? 0) === 0 && assets.length === 0;
+  const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
 
   const [recent, setRecent] = useState<TxSummary[]>([]);
   const loadRecent = useCallback(async () => {
-    if (!address) return;
+    if (!isSolana || !activeAddress) {
+      setRecent([]);
+      return;
+    }
     try {
-      setRecent(await fetchHistory(address, 4));
+      setRecent(await fetchHistory(activeAddress, 4));
     } catch {
       /* best-effort */
     }
-  }, [address]);
+  }, [isSolana, activeAddress]);
   useEffect(() => {
     loadRecent();
   }, [loadRecent]);
@@ -63,38 +64,43 @@ export function HomeScreen() {
       style={styles.screen}
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
       showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
     >
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>Wallet</Text>
-        <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
-          <Ionicons name="time-outline" size={22} color={colors.textMuted} />
-        </Pressable>
+        {isSolana && (
+          <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
+            <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+          </Pressable>
+        )}
       </View>
 
-      {IS_MAINNET && (
+      <ChainSwitcher />
+
+      {(IS_MAINNET || !isSolana) && (
         <View style={styles.mainnetBanner}>
           <Ionicons name="warning" size={15} color={colors.negative} />
-          <Text style={styles.mainnetText}>Mainnet — real funds. Double-check every transaction.</Text>
+          <Text style={styles.mainnetText}>
+            {isSolana ? "Solana Mainnet" : activeChain.name} — real funds. Double-check every transaction.
+          </Text>
         </View>
       )}
 
       <BalanceCard
-        solBalance={solBalance}
-        address={address ?? ""}
-        network={CLUSTER === "devnet" ? "Devnet" : CLUSTER}
+        solBalance={native.balance}
+        symbol={native.symbol}
+        address={activeAddress ?? ""}
+        network={network}
         refreshing={refreshing}
         usdValue={totalUsd}
-        change24h={solChange24h}
+        change24h={native.symbol === "SOL" ? solChange24h : null}
       />
 
       <View style={styles.actions}>
         <ActionButton icon="arrow-up" label="Send" onPress={() => nav.navigate("Send")} />
         <ActionButton icon="arrow-down" label="Receive" onPress={() => nav.navigate("Receive")} />
-        <ActionButton icon="card-outline" label="Buy" onPress={() => nav.navigate("Buy")} />
-        <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />
+        {isSolana && <ActionButton icon="card-outline" label="Buy" onPress={() => nav.navigate("Buy")} />}
+        {isSolana && <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />}
       </View>
 
       {busy && <Text style={styles.status}>Requesting test SOL from the faucet…</Text>}
@@ -104,11 +110,11 @@ export function HomeScreen() {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Fund your wallet</Text>
           <Text style={styles.emptySub}>
-            {IS_MAINNET
-              ? "Send SOL or tokens to your address (tap Receive) to get started."
-              : "This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free and not real money."}
+            {isSolana && !IS_MAINNET
+              ? "This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free and not real money."
+              : `Send ${native.symbol} or tokens to your ${activeChain.name} address (tap Receive) to get started.`}
           </Text>
-          {!IS_MAINNET && (
+          {isSolana && !IS_MAINNET && (
             <Pressable onPress={airdrop} style={styles.emptyBtn}>
               <Ionicons name="water" size={16} color={colors.bg} />
               <Text style={styles.emptyBtnText}>Get test SOL</Text>
@@ -120,54 +126,41 @@ export function HomeScreen() {
       <Text style={styles.sectionTitle}>Tokens</Text>
       <View style={styles.card}>
         <Pressable
-          onPress={() => nav.navigate("Send", { asset: "SOL" })}
+          onPress={() => nav.navigate("Send", { asset: "native" })}
           style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
         >
-          <TokenAvatar symbol="SOL" color={colors.accent} logoURI={SOL_LOGO} />
+          <TokenAvatar symbol={native.symbol} color={activeChain.color} />
           <View style={styles.mid}>
-            <Text style={styles.symbol}>Solana</Text>
-            <Text style={styles.sub}>
-              {solPrice != null ? `${usd(solPrice)} · SOL` : "Native"}
-            </Text>
+            <Text style={styles.symbol}>{activeChain.name}</Text>
+            <Text style={styles.sub}>{native.symbol}</Text>
           </View>
           <View style={styles.right}>
             <Text style={styles.value}>
-              {solBalance == null ? "—" : fmtAmount(solBalance)} SOL
+              {native.balance == null ? "—" : fmtAmount(native.balance)} {native.symbol}
             </Text>
-            {solBalance != null && solPrice != null && (
-              <Text style={styles.subUsd}>{usd(solBalance * solPrice)}</Text>
-            )}
+            {native.usd != null && <Text style={styles.subUsd}>{usd(native.usd)}</Text>}
           </View>
         </Pressable>
 
-        {tokens.map((t) => {
-          const p = priceOf(t.mint);
-          return (
-            <View key={t.mint}>
-              <View style={styles.divider} />
-              <Pressable
-                onPress={() => nav.navigate("Send", { asset: t.mint })}
-                style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
-              >
-                <TokenAvatar
-                  symbol={t.symbol ?? t.mint.slice(0, 3)}
-                  color={colors.primary}
-                  logoURI={t.logoURI}
-                />
-                <View style={styles.mid}>
-                  <Text style={styles.symbol}>{t.name ?? t.symbol ?? shortAddress(t.mint, 4, 4)}</Text>
-                  <Text style={styles.sub}>
-                    {compact(t.amount)} {t.symbol ?? "SPL"}
-                  </Text>
-                </View>
-                <View style={styles.right}>
-                  <Text style={styles.value}>{compact(t.amount)}</Text>
-                  {p != null && <Text style={styles.subUsd}>{usd(t.amount * p)}</Text>}
-                </View>
-              </Pressable>
-            </View>
-          );
-        })}
+        {assets.map((a) => (
+          <View key={a.key}>
+            <View style={styles.divider} />
+            <Pressable
+              onPress={() => nav.navigate("Send", { asset: a.key })}
+              style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+            >
+              <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
+              <View style={styles.mid}>
+                <Text style={styles.symbol}>{a.name ?? a.symbol}</Text>
+                <Text style={styles.sub}>{compact(a.balance)} {a.symbol}</Text>
+              </View>
+              <View style={styles.right}>
+                <Text style={styles.value}>{compact(a.balance)}</Text>
+                {a.usd != null && a.usd > 0 && <Text style={styles.subUsd}>{usd(a.usd)}</Text>}
+              </View>
+            </Pressable>
+          </View>
+        ))}
       </View>
 
       {recent.length > 0 && (

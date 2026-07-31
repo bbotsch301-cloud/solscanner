@@ -17,52 +17,42 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
-import { useWallet } from "../wallet/WalletContext";
+import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
+import { isEvmAddress } from "../wallet/evm";
 import { assessRecipient, type RiskReport } from "../safety/risk";
-import { solscanTx } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
-const SOL_LOGO =
-  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
-const FEE_BUFFER = 0.001; // leave a little SOL for the network fee
-
-interface Asset {
-  key: string; // "SOL" or mint
-  symbol: string;
-  decimals: number;
-  balance: number;
-  mint: string | null; // null = native SOL
-  logoURI?: string;
-  program: "legacy" | "token2022";
-}
+const FEE_BUFFER_SOL = 0.001;
+const FEE_BUFFER_EVM = 0.002; // leave a little native for gas
 
 export function SendScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
-  const { address, solBalance, tokens, send, sendToken } = useWallet();
+  const { activeChain, activeAddress, native, assets, sendAsset } = useWallet();
+  const isSolana = activeChain.kind === "solana";
 
-  const assets = useMemo<Asset[]>(
+  // Native asset + the chain's tokens, unified.
+  const assetList = useMemo<UnifiedAsset[]>(
     () => [
-      { key: "SOL", symbol: "SOL", decimals: 9, balance: solBalance ?? 0, mint: null, logoURI: SOL_LOGO, program: "legacy" as const },
-      ...tokens.map((t) => ({
-        key: t.mint,
-        symbol: t.symbol ?? shortAddress(t.mint, 4, 4),
-        decimals: t.decimals,
-        balance: t.amount,
-        mint: t.mint,
-        logoURI: t.logoURI,
-        program: t.program,
-      })),
+      {
+        key: "native",
+        kind: "native",
+        symbol: native.symbol,
+        decimals: activeChain.decimals,
+        balance: native.balance ?? 0,
+        usd: native.usd,
+      },
+      ...assets,
     ],
-    [solBalance, tokens]
+    [native, assets, activeChain.decimals]
   );
 
-  const [assetKey, setAssetKey] = useState(route.params?.asset ?? "SOL");
-  const selected = assets.find((a) => a.key === assetKey) ?? assets[0];
+  const [assetKey, setAssetKey] = useState(route.params?.asset ?? "native");
+  const selected = assetList.find((a) => a.key === assetKey) ?? assetList[0];
 
   const [recipient, setRecipient] = useState("");
   const [amt, setAmt] = useState("");
@@ -74,10 +64,10 @@ export function SendScreen() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [fee, setFee] = useState<TransferFee | null>(null);
 
-  // Read the live transfer fee for Token-2022 assets (e.g. XGO's 1.11%).
+  // Live Token-2022 transfer fee (Solana only, e.g. XGO's 1.11%).
   useEffect(() => {
     setFee(null);
-    if (selected.program !== "token2022" || !selected.mint) return;
+    if (!isSolana || selected.kind !== "spl" || selected.program !== "token2022" || !selected.mint) return;
     let cancelled = false;
     getTransferFee(selected.mint).then((f) => {
       if (!cancelled) setFee(f);
@@ -85,29 +75,31 @@ export function SendScreen() {
     return () => {
       cancelled = true;
     };
-  }, [selected.program, selected.mint]);
+  }, [isSolana, selected.kind, selected.program, selected.mint]);
 
   const trimmedTo = recipient.trim();
   const validAddress = useMemo(() => {
-    try {
-      // eslint-disable-next-line no-new
-      new PublicKey(trimmedTo);
-      return true;
-    } catch {
-      return false;
+    if (!trimmedTo) return false;
+    if (isSolana) {
+      try {
+        return Boolean(new PublicKey(trimmedTo));
+      } catch {
+        return false;
+      }
     }
-  }, [trimmedTo]);
+    return isEvmAddress(trimmedTo);
+  }, [trimmedTo, isSolana]);
 
-  // Screen the recipient (debounced) whenever a valid address is entered.
+  // Screen the recipient (Solana only — the risk engine is Solana-based).
   useEffect(() => {
     setRisk(null);
     setAcknowledged(false);
-    if (!validAddress) return;
+    if (!isSolana || !validAddress) return;
     let cancelled = false;
     setChecking(true);
     const id = setTimeout(async () => {
       try {
-        const report = await assessRecipient(trimmedTo, address);
+        const report = await assessRecipient(trimmedTo, activeAddress);
         if (!cancelled) setRisk(report);
       } catch {
         if (!cancelled) setRisk(null);
@@ -119,27 +111,21 @@ export function SendScreen() {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [trimmedTo, validAddress, address]);
+  }, [trimmedTo, validAddress, activeAddress, isSolana]);
 
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
   const blockedByRisk = risk?.level === "danger" && !acknowledged;
-  const valid = useMemo(
-    () => validAddress && amtNum > 0 && amtNum <= selected.balance && !blockedByRisk,
-    [validAddress, amtNum, selected.balance, blockedByRisk]
-  );
+  const valid = validAddress && amtNum > 0 && amtNum <= selected.balance && !blockedByRisk;
 
-  const maxAmount = selected.mint === null ? Math.max(0, selected.balance - FEE_BUFFER) : selected.balance;
+  const buffer = isSolana ? FEE_BUFFER_SOL : FEE_BUFFER_EVM;
+  const maxAmount = selected.kind === "native" ? Math.max(0, selected.balance - buffer) : selected.balance;
 
   const doSend = async () => {
     setSending(true);
     setError(null);
     try {
-      const to = recipient.trim();
-      const sig =
-        selected.mint === null
-          ? await send(to, amtNum)
-          : await sendToken(selected.mint, to, amtNum, selected.decimals);
+      const sig = await sendAsset(selected, trimmedTo, amtNum);
       setSignature(sig);
     } catch (e) {
       setError(humanizeError(e, { action: "send", symbol: selected.symbol }));
@@ -156,10 +142,10 @@ export function SendScreen() {
         </View>
         <Text style={styles.successTitle}>Sent</Text>
         <Text style={styles.successSub}>
-          {fmtAmount(amtNum)} {selected.symbol} to {shortAddress(recipient.trim(), 4, 4)}
+          {fmtAmount(amtNum)} {selected.symbol} to {shortAddress(trimmedTo, 4, 4)}
         </Text>
-        <Pressable onPress={() => Linking.openURL(solscanTx(signature))}>
-          <Text style={styles.link}>View on Solscan ↗</Text>
+        <Pressable onPress={() => Linking.openURL(activeChain.explorerTx(signature))}>
+          <Text style={styles.link}>View on explorer ↗</Text>
         </Pressable>
         <Pressable onPress={() => nav.goBack()} style={styles.primaryBtn}>
           <Text style={styles.primaryText}>Done</Text>
@@ -171,7 +157,7 @@ export function SendScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.title}>Send</Text>
+        <Text style={styles.title}>Send · {activeChain.name}</Text>
         <Pressable onPress={() => nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
@@ -182,7 +168,7 @@ export function SendScreen() {
           <Text style={styles.label}>Asset</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -spacing(1) }}>
             <View style={styles.chips}>
-              {assets.map((a) => {
+              {assetList.map((a) => {
                 const active = a.key === selected.key;
                 return (
                   <Pressable
@@ -204,12 +190,15 @@ export function SendScreen() {
           <TextInput
             value={recipient}
             onChangeText={setRecipient}
-            placeholder="Paste a Solana address"
+            placeholder={isSolana ? "Paste a Solana address" : "Paste a 0x… address"}
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
             style={styles.input}
           />
+          {trimmedTo.length > 0 && !validAddress && (
+            <Text style={styles.warn}>That doesn’t look like a valid {activeChain.name} address.</Text>
+          )}
         </View>
 
         <View>
@@ -234,7 +223,7 @@ export function SendScreen() {
             </View>
           </View>
           <Text style={[styles.usdLine, over && { color: colors.negative }]}>
-            {over ? "Insufficient balance" : "Devnet · network fee ~0.000005 SOL"}
+            {over ? "Insufficient balance" : `Network fee paid in ${native.symbol}`}
           </Text>
           {fee && amtNum > 0 && !over && (
             <Text style={styles.feeLine}>
@@ -248,11 +237,7 @@ export function SendScreen() {
 
         {risk?.level === "danger" && (
           <Pressable onPress={() => setAcknowledged((a) => !a)} style={styles.ackRow}>
-            <Ionicons
-              name={acknowledged ? "checkbox" : "square-outline"}
-              size={20}
-              color={colors.negative}
-            />
+            <Ionicons name={acknowledged ? "checkbox" : "square-outline"} size={20} color={colors.negative} />
             <Text style={styles.ackText}>I understand the risk and want to send anyway.</Text>
           </Pressable>
         )}
@@ -302,6 +287,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: font.body,
   },
+  warn: { color: colors.warning, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
   amountHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   balance: { color: colors.textMuted, fontSize: font.small, marginBottom: spacing(2) },
   amountBox: {

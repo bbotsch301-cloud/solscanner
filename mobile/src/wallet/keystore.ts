@@ -7,6 +7,7 @@
 import * as SecureStore from "expo-secure-store";
 import { Keypair } from "@solana/web3.js";
 import { generateMnemonic, keypairFromMnemonic, normalizeMnemonic, validateMnemonic } from "./mnemonic";
+import { deriveEvmAccount, type EvmAccount } from "./evm";
 
 const SECRET_KEY = "solwallet.secretKey.v1";
 const MNEMONIC = "solwallet.mnemonic.v1";
@@ -65,6 +66,20 @@ export async function importMnemonic(mnemonic: string): Promise<Keypair> {
 /** The stored recovery phrase, or null for legacy wallets without one. */
 export async function getMnemonic(): Promise<string | null> {
   return SecureStore.getItemAsync(MNEMONIC);
+}
+
+/**
+ * The EVM (Ethereum/BSC) account derived from the stored recovery phrase, or null
+ * for legacy secret-key-only wallets. Same seed → same 0x address on every EVM chain.
+ */
+export async function getEvmAccount(): Promise<EvmAccount | null> {
+  const mnemonic = await SecureStore.getItemAsync(MNEMONIC);
+  if (!mnemonic) return null;
+  try {
+    return deriveEvmAccount(mnemonic);
+  } catch {
+    return null;
+  }
 }
 
 export async function clearKeypair(): Promise<void> {

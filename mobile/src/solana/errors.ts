@@ -65,6 +65,14 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   if (/no route|could not find any route|no routes found|route not found/.test(low))
     return "No swap route is available for this pair right now. Try a different amount or token.";
 
+  // EVM-specific ------------------------------------------------------------------
+  if (/insufficient funds for gas|insufficient funds for transfer|gas required exceeds/.test(low))
+    return "Not enough native balance to cover the amount plus the gas fee. Top up (ETH on Ethereum, BNB on BSC) and try again.";
+  if (/nonce too low|replacement transaction underpriced|already known/.test(low))
+    return "A previous transaction is still pending. Wait for it to confirm, then try again.";
+  if (/execution reverted|transaction may fail|intrinsic gas too low/.test(low))
+    return "The transaction would fail on-chain. Double-check the amount and the recipient, then try again.";
+
   // Insufficient funds -----------------------------------------------------------
   if (/insufficient lamports|insufficient funds for rent|found no record of a prior credit|insufficient funds|custom program error: 0x1\b/.test(low)) {
     if (ctx.action === "swap")

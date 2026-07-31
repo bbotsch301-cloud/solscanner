@@ -13,9 +13,11 @@ import type { RootNav } from "../navigation";
 export function ReceiveScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
-  const { address } = useWallet();
+  const { activeChain, activeAddress } = useWallet();
+  const address = activeAddress;
   const [copied, setCopied] = useState(false);
-  const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
+  const isSolana = activeChain.kind === "solana";
+  const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
 
   const copy = async () => {
     if (!address) return;
@@ -54,7 +56,9 @@ export function ReceiveScreen() {
         </Pressable>
 
         <Text style={styles.hint}>
-          Only send Solana (SPL) assets to this address on {network}.
+          {isSolana
+            ? `Only send Solana (SPL) assets to this address on ${network}.`
+            : `Only send ${activeChain.name} assets — ${activeChain.symbol} and its tokens — to this address. Sending assets from another chain will lose them.`}
         </Text>
       </View>
     </View>

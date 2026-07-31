@@ -9,6 +9,7 @@ export function BalanceCard({
   refreshing,
   usdValue,
   change24h,
+  symbol = "SOL",
 }: {
   solBalance: number | null;
   address: string;
@@ -16,6 +17,7 @@ export function BalanceCard({
   refreshing?: boolean;
   usdValue?: number | null;
   change24h?: number | null;
+  symbol?: string;
 }) {
   const usd =
     usdValue != null
@@ -45,7 +47,7 @@ export function BalanceCard({
           <Text style={styles.total}>
             {solBalance == null ? "—" : solBalance.toLocaleString("en-US", { maximumFractionDigits: 5 })}
           </Text>
-          <Text style={styles.unit}>SOL</Text>
+          <Text style={styles.unit}>{symbol}</Text>
           {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
         </View>
 
