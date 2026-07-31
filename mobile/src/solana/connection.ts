@@ -1,24 +1,25 @@
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 
 /**
- * Network selection. Flip NETWORK to "mainnet-beta" to go LIVE with REAL FUNDS.
+ * Network selection.
  *
- * Before flipping to mainnet, make sure:
- *  - EXPO_PUBLIC_MAINNET_RPC is set to a real RPC (e.g. Helius) — the public
- *    endpoint is rate-limited and will feel broken.
- *  - XGO_MINT / TREASURY_ADDRESS point at the MAINNET mint + treasury (the devnet
- *    ones don't exist on mainnet).
- *  - You're running a standalone signed build, NOT Expo Go, and the app has been
- *    security-reviewed. Real money — start with tiny amounts.
+ * The app is LIVE on mainnet so the exchange (Swap) works with real tokens.
+ * XGO itself isn't on mainnet yet, so XGO/Treasury/Govern screens stay empty
+ * ("launching soon") until XGO is deployed and its mint/treasury are set.
+ *
+ * REAL FUNDS. Use a real RPC below, test with tiny amounts, and move to a
+ * standalone signed build before promoting this widely.
  */
 type Network = "devnet" | "mainnet-beta";
-export const NETWORK = "devnet" as Network;
+export const NETWORK = "mainnet-beta" as Network;
 export const IS_MAINNET = NETWORK === "mainnet-beta";
 
-/** RPC endpoint. Mainnet uses EXPO_PUBLIC_MAINNET_RPC if provided. */
-const RPC_URL = IS_MAINNET
-  ? process.env.EXPO_PUBLIC_MAINNET_RPC || clusterApiUrl("mainnet-beta")
-  : clusterApiUrl("devnet");
+// 👉 Paste your Helius mainnet RPC URL here (strongly recommended — the public
+//    endpoint below is heavily rate-limited and swaps may fail on it).
+const MAINNET_RPC =
+  process.env.EXPO_PUBLIC_MAINNET_RPC || "https://api.mainnet-beta.solana.com";
+
+const RPC_URL = IS_MAINNET ? MAINNET_RPC : clusterApiUrl("devnet");
 
 export const CLUSTER = NETWORK;
 export const connection = new Connection(RPC_URL, "confirmed");

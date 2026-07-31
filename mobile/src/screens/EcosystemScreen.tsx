@@ -10,6 +10,7 @@ import { getSupply, XGO_MINT } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { XGO_STATS } from "../config/xgo";
+import { IS_MAINNET } from "../solana/connection";
 import { colors, compact, font, radius, spacing, usd } from "../theme";
 
 const SOL_LOGO =
@@ -93,6 +94,16 @@ export function EcosystemScreen() {
       <Text style={styles.greet}>{greeting}</Text>
       <Text style={styles.greetSub}>Building a Better Tomorrow Together</Text>
 
+      {IS_MAINNET && (
+        <View style={styles.soonBanner}>
+          <Ionicons name="rocket-outline" size={16} color={colors.primary} />
+          <Text style={styles.soonText}>
+            The exchange is live. XGO treasury, supply, and governance activate when
+            XGO launches on mainnet.
+          </Text>
+        </View>
+      )}
+
       {/* Treasury value hero */}
       <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
         <View style={styles.heroInner}>
@@ -158,6 +169,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, marginBottom: spacing(4), fontWeight: "600" },
+  soonBanner: { flexDirection: "row", gap: spacing(2), alignItems: "flex-start", backgroundColor: colors.primary + "14", borderRadius: radius.md, padding: spacing(3.5), marginBottom: spacing(4) },
+  soonText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
   hero: { borderRadius: radius.lg, padding: 1 },
   heroInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(1) },
   heroLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
