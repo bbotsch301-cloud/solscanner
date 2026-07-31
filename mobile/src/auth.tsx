@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { isBiometricEnabled } from "./security/prefs";
 
 /**
  * Session lock state. Whether a wallet EXISTS is owned by WalletProvider (the key
@@ -13,7 +14,8 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [unlocked, setUnlocked] = useState(false);
+  // If biometric lock is off, the wallet opens without a lock screen.
+  const [unlocked, setUnlocked] = useState(!isBiometricEnabled());
 
   const value = useMemo<AuthState>(
     () => ({

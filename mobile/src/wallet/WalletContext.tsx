@@ -26,7 +26,14 @@ import {
 import { connection } from "../solana/connection";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas } from "../solana/tokens";
-import { clearKeypair, createKeypair, importMnemonic, loadKeypair } from "./keystore";
+import {
+  clearKeypair,
+  createKeypair,
+  getNeedsBackup,
+  importMnemonic,
+  loadKeypair,
+  setNeedsBackup,
+} from "./keystore";
 
 export interface SplToken {
   mint: string;
@@ -63,6 +70,9 @@ interface WalletState {
   create: () => Promise<void>;
   importWallet: (mnemonic: string) => Promise<void>;
   reset: () => Promise<void>;
+  /** True when a new wallet hasn't been backed up yet. */
+  needsBackup: boolean;
+  markBackedUp: () => void;
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
   send: (to: string, sol: number) => Promise<string>;
@@ -79,6 +89,7 @@ const WalletContext = createContext<WalletState | null>(null);
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
+  const [needsBackup, setNeedsBackupState] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [tokens, setTokens] = useState<SplToken[]>([]);
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
@@ -152,6 +163,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (kp) {
         setKeypair(kp);
         keypairRef.current = kp;
+        setNeedsBackupState(await getNeedsBackup());
         refresh();
       }
       setInitializing(false);
@@ -159,9 +171,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const create = useCallback(async () => {
-    const kp = await createKeypair();
+    const kp = await createKeypair(); // marks needs-backup in the keystore
     setKeypair(kp);
     keypairRef.current = kp;
+    setNeedsBackupState(true);
     setSolBalance(0);
     setTokens([]);
     refresh();
@@ -172,6 +185,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const kp = await importMnemonic(mnemonic); // throws on invalid phrase
       setKeypair(kp);
       keypairRef.current = kp;
+      setNeedsBackupState(false);
       setSolBalance(0);
       setTokens([]);
       refresh();
@@ -179,10 +193,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [refresh]
   );
 
+  const markBackedUp = useCallback(async () => {
+    await setNeedsBackup(false);
+    setNeedsBackupState(false);
+  }, []);
+
   const reset = useCallback(async () => {
     await clearKeypair();
     setKeypair(null);
     keypairRef.current = null;
+    setNeedsBackupState(false);
     setSolBalance(null);
     setTokens([]);
   }, []);
@@ -295,12 +315,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       create,
       importWallet,
       reset,
+      needsBackup,
+      markBackedUp,
       refresh,
       airdrop,
       send,
       sendToken,
     };
-  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, importWallet, reset, refresh, airdrop, send, sendToken]);
+  }, [initializing, keypair, needsBackup, markBackedUp, solBalance, tokens, prices, refreshing, busy, error, create, importWallet, reset, refresh, airdrop, send, sendToken]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }

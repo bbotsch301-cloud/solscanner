@@ -24,6 +24,8 @@ import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { loadNetworkPref } from "./src/solana/connection";
+import { loadSecurityPref } from "./src/security/prefs";
+import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
 
@@ -87,12 +89,14 @@ function Splash() {
 }
 
 function Root() {
-  const { initializing, keypair } = useWallet();
+  const { initializing, keypair, needsBackup, markBackedUp } = useWallet();
   const { unlocked } = useAuth();
 
   if (initializing) return <><StatusBar style="light" /><Splash /></>;
   if (!keypair) return <><StatusBar style="light" /><OnboardingScreen /></>;
   if (!unlocked) return <><StatusBar style="light" /><LockScreen /></>;
+  // New wallets must be backed up before entering the app.
+  if (needsBackup) return <><StatusBar style="light" /><BackupPrompt onDone={markBackedUp} /></>;
 
   return (
     <NavigationContainer theme={navTheme}>
@@ -118,7 +122,7 @@ export default function App() {
   // Apply the saved network choice before anything uses the connection.
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    loadNetworkPref().finally(() => setReady(true));
+    Promise.all([loadNetworkPref(), loadSecurityPref()]).finally(() => setReady(true));
   }, []);
 
   return (

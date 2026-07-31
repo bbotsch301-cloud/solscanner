@@ -1,12 +1,14 @@
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
-import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
+import { isBiometricEnabled, setBiometricEnabled } from "../security/prefs";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 function Row({
@@ -40,6 +42,18 @@ export function SettingsScreen() {
   const { lock } = useAuth();
   const { address, reset } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
+  const [biometric, setBiometric] = useState(isBiometricEnabled());
+
+  const toggleBiometric = (v: boolean) => {
+    setBiometric(v);
+    setBiometricEnabled(v);
+    Alert.alert(
+      v ? "Face ID required" : "Face ID off",
+      v
+        ? "Your wallet will ask for Face ID / passcode to open."
+        : "Your wallet will open without Face ID. Applies next time it locks.",
+    );
+  };
 
   const switchTo = (n: Network) => {
     if ((n === "mainnet-beta") === IS_MAINNET) return; // already there
@@ -136,9 +150,22 @@ export function SettingsScreen() {
           onPress={() => nav.navigate("Backup")}
         />
         <View style={styles.divider} />
-        <Row icon="finger-print-outline" label="Face ID / passcode" value="On" />
-        <View style={styles.divider} />
-        <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
+        <View style={styles.netRow}>
+          <Ionicons name="finger-print-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Face ID / passcode</Text>
+          <Switch
+            value={biometric}
+            onValueChange={toggleBiometric}
+            trackColor={{ true: colors.primary, false: colors.cardBorder }}
+            thumbColor={colors.text}
+          />
+        </View>
+        {biometric && (
+          <>
+            <View style={styles.divider} />
+            <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
+          </>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>Danger zone</Text>
