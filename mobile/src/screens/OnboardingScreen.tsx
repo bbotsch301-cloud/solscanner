@@ -71,7 +71,7 @@ export function OnboardingScreen() {
       <View style={styles.features}>
         <Feature icon="shield-checkmark" title="Self-custody" sub="Your keys are generated and stay on this device." />
         <Feature icon="business" title="Transparent treasury" sub="Every figure is verifiable on-chain." />
-        <Feature icon="people" title="Community governed" sub="Hold XGO to earn and to vote on the mission." />
+        <Feature icon="people" title="Community governed" sub="Hold XGO to help govern the mission." />
       </View>
 
       <View style={styles.actions}>

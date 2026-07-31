@@ -13,7 +13,7 @@ const EXAMPLE_PROPOSALS = [
   {
     id: "p1",
     title: "Deploy 40% of treasury stablecoins into Solana lending",
-    desc: "Put idle USDC to work in an audited lending market to generate revenue for the fee pool.",
+    desc: "Put idle USDC to work in an audited lending market to grow the treasury.",
     forVotes: 4_200_000,
     againstVotes: 1_100_000,
   },
@@ -83,27 +83,20 @@ export function GovernScreen() {
       <View style={styles.noteRow}>
         <Ionicons name="lock-open-outline" size={15} color={colors.primary} />
         <Text style={styles.noteText}>
-          Hold XGO to earn and vote — your tokens never leave your wallet. No lock-up, no custody.
+          Hold XGO to vote on the mission — your tokens never leave your wallet. No lock-up, no custody.
         </Text>
       </View>
 
-      {/* Rewards */}
-      <Text style={styles.sectionTitle}>Rewards</Text>
+      {/* Treasury reinvestment (informational) */}
+      <Text style={styles.sectionTitle}>Treasury reinvestment</Text>
       <View style={styles.rewardCard}>
         <View style={styles.rewardRow}>
-          <Text style={styles.rewardLabel}>Claimable</Text>
-          <Text style={styles.rewardValue}>0 XGO</Text>
+          <Text style={styles.rewardLabel}>Fees reinvested</Text>
+          <Text style={styles.rewardValue}>100%</Text>
         </View>
-        <View style={styles.rewardRow}>
-          <Text style={styles.rewardLabel}>Your share of revenue</Text>
-          <Text style={styles.rewardValue}>{share != null ? `${(share * 100).toFixed(2)}%` : "—"}</Text>
-        </View>
-        <Pressable disabled style={[styles.claimBtn, styles.claimDisabled]}>
-          <Text style={styles.claimDisabledText}>Nothing to claim yet</Text>
-        </Pressable>
         <Text style={styles.rewardNote}>
-          Revenue from the 1.11% transfer fee + LP fees will distribute here pro-rata via an
-          audited Merkle claim — coming online with the distributor.
+          The 1.11% transfer fee and LP fees flow to the treasury and stay there — funding the
+          mission and its assets. The treasury may buy back or burn XGO at its discretion.
         </Text>
       </View>
 
