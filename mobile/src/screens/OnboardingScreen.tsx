@@ -4,13 +4,24 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { XGOLogo } from "../components/XGOLogo";
+import { HelpTip } from "../components/HelpTip";
 import { ImportWallet } from "./ImportWallet";
 import { useAuth } from "../auth";
 import { useWallet } from "../wallet/WalletContext";
 import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 
-function Feature({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }) {
+function Feature({
+  icon,
+  title,
+  sub,
+  help,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  sub: string;
+  help?: "seedPhrase" | "passphrase" | "selfCustody";
+}) {
   return (
     <View style={styles.feature}>
       <View style={styles.featureIcon}>
@@ -20,6 +31,7 @@ function Feature({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; t
         <Text style={styles.featureTitle}>{title}</Text>
         <Text style={styles.featureSub}>{sub}</Text>
       </View>
+      {help && <HelpTip topic={help} size={20} />}
     </View>
   );
 }
@@ -89,24 +101,27 @@ export function OnboardingScreen() {
       </View>
 
       <View style={styles.features}>
-        <Feature icon="shield-checkmark" title="Self-custody" sub="Your keys are generated and stay on this device." />
+        <Feature icon="shield-checkmark" title="Self-custody" sub="Your keys are generated and stay on this device." help="selfCustody" />
         <Feature icon="business" title="Transparent treasury" sub="Every figure is verifiable on-chain." />
         <Feature icon="people" title="Community governed" sub="Hold XGO to help govern the mission." />
       </View>
 
       <View style={styles.actions}>
-        <Pressable
-          onPress={() => setShowAdvanced((v) => !v)}
-          style={styles.advancedToggle}
-          hitSlop={8}
-        >
-          <Ionicons
-            name={showAdvanced ? "chevron-down" : "chevron-forward"}
-            size={16}
-            color={colors.textMuted}
-          />
-          <Text style={styles.advancedToggleText}>Advanced · add a passphrase (25th word)</Text>
-        </Pressable>
+        <View style={styles.advancedRow}>
+          <Pressable
+            onPress={() => setShowAdvanced((v) => !v)}
+            style={styles.advancedToggle}
+            hitSlop={8}
+          >
+            <Ionicons
+              name={showAdvanced ? "chevron-down" : "chevron-forward"}
+              size={16}
+              color={colors.textMuted}
+            />
+            <Text style={styles.advancedToggleText}>Advanced · add a passphrase (25th word)</Text>
+          </Pressable>
+          <HelpTip topic="passphrase" />
+        </View>
 
         {showAdvanced && (
           <View style={styles.advancedBox}>
@@ -165,6 +180,7 @@ const styles = StyleSheet.create({
   featureTitle: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   featureSub: { color: colors.textMuted, fontSize: font.small, marginTop: 2 },
   actions: { gap: spacing(3) },
+  advancedRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   advancedToggle: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
   advancedToggleText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   advancedBox: { gap: spacing(3) },

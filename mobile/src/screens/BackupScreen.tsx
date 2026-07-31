@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { getMnemonic, getPassphrase } from "../wallet/keystore";
+import { HelpTip } from "../components/HelpTip";
 import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
@@ -46,7 +47,10 @@ export function BackupScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
       <View style={styles.topBar}>
-        <Text style={styles.title}>Recovery phrase</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Recovery phrase</Text>
+          <HelpTip topic="seedPhrase" size={22} />
+        </View>
         <Pressable onPress={() => nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
@@ -96,6 +100,7 @@ export function BackupScreen() {
                   enough on their own — restoring needs your passphrase too. It is not
                   shown here and we don’t keep a copy; store it with this phrase.
                 </Text>
+                <HelpTip topic="passphrase" size={20} />
               </View>
             )}
 
@@ -119,6 +124,7 @@ export function BackupScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   warning: {
     flexDirection: "row",

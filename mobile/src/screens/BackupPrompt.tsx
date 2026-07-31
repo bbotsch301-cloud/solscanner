@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { getMnemonic } from "../wallet/keystore";
+import { HelpTip } from "../components/HelpTip";
 import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -23,7 +24,10 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(4) }]}>
       <ScrollView contentContainerStyle={{ paddingBottom: spacing(4) }} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Back up your wallet</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Back up your wallet</Text>
+          <HelpTip topic="seedPhrase" size={24} />
+        </View>
         <Text style={styles.sub}>
           Your recovery phrase is the only way to recover your wallet. Write down every word in
           order and keep them offline. Anyone who has them controls your funds.
@@ -79,6 +83,7 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(5) },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   sub: { color: colors.textMuted, fontSize: font.body, lineHeight: 22, marginTop: spacing(3) },
   warning: {

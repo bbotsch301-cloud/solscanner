@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
+import { HelpTip } from "../components/HelpTip";
 import { keypairFromMnemonic, validateMnemonic } from "../wallet/mnemonic";
 import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
@@ -71,9 +72,12 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
         contentContainerStyle={{ paddingBottom: spacing(4) }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sub}>
-          Enter your 12- or 24-word recovery phrase, with a space between each word.
-        </Text>
+        <View style={styles.subRow}>
+          <Text style={styles.sub}>
+            Enter your 12- or 24-word recovery phrase, with a space between each word.
+          </Text>
+          <HelpTip topic="seedPhrase" size={20} />
+        </View>
 
         <TextInput
           value={phrase}
@@ -87,18 +91,21 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
         />
         <Text style={styles.count}>{words.length} words</Text>
 
-        <Pressable
-          onPress={() => setShowAdvanced((v) => !v)}
-          style={styles.advancedToggle}
-          hitSlop={8}
-        >
-          <Ionicons
-            name={showAdvanced ? "chevron-down" : "chevron-forward"}
-            size={16}
-            color={colors.textMuted}
-          />
-          <Text style={styles.advancedToggleText}>Advanced · passphrase (25th word)</Text>
-        </Pressable>
+        <View style={styles.advancedRow}>
+          <Pressable
+            onPress={() => setShowAdvanced((v) => !v)}
+            style={styles.advancedToggle}
+            hitSlop={8}
+          >
+            <Ionicons
+              name={showAdvanced ? "chevron-down" : "chevron-forward"}
+              size={16}
+              color={colors.textMuted}
+            />
+            <Text style={styles.advancedToggleText}>Advanced · passphrase (25th word)</Text>
+          </Pressable>
+          <HelpTip topic="passphrase" />
+        </View>
 
         {showAdvanced && (
           <View style={styles.advancedBox}>
@@ -150,7 +157,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(5) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  sub: { color: colors.textMuted, fontSize: font.body, lineHeight: 22, marginTop: spacing(6) },
+  subRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing(2), marginTop: spacing(6) },
+  sub: { flex: 1, color: colors.textMuted, fontSize: font.body, lineHeight: 22 },
+  advancedRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,
