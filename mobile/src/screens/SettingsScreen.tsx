@@ -168,6 +168,11 @@ export function SettingsScreen() {
         )}
       </View>
 
+      <Text style={styles.sectionTitle}>Connections</Text>
+      <View style={styles.group}>
+        <Row icon="link" label="Connect to a dApp" onPress={() => nav.navigate("WalletConnect")} />
+      </View>
+
       <Text style={styles.sectionTitle}>Danger zone</Text>
       <View style={styles.group}>
         <Row icon="trash-outline" label="Reset wallet" danger onPress={confirmReset} />

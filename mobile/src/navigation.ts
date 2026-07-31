@@ -13,6 +13,7 @@ export type RootStackParamList = {
   Activity: undefined;
   Govern: undefined;
   Settings: undefined;
+  WalletConnect: undefined;
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

@@ -1,3 +1,4 @@
+import "@walletconnect/react-native-compat"; // MUST be first — installs RN polyfills
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
@@ -24,6 +25,8 @@ import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
+import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
+import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
@@ -114,6 +117,7 @@ function Root() {
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
@@ -131,9 +135,11 @@ export default function App() {
     <SafeAreaProvider>
       {ready ? (
         <WalletProvider>
-          <AuthProvider>
-            <Root />
-          </AuthProvider>
+          <WalletConnectProvider>
+            <AuthProvider>
+              <Root />
+            </AuthProvider>
+          </WalletConnectProvider>
         </WalletProvider>
       ) : (
         <Splash />
