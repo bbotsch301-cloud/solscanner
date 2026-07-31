@@ -5,17 +5,21 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
-import { NETWORK, WALLET_ADDRESS, WALLET_LABEL } from "../data/mockWallet";
+import { useWallet } from "../wallet/WalletContext";
+import { CLUSTER } from "../solana/connection";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 export function ReceiveScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
+  const { address } = useWallet();
   const [copied, setCopied] = useState(false);
+  const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
 
   const copy = async () => {
-    await Clipboard.setStringAsync(WALLET_ADDRESS);
+    if (!address) return;
+    await Clipboard.setStringAsync(address);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -31,28 +35,26 @@ export function ReceiveScreen() {
 
       <View style={styles.body}>
         <View style={styles.qrCard}>
-          <QRCode value={WALLET_ADDRESS} size={200} backgroundColor="#fff" color="#0B0B0F" />
+          {address ? (
+            <QRCode value={address} size={200} backgroundColor="#fff" color="#0B0B0F" />
+          ) : null}
         </View>
 
-        <Text style={styles.label}>{WALLET_LABEL}</Text>
+        <Text style={styles.label}>Your wallet</Text>
         <View style={styles.netPill}>
           <View style={styles.dot} />
-          <Text style={styles.netText}>{NETWORK}</Text>
+          <Text style={styles.netText}>{network}</Text>
         </View>
 
-        <Text style={styles.address}>{WALLET_ADDRESS}</Text>
+        <Text style={styles.address}>{address}</Text>
 
         <Pressable onPress={copy} style={({ pressed }) => [styles.copyBtn, pressed && { opacity: 0.7 }]}>
-          <Ionicons
-            name={copied ? "checkmark" : "copy-outline"}
-            size={18}
-            color={colors.bg}
-          />
+          <Ionicons name={copied ? "checkmark" : "copy-outline"} size={18} color={colors.bg} />
           <Text style={styles.copyText}>{copied ? "Copied" : "Copy address"}</Text>
         </Pressable>
 
         <Text style={styles.hint}>
-          Only send Solana (SPL) assets to this address on {NETWORK}.
+          Only send Solana (SPL) assets to this address on {network}.
         </Text>
       </View>
     </View>
@@ -61,18 +63,10 @@ export function ReceiveScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   body: { alignItems: "center", marginTop: spacing(8), gap: spacing(3) },
-  qrCard: {
-    backgroundColor: "#fff",
-    padding: spacing(5),
-    borderRadius: radius.lg,
-  },
+  qrCard: { backgroundColor: "#fff", padding: spacing(5), borderRadius: radius.lg, minWidth: 240, minHeight: 240, alignItems: "center", justifyContent: "center" },
   label: { color: colors.text, fontSize: font.h3, fontWeight: "700", marginTop: spacing(2) },
   netPill: {
     flexDirection: "row",
@@ -87,13 +81,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
   netText: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "800" },
-  address: {
-    color: colors.textMuted,
-    fontSize: font.small,
-    textAlign: "center",
-    paddingHorizontal: spacing(6),
-    marginTop: spacing(2),
-  },
+  address: { color: colors.textMuted, fontSize: font.small, textAlign: "center", paddingHorizontal: spacing(6), marginTop: spacing(2) },
   copyBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -105,11 +93,5 @@ const styles = StyleSheet.create({
     marginTop: spacing(3),
   },
   copyText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
-  hint: {
-    color: colors.textFaint,
-    fontSize: font.small,
-    textAlign: "center",
-    marginTop: spacing(4),
-    paddingHorizontal: spacing(6),
-  },
+  hint: { color: colors.textFaint, fontSize: font.small, textAlign: "center", marginTop: spacing(4), paddingHorizontal: spacing(6) },
 });

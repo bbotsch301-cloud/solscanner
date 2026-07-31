@@ -1,9 +1,10 @@
 import * as Clipboard from "expo-clipboard";
-import { ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { NETWORK, WALLET_ADDRESS, WALLET_LABEL } from "../data/mockWallet";
 import { useAuth } from "../auth";
+import { useWallet } from "../wallet/WalletContext";
+import { CLUSTER, solscanAccount } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 function Row({
@@ -34,6 +35,20 @@ function Row({
 export function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { lock } = useAuth();
+  const { address, reset } = useWallet();
+  const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
+
+  const confirmReset = () => {
+    Alert.alert(
+      "Reset wallet?",
+      "This deletes the key on this device. On devnet there are no real funds, but you'll get a brand-new address.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", style: "destructive", onPress: () => reset() },
+      ]
+    );
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -43,43 +58,45 @@ export function SettingsScreen() {
 
       <View style={styles.walletCard}>
         <View style={styles.walletAvatar}>
-          <Text style={styles.walletAvatarText}>M</Text>
+          <Ionicons name="wallet" size={22} color={colors.accent} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.walletName}>{WALLET_LABEL}</Text>
-          <Text style={styles.walletAddr}>{shortAddress(WALLET_ADDRESS, 6, 6)}</Text>
+          <Text style={styles.walletName}>Main wallet</Text>
+          <Text style={styles.walletAddr}>{address ? shortAddress(address, 6, 6) : "—"}</Text>
         </View>
-        <Pressable onPress={() => Clipboard.setStringAsync(WALLET_ADDRESS)} hitSlop={10}>
+        <Pressable onPress={() => address && Clipboard.setStringAsync(address)} hitSlop={10}>
           <Ionicons name="copy-outline" size={20} color={colors.textMuted} />
         </Pressable>
       </View>
 
       <Text style={styles.sectionTitle}>Network</Text>
       <View style={styles.group}>
-        <Row icon="git-network-outline" label="Cluster" value={NETWORK} />
+        <Row icon="git-network-outline" label="Cluster" value={network} />
+        <View style={styles.divider} />
+        <Row
+          icon="open-outline"
+          label="View on Solscan"
+          onPress={() => address && Linking.openURL(solscanAccount(address))}
+        />
       </View>
 
       <Text style={styles.sectionTitle}>Security</Text>
       <View style={styles.group}>
-        <Row icon="key-outline" label="Recovery phrase" />
-        <View style={styles.divider} />
-        <Row icon="finger-print-outline" label="Face ID / passcode" value="Off" />
-        <View style={styles.divider} />
-        <Row icon="lock-closed-outline" label="Auto-lock" value="1 min" />
+        <Row icon="finger-print-outline" label="Face ID / passcode" value="On" />
         <View style={styles.divider} />
         <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
       </View>
 
-      <Text style={styles.sectionTitle}>About</Text>
+      <Text style={styles.sectionTitle}>Danger zone</Text>
       <View style={styles.group}>
-        <Row icon="information-circle-outline" label="Version" value="0.1.0" />
+        <Row icon="trash-outline" label="Reset wallet" danger onPress={confirmReset} />
       </View>
 
       <View style={styles.notice}>
-        <Ionicons name="construct-outline" size={16} color={colors.warning} />
+        <Ionicons name="flask-outline" size={16} color={colors.warning} />
         <Text style={styles.noticeText}>
-          UI prototype. Balances and activity are simulated — no keys are stored and
-          no real funds can move yet. Devnet wiring is the next phase.
+          Live on Solana {network} — real keypair, real transactions, test money only.
+          Mainnet (real funds) is a deliberate later step.
         </Text>
       </View>
     </ScrollView>
@@ -109,7 +126,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  walletAvatarText: { color: colors.accent, fontSize: font.h3, fontWeight: "900" },
   walletName: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   walletAddr: { color: colors.textMuted, fontSize: font.small, marginTop: 2 },
   sectionTitle: {

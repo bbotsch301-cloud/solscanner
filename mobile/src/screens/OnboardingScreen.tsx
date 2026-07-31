@@ -1,10 +1,11 @@
 import * as LocalAuthentication from "expo-local-authentication";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { GhostLogo } from "../components/GhostLogo";
 import { useAuth } from "../auth";
+import { useWallet } from "../wallet/WalletContext";
 import { colors, font, radius, spacing } from "../theme";
 
 function Feature({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }) {
@@ -22,11 +23,13 @@ function Feature({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; t
 }
 
 export function OnboardingScreen() {
-  const { completeOnboarding } = useAuth();
+  const { unlock } = useAuth();
+  const { create } = useWallet();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
 
   const createWithPasskey = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -40,9 +43,11 @@ export function OnboardingScreen() {
           return;
         }
       }
-      completeOnboarding();
-    } catch {
-      completeOnboarding();
+      await create(); // generates a keypair, stored in the device keychain
+      unlock();
+    } catch (e) {
+      Alert.alert("Couldn't create wallet", (e as Error).message);
+      setBusy(false);
     }
   };
 
@@ -58,20 +63,23 @@ export function OnboardingScreen() {
 
       <View style={styles.features}>
         <Feature icon="finger-print" title="Passkey security" sub="Unlock with Face ID — no seed phrase to lose." />
-        <Feature icon="flash" title="Instant swaps" sub="Trade any token in a couple of taps." />
-        <Feature icon="shield-checkmark" title="Self-custody" sub="Your keys stay on your device." />
+        <Feature icon="flash" title="Live on devnet" sub="Real balances and transactions on Solana's test network." />
+        <Feature icon="shield-checkmark" title="Self-custody" sub="Your key is generated and stored on this device." />
       </View>
 
       <View style={styles.actions}>
         <Pressable
           onPress={createWithPasskey}
           disabled={busy}
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+          style={({ pressed }) => [styles.primaryBtn, (pressed || busy) && { opacity: 0.85 }]}
         >
           <Ionicons name="finger-print" size={20} color={colors.bg} />
-          <Text style={styles.primaryText}>Create with passkey</Text>
+          <Text style={styles.primaryText}>{busy ? "Creating…" : "Create with passkey"}</Text>
         </Pressable>
-        <Pressable onPress={completeOnboarding} style={styles.secondaryBtn}>
+        <Pressable
+          onPress={() => Alert.alert("Import", "Importing an existing wallet is coming soon.")}
+          style={styles.secondaryBtn}
+        >
           <Text style={styles.secondaryText}>I already have a wallet</Text>
         </Pressable>
       </View>

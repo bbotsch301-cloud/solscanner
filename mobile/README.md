@@ -1,9 +1,12 @@
 # SolWallet (mobile)
 
 A native Solana wallet app (Phantom-inspired, passkey/Face ID unlock), built with
-**Expo + React Native + TypeScript**. This is **Phase 1 — the UI**: every screen is
-built and interactive, running on **mock data**. No private keys are stored and no
-real funds can move yet.
+**Expo + React Native + TypeScript**.
+
+**Phase 2 — live on devnet.** The wallet now generates a real keypair (stored in the
+device keychain via `expo-secure-store`), shows real balances, funds itself from the
+devnet faucet, and sends real signed transactions on Solana's **test network**. It's
+real crypto with **test money only** — mainnet (real funds) is a deliberate later step.
 
 ## Run it on your iPhone (no Xcode needed)
 
@@ -20,14 +23,25 @@ real funds can move yet.
 
 ## What's here
 
-- **Onboarding** — "Create with passkey" (real Face ID prompt via
-  `expo-local-authentication`) or "I already have a wallet".
+- **Onboarding** — "Create with passkey": Face ID prompt, then a real Solana keypair
+  is generated and stored in the device keychain.
 - **Lock screen** — biometric unlock gate.
-- **Home** — gradient balance card, Send / Receive / Swap / Buy, token list, recent activity.
-- **Send** — asset picker, recipient, amount with MAX, simulated confirmation.
-- **Receive** — QR code + copyable address.
-- **Activity** — grouped transaction history.
-- **Settings** — wallet, network (Devnet), security, and a "Lock wallet now" action.
+- **Home** — live SOL balance, SPL token list, **Get SOL** (devnet faucet airdrop),
+  pull-to-refresh.
+- **Send** — real signed SOL transfer on devnet, with a Solscan link to the confirmed tx.
+- **Receive** — QR code + real wallet address.
+- **Activity** — real recent transactions from the chain (tap to open in Solscan).
+- **Settings** — address, cluster, lock, and a "Reset wallet" danger action.
+
+## Solana wiring
+
+```
+src/polyfills.ts            get-random-values + Buffer + URL (required by web3.js)
+src/solana/connection.ts    devnet Connection + Solscan links
+src/solana/history.ts       recent signatures for an address
+src/wallet/keystore.ts      keypair in expo-secure-store (device keychain)
+src/wallet/WalletContext.tsx  balances, faucet airdrop, signed transfers
+```
 
 ## Structure
 
@@ -42,8 +56,9 @@ src/screens/          Home, Activity, Settings, Send, Receive, Onboarding, Lock
 
 ## Roadmap
 
-- **Phase 2 — Devnet:** real keypair generation, secure storage
-  (`expo-secure-store` / Keychain), live balances, and a real signed test
-  transaction on Solana devnet (fake money).
-- **Phase 3 — Mainnet:** only after Phase 2 is solid, with explicit warnings and
+- **Phase 2 — Devnet:** ✅ real keypair + secure storage, live balances, faucet, and
+  signed transfers.
+- **Phase 3 — polish:** SPL token transfers, seed-phrase backup/import, price data,
+  richer parsed activity.
+- **Phase 4 — Mainnet:** only after the above is solid, with explicit warnings and
   hardened key handling, does it touch real funds.

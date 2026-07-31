@@ -1,3 +1,5 @@
+import "./src/polyfills"; // must run before any @solana/web3.js import
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

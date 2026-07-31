@@ -3,6 +3,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
@@ -12,6 +13,7 @@ import { ReceiveScreen } from "./src/screens/ReceiveScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
+import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
 
@@ -62,25 +64,21 @@ const navTheme = {
   },
 };
 
-function Root() {
-  const { onboarded, unlocked } = useAuth();
+function Splash() {
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+      <ActivityIndicator color={colors.primary} />
+    </View>
+  );
+}
 
-  if (!onboarded) {
-    return (
-      <>
-        <StatusBar style="light" />
-        <OnboardingScreen />
-      </>
-    );
-  }
-  if (!unlocked) {
-    return (
-      <>
-        <StatusBar style="light" />
-        <LockScreen />
-      </>
-    );
-  }
+function Root() {
+  const { initializing, keypair } = useWallet();
+  const { unlocked } = useAuth();
+
+  if (initializing) return <><StatusBar style="light" /><Splash /></>;
+  if (!keypair) return <><StatusBar style="light" /><OnboardingScreen /></>;
+  if (!unlocked) return <><StatusBar style="light" /><LockScreen /></>;
 
   return (
     <NavigationContainer theme={navTheme}>
@@ -99,9 +97,11 @@ function Root() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <Root />
-      </AuthProvider>
+      <WalletProvider>
+        <AuthProvider>
+          <Root />
+        </AuthProvider>
+      </WalletProvider>
     </SafeAreaProvider>
   );
 }
