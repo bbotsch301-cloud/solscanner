@@ -6,7 +6,7 @@
  */
 import * as SecureStore from "expo-secure-store";
 import { Keypair } from "@solana/web3.js";
-import { generateMnemonic, keypairFromMnemonic, validateMnemonic } from "./mnemonic";
+import { generateMnemonic, keypairFromMnemonic, normalizeMnemonic, validateMnemonic } from "./mnemonic";
 
 const SECRET_KEY = "solwallet.secretKey.v1";
 const MNEMONIC = "solwallet.mnemonic.v1";
@@ -50,8 +50,12 @@ export async function createKeypair(): Promise<Keypair> {
 
 /** Restore a wallet from a recovery phrase. Throws if the phrase is invalid. */
 export async function importMnemonic(mnemonic: string): Promise<Keypair> {
-  const phrase = mnemonic.trim().toLowerCase();
-  if (!validateMnemonic(phrase)) throw new Error("That recovery phrase isn't valid.");
+  const phrase = normalizeMnemonic(mnemonic);
+  if (!validateMnemonic(phrase)) {
+    throw new Error(
+      "That recovery phrase isn't valid. Check for typos and that it's 12 or 24 words in order."
+    );
+  }
   const kp = keypairFromMnemonic(phrase);
   await persist(phrase, kp);
   await setNeedsBackup(false); // restored wallets are already backed up

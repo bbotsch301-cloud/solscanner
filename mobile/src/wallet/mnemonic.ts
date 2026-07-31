@@ -37,17 +37,23 @@ function deriveEd25519Seed(seed: Uint8Array): Uint8Array {
 }
 
 /** Generate a fresh 12-word (128-bit) mnemonic. */
+/** Normalize a phrase: lowercase, and collapse any whitespace (newlines, tabs,
+ * double spaces) to single spaces so a valid phrase isn't rejected on formatting. */
+export function normalizeMnemonic(mnemonic: string): string {
+  return mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export function generateMnemonic(): string {
   return bip39.generateMnemonic(128);
 }
 
 export function validateMnemonic(mnemonic: string): boolean {
-  return bip39.validateMnemonic(mnemonic.trim().toLowerCase());
+  return bip39.validateMnemonic(normalizeMnemonic(mnemonic));
 }
 
 /** Derive the Solana keypair for a mnemonic. */
 export function keypairFromMnemonic(mnemonic: string): Keypair {
-  const seed = bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase());
+  const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic));
   const derived = deriveEd25519Seed(new Uint8Array(seed));
   return Keypair.fromSeed(derived);
 }
