@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/metro-runtime": "~55.0.12",
     "@expo/vector-icons": "^15.0.2",
     "@react-navigation/bottom-tabs": "^7.18.14",
     "@react-navigation/native": "^7.3.14",
@@ -13,11 +14,13 @@
     "expo-local-authentication": "~55.0.16",
     "expo-status-bar": "~55.0.6",
     "react": "19.2.0",
+    "react-dom": "^19.2.0",
     "react-native": "0.83.10",
     "react-native-qrcode-svg": "^6.3.21",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
-    "react-native-svg": "15.15.3"
+    "react-native-svg": "15.15.3",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
