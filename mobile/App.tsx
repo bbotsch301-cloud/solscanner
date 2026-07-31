@@ -10,6 +10,7 @@ import { ActivityScreen } from "./src/screens/ActivityScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
 import { ReceiveScreen } from "./src/screens/ReceiveScreen";
+import { SwapScreen } from "./src/screens/SwapScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
@@ -88,6 +89,7 @@ function Root() {
         <Stack.Group screenOptions={{ presentation: "modal" }}>
           <Stack.Screen name="Send" component={SendScreen} />
           <Stack.Screen name="Receive" component={ReceiveScreen} />
+          <Stack.Screen name="Swap" component={SwapScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>

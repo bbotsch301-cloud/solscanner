@@ -55,8 +55,8 @@ export function HomeScreen() {
       <View style={styles.actions}>
         <ActionButton icon="arrow-up" label="Send" onPress={() => nav.navigate("Send")} />
         <ActionButton icon="arrow-down" label="Receive" onPress={() => nav.navigate("Receive")} />
+        <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />
         <ActionButton icon="water" label={busy ? "…" : "Get SOL"} onPress={airdrop} />
-        <ActionButton icon="refresh" label="Refresh" onPress={refresh} />
       </View>
 
       {busy && <Text style={styles.status}>Requesting test SOL from the faucet…</Text>}
