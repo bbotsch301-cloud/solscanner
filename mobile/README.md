@@ -33,6 +33,17 @@ real crypto with **test money only** — mainnet (real funds) is a deliberate la
 - **Activity** — real recent transactions from the chain (tap to open in Solscan).
 - **Settings** — address, cluster, lock, and a "Reset wallet" danger action.
 
+## Safety layer (the differentiator)
+
+Every send is screened before it goes out. `src/safety/risk.ts` combines on-chain
+signals (does the address exist, how old is it, how much history) with the
+SolScanner label set (`src/safety/labels.ts` — CEX / program / scam) to produce a
+risk verdict shown as a `RiskCard` in the Send flow:
+- **danger** (scam/burn) blocks the send behind an explicit acknowledgement,
+- **caution** (new/empty wallet, program address, self-send) warns,
+- **info** (known exchange) informs,
+- **safe** (established wallet) reassures.
+
 ## Solana wiring
 
 ```

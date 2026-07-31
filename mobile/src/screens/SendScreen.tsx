@@ -1,5 +1,6 @@
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { PublicKey } from "@solana/web3.js";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,7 +16,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { RiskCard } from "../components/RiskCard";
 import { useWallet } from "../wallet/WalletContext";
+import { assessRecipient, type RiskReport } from "../safety/risk";
 import { solscanTx } from "../solana/connection";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
@@ -37,7 +40,7 @@ export function SendScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
-  const { solBalance, tokens, send, sendToken } = useWallet();
+  const { address, solBalance, tokens, send, sendToken } = useWallet();
 
   const assets = useMemo<Asset[]>(
     () => [
@@ -62,12 +65,50 @@ export function SendScreen() {
   const [sending, setSending] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [risk, setRisk] = useState<RiskReport | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  const trimmedTo = recipient.trim();
+  const validAddress = useMemo(() => {
+    try {
+      // eslint-disable-next-line no-new
+      new PublicKey(trimmedTo);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [trimmedTo]);
+
+  // Screen the recipient (debounced) whenever a valid address is entered.
+  useEffect(() => {
+    setRisk(null);
+    setAcknowledged(false);
+    if (!validAddress) return;
+    let cancelled = false;
+    setChecking(true);
+    const id = setTimeout(async () => {
+      try {
+        const report = await assessRecipient(trimmedTo, address);
+        if (!cancelled) setRisk(report);
+      } catch {
+        if (!cancelled) setRisk(null);
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [trimmedTo, validAddress, address]);
 
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
+  const blockedByRisk = risk?.level === "danger" && !acknowledged;
   const valid = useMemo(
-    () => recipient.trim().length >= 32 && amtNum > 0 && amtNum <= selected.balance,
-    [recipient, amtNum, selected.balance]
+    () => validAddress && amtNum > 0 && amtNum <= selected.balance && !blockedByRisk,
+    [validAddress, amtNum, selected.balance, blockedByRisk]
   );
 
   const maxAmount = selected.mint === null ? Math.max(0, selected.balance - FEE_BUFFER) : selected.balance;
@@ -179,6 +220,19 @@ export function SendScreen() {
           </Text>
         </View>
 
+        {(checking || risk) && <RiskCard report={risk} checking={checking} />}
+
+        {risk?.level === "danger" && (
+          <Pressable onPress={() => setAcknowledged((a) => !a)} style={styles.ackRow}>
+            <Ionicons
+              name={acknowledged ? "checkbox" : "square-outline"}
+              size={20}
+              color={colors.negative}
+            />
+            <Text style={styles.ackText}>I understand the risk and want to send anyway.</Text>
+          </Pressable>
+        )}
+
         {error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
 
@@ -242,6 +296,8 @@ const styles = StyleSheet.create({
   symbolTag: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   usdLine: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
   error: { color: colors.negative, fontSize: font.small },
+  ackRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
+  ackText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "600" },
   footer: { paddingHorizontal: spacing(4), paddingTop: spacing(3), borderTopWidth: 1, borderTopColor: colors.cardBorder },
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
