@@ -7,13 +7,7 @@ import type { ChainDef } from "../../chains/registry";
 import type { EvmAccount } from "../../wallet/evm";
 import type { UnifiedQuote } from "../../swap/types";
 import { estimateGas, ethCall, getFees, getNonce, sendRawTransaction, waitForTx } from "../rpc";
-import {
-  erc20AllowanceData,
-  erc20ApproveData,
-  MAX_UINT256,
-  signEip1559,
-  type EvmTx,
-} from "../tx";
+import { erc20AllowanceData, erc20ApproveData, signEip1559, type EvmTx } from "../tx";
 
 async function allowanceOf(chain: ChainDef, owner: string, token: string, spender: string): Promise<bigint> {
   const hex = await ethCall(chain, token, erc20AllowanceData(owner, spender));
@@ -31,7 +25,9 @@ export async function executeEvmSwap(
   const from = account.address;
   const chainId = chain.evmChainId!;
 
-  // 1. Approve the router for the ERC-20 input, if needed.
+  // 1. Approve the router for the ERC-20 input, if needed. We approve the EXACT swap
+  // amount (not an unlimited/infinite allowance), so no lingering approval survives the
+  // swap — safer, at the cost of an approval tx per swap.
   if (ex.spender) {
     const allowance = await allowanceOf(chain, from, ex.inputMint, ex.spender);
     if (allowance < ex.amountInWei) {
@@ -45,7 +41,7 @@ export async function executeEvmSwap(
         gasLimit: 70_000n,
         to: ex.inputMint,
         value: 0n,
-        data: erc20ApproveData(ex.spender, MAX_UINT256),
+        data: erc20ApproveData(ex.spender, ex.amountInWei),
       };
       const hash = await sendRawTransaction(chain, signEip1559(approve, account.privateKey));
       await waitForTx(chain, hash);

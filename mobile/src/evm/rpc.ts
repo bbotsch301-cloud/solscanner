@@ -26,6 +26,11 @@ export async function ethCall(chain: ChainDef, to: string, data: string): Promis
   return call<string>(chain, "eth_call", [{ to, data }, "latest"]);
 }
 
+/** Bytecode at an address ("0x" for a normal wallet / EOA, non-empty for a contract). */
+export async function getCode(chain: ChainDef, address: string): Promise<string> {
+  return call<string>(chain, "eth_getCode", [address, "latest"]);
+}
+
 export async function getNonce(chain: ChainDef, address: string): Promise<bigint> {
   return BigInt(await call<string>(chain, "eth_getTransactionCount", [address, "pending"]));
 }

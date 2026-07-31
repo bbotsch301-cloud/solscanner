@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -21,6 +22,7 @@ import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
 import { isEvmAddress } from "../wallet/evm";
 import { looksLikeName, resolveName } from "../naming/resolve";
 import { assessRecipient, type RiskReport } from "../safety/risk";
+import { assessEvmRecipient } from "../safety/evmRisk";
 import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
@@ -121,16 +123,19 @@ export function SendScreen() {
   const effectiveTo = nameKind ? nameAddr : rawValid ? trimmedTo : null;
   const validAddress = !!effectiveTo && isValidForChain(effectiveTo);
 
-  // Screen the recipient (Solana only — the risk engine is Solana-based).
+  // Screen the recipient on both ecosystems.
   useEffect(() => {
     setRisk(null);
     setAcknowledged(false);
-    if (!isSolana || !validAddress || !effectiveTo) return;
+    if (!validAddress || !effectiveTo) return;
     let cancelled = false;
     setChecking(true);
+    const tokenAddr = selected.kind === "erc20" ? selected.address : undefined;
     const id = setTimeout(async () => {
       try {
-        const report = await assessRecipient(effectiveTo, activeAddress);
+        const report = isSolana
+          ? await assessRecipient(effectiveTo, activeAddress)
+          : await assessEvmRecipient(activeChain, effectiveTo, activeAddress, tokenAddr);
         if (!cancelled) setRisk(report);
       } catch {
         if (!cancelled) setRisk(null);
@@ -142,7 +147,7 @@ export function SendScreen() {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [effectiveTo, validAddress, activeAddress, isSolana]);
+  }, [effectiveTo, validAddress, activeAddress, isSolana, activeChain, selected.kind, selected.address]);
 
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
@@ -152,7 +157,7 @@ export function SendScreen() {
   const buffer = isSolana ? FEE_BUFFER_SOL : FEE_BUFFER_EVM;
   const maxAmount = selected.kind === "native" ? Math.max(0, selected.balance - buffer) : selected.balance;
 
-  const doSend = async () => {
+  const reallySend = async () => {
     if (!effectiveTo) return;
     setSending(true);
     setError(null);
@@ -164,6 +169,19 @@ export function SendScreen() {
     } finally {
       setSending(false);
     }
+  };
+
+  // Confirm with the FULL address shown, so a look-alike / poisoned address is caught.
+  const doSend = () => {
+    if (!effectiveTo) return;
+    Alert.alert(
+      "Confirm send",
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}\n\nDouble-check every character — sends can’t be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Send", style: "default", onPress: reallySend },
+      ]
+    );
   };
 
   if (signature) {

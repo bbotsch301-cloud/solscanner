@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AppState } from "react-native";
 import { isBiometricEnabled } from "./security/prefs";
 
 /**
@@ -14,8 +15,17 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // If biometric lock is off, the wallet opens without a lock screen.
+  // Biometric lock is on by default; if the user turned it off, open without a lock.
   const [unlocked, setUnlocked] = useState(!isBiometricEnabled());
+
+  // Auto-lock: re-lock whenever the app is backgrounded (so an unlocked session can't
+  // be resumed from the app switcher without re-authenticating).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" && isBiometricEnabled()) setUnlocked(false);
+    });
+    return () => sub.remove();
+  }, []);
 
   const value = useMemo<AuthState>(
     () => ({
