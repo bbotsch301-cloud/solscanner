@@ -20,6 +20,7 @@ import { RiskCard } from "../components/RiskCard";
 import { useWallet } from "../wallet/WalletContext";
 import { assessRecipient, type RiskReport } from "../safety/risk";
 import { solscanTx } from "../solana/connection";
+import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
@@ -34,6 +35,7 @@ interface Asset {
   balance: number;
   mint: string | null; // null = native SOL
   logoURI?: string;
+  program: "legacy" | "token2022";
 }
 
 export function SendScreen() {
@@ -44,7 +46,7 @@ export function SendScreen() {
 
   const assets = useMemo<Asset[]>(
     () => [
-      { key: "SOL", symbol: "SOL", decimals: 9, balance: solBalance ?? 0, mint: null, logoURI: SOL_LOGO },
+      { key: "SOL", symbol: "SOL", decimals: 9, balance: solBalance ?? 0, mint: null, logoURI: SOL_LOGO, program: "legacy" as const },
       ...tokens.map((t) => ({
         key: t.mint,
         symbol: t.symbol ?? shortAddress(t.mint, 4, 4),
@@ -52,6 +54,7 @@ export function SendScreen() {
         balance: t.amount,
         mint: t.mint,
         logoURI: t.logoURI,
+        program: t.program,
       })),
     ],
     [solBalance, tokens]
@@ -68,6 +71,20 @@ export function SendScreen() {
   const [risk, setRisk] = useState<RiskReport | null>(null);
   const [checking, setChecking] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [fee, setFee] = useState<TransferFee | null>(null);
+
+  // Read the live transfer fee for Token-2022 assets (e.g. XGO's 1.11%).
+  useEffect(() => {
+    setFee(null);
+    if (selected.program !== "token2022" || !selected.mint) return;
+    let cancelled = false;
+    getTransferFee(selected.mint).then((f) => {
+      if (!cancelled) setFee(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.program, selected.mint]);
 
   const trimmedTo = recipient.trim();
   const validAddress = useMemo(() => {
@@ -218,6 +235,12 @@ export function SendScreen() {
           <Text style={[styles.usdLine, over && { color: colors.negative }]}>
             {over ? "Insufficient balance" : "Devnet · network fee ~0.000005 SOL"}
           </Text>
+          {fee && amtNum > 0 && !over && (
+            <Text style={styles.feeLine}>
+              {(fee.bps / 100).toFixed(2)}% token fee · recipient receives ≈{" "}
+              {fmtAmount(amtNum - computeFee(amtNum, selected.decimals, fee))} {selected.symbol}
+            </Text>
+          )}
         </View>
 
         {(checking || risk) && <RiskCard report={risk} checking={checking} />}
@@ -295,6 +318,7 @@ const styles = StyleSheet.create({
   maxText: { color: colors.primary, fontSize: font.tiny, fontWeight: "800" },
   symbolTag: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   usdLine: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
+  feeLine: { color: colors.warning, fontSize: font.small, marginTop: spacing(1), marginLeft: spacing(1) },
   error: { color: colors.negative, fontSize: font.small },
   ackRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
   ackText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "600" },

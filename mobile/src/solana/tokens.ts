@@ -14,6 +14,8 @@ const LOGO = (mint: string) =>
   `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`;
 
 const KNOWN: Record<string, TokenMeta> = {
+  // XGO — the treasury/community token (Token-2022, 1.11% transfer fee).
+  "4a6CPi8mjbJvpWHajbSjd9CMbKL8UniByoSx7tomLJa7": { symbol: "XGO", name: "XGO" },
   So11111111111111111111111111111111111111112: {
     symbol: "SOL",
     name: "Solana",
