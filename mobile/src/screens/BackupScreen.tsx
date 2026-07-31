@@ -54,7 +54,7 @@ export function BackupScreen() {
         <View style={styles.warning}>
           <Ionicons name="warning" size={18} color={colors.negative} />
           <Text style={styles.warningText}>
-            Anyone with these 12 words controls this wallet. Never share them, and
+            Anyone with these words controls this wallet. Never share them, and
             never type them into a website. Write them down and keep them offline.
           </Text>
         </View>

@@ -1,7 +1,8 @@
 /**
- * BIP39 recovery-phrase support. New wallets are derived from a 12-word mnemonic
- * at Solana's standard derivation path (m/44'/501'/0'/0'), so they can be backed
- * up and restored and are compatible with Phantom / Solflare.
+ * BIP39 recovery-phrase support. New wallets are generated with a 24-word (256-bit)
+ * mnemonic for maximum entropy, and derived at Solana's standard path
+ * (m/44'/501'/0'/0'), so they can be backed up/restored and are compatible with
+ * Phantom / Solflare. Importing 12- or 24-word phrases is fully supported.
  *
  * SLIP-0010 ed25519 derivation is implemented here with @noble/hashes (pure JS)
  * rather than ed25519-hd-key, which pulls Node's `stream` and won't bundle in RN.
@@ -36,7 +37,7 @@ function deriveEd25519Seed(seed: Uint8Array): Uint8Array {
   return key;
 }
 
-/** Generate a fresh 12-word (128-bit) mnemonic. */
+/** Generate a fresh 24-word (256-bit) mnemonic. Import still accepts 12 or 24 words. */
 /** Normalize a phrase: lowercase, and collapse any whitespace (newlines, tabs,
  * double spaces) to single spaces so a valid phrase isn't rejected on formatting. */
 export function normalizeMnemonic(mnemonic: string): string {
@@ -44,7 +45,7 @@ export function normalizeMnemonic(mnemonic: string): string {
 }
 
 export function generateMnemonic(): string {
-  return bip39.generateMnemonic(128);
+  return bip39.generateMnemonic(256);
 }
 
 export function validateMnemonic(mnemonic: string): boolean {

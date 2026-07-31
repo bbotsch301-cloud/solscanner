@@ -25,8 +25,8 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
       <ScrollView contentContainerStyle={{ paddingBottom: spacing(4) }} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Back up your wallet</Text>
         <Text style={styles.sub}>
-          These 12 words are the only way to recover your wallet. Write them down in order and
-          keep them offline. Anyone who has them controls your funds.
+          Your recovery phrase is the only way to recover your wallet. Write down every word in
+          order and keep them offline. Anyone who has them controls your funds.
         </Text>
 
         <View style={styles.warning}>
