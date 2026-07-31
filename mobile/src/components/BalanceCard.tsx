@@ -7,12 +7,24 @@ export function BalanceCard({
   address,
   network,
   refreshing,
+  usdValue,
+  change24h,
 }: {
   solBalance: number | null;
   address: string;
   network: string;
   refreshing?: boolean;
+  usdValue?: number | null;
+  change24h?: number | null;
 }) {
+  const usd =
+    usdValue != null
+      ? usdValue.toLocaleString("en-US", { style: "currency", currency: "USD" })
+      : null;
+  const change =
+    change24h != null
+      ? `${change24h >= 0 ? "▲" : "▼"} ${Math.abs(change24h).toFixed(2)}%`
+      : null;
   return (
     <LinearGradient
       colors={[colors.gradA, colors.gradB]}
@@ -37,6 +49,13 @@ export function BalanceCard({
           {refreshing && <ActivityIndicator color="#1A1130" style={{ marginLeft: 8 }} />}
         </View>
 
+        {usd != null && (
+          <View style={styles.usdRow}>
+            <Text style={styles.usd}>≈ {usd}</Text>
+            {change != null && <Text style={styles.change}>{change} 24h</Text>}
+          </View>
+        )}
+
         <Text style={styles.address}>{shortAddress(address, 4, 4)}</Text>
       </View>
     </LinearGradient>
@@ -51,6 +70,9 @@ const styles = StyleSheet.create({
   amountRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing(2) },
   total: { color: "#1A1130", fontSize: 44, fontWeight: "900", letterSpacing: -1 },
   unit: { color: "#1A1130", fontSize: font.h2, fontWeight: "800", marginBottom: spacing(1.5) },
+  usdRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
+  usd: { color: "#1A1130", fontSize: font.body, fontWeight: "800" },
+  change: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
   address: { color: "#1A1130AA", fontSize: font.small, fontWeight: "700" },
   netPill: {
     flexDirection: "row",

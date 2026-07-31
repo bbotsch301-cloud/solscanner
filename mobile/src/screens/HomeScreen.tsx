@@ -12,10 +12,24 @@ import type { RootNav } from "../navigation";
 export function HomeScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
-  const { address, solBalance, tokens, refreshing, busy, error, refresh, airdrop } =
-    useWallet();
+  const {
+    address,
+    solBalance,
+    tokens,
+    solPrice,
+    solChange24h,
+    totalUsd,
+    priceOf,
+    refreshing,
+    busy,
+    error,
+    refresh,
+    airdrop,
+  } = useWallet();
 
   const empty = (solBalance ?? 0) === 0 && tokens.length === 0;
+  const usd = (n: number) =>
+    n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
   return (
     <ScrollView
@@ -31,6 +45,8 @@ export function HomeScreen() {
         address={address ?? ""}
         network={CLUSTER === "devnet" ? "Devnet" : CLUSTER}
         refreshing={refreshing}
+        usdValue={totalUsd}
+        change24h={solChange24h}
       />
 
       <View style={styles.actions}>
@@ -59,26 +75,39 @@ export function HomeScreen() {
           <TokenAvatar symbol="SOL" color={colors.accent} />
           <View style={styles.mid}>
             <Text style={styles.symbol}>Solana</Text>
-            <Text style={styles.sub}>Native</Text>
+            <Text style={styles.sub}>
+              {solPrice != null ? `${usd(solPrice)} · SOL` : "Native"}
+            </Text>
           </View>
-          <Text style={styles.value}>
-            {solBalance == null ? "—" : fmtAmount(solBalance)} SOL
-          </Text>
+          <View style={styles.right}>
+            <Text style={styles.value}>
+              {solBalance == null ? "—" : fmtAmount(solBalance)} SOL
+            </Text>
+            {solBalance != null && solPrice != null && (
+              <Text style={styles.subUsd}>{usd(solBalance * solPrice)}</Text>
+            )}
+          </View>
         </View>
 
-        {tokens.map((t) => (
-          <View key={t.mint}>
-            <View style={styles.divider} />
-            <View style={styles.tokenRow}>
-              <TokenAvatar symbol={t.mint.slice(0, 3)} color={colors.primary} />
-              <View style={styles.mid}>
-                <Text style={styles.symbol}>{shortAddress(t.mint, 4, 4)}</Text>
-                <Text style={styles.sub}>SPL token</Text>
+        {tokens.map((t) => {
+          const p = priceOf(t.mint);
+          return (
+            <View key={t.mint}>
+              <View style={styles.divider} />
+              <View style={styles.tokenRow}>
+                <TokenAvatar symbol={t.mint.slice(0, 3)} color={colors.primary} />
+                <View style={styles.mid}>
+                  <Text style={styles.symbol}>{shortAddress(t.mint, 4, 4)}</Text>
+                  <Text style={styles.sub}>SPL token</Text>
+                </View>
+                <View style={styles.right}>
+                  <Text style={styles.value}>{fmtAmount(t.amount)}</Text>
+                  {p != null && <Text style={styles.subUsd}>{usd(t.amount * p)}</Text>}
+                </View>
               </View>
-              <Text style={styles.value}>{fmtAmount(t.amount)}</Text>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -123,8 +152,10 @@ const styles = StyleSheet.create({
   },
   tokenRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
   mid: { flex: 1, gap: 2 },
+  right: { alignItems: "flex-end", gap: 2 },
   symbol: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   sub: { color: colors.textMuted, fontSize: font.small },
   value: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
+  subUsd: { color: colors.textMuted, fontSize: font.small },
   divider: { height: 1, backgroundColor: colors.cardBorder },
 });

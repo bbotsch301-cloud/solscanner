@@ -17,6 +17,7 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import { connection } from "../solana/connection";
+import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { clearKeypair, createKeypair, loadKeypair } from "./keystore";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
@@ -37,6 +38,16 @@ interface WalletState {
   /** SOL balance (not lamports), or null before first load. */
   solBalance: number | null;
   tokens: SplToken[];
+  /** Live USD prices keyed by mint (native SOL under the wrapped-SOL mint). */
+  prices: Record<string, PriceInfo>;
+  /** Live SOL price in USD, or null if unavailable. */
+  solPrice: number | null;
+  /** SOL 24h change as a percentage, if known. */
+  solChange24h: number | null;
+  /** Total portfolio value in USD, or null before first load. */
+  totalUsd: number | null;
+  /** USD price for a given mint, if known. */
+  priceOf: (mint: string) => number | undefined;
   refreshing: boolean;
   busy: boolean;
   error: string | null;
@@ -54,6 +65,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [tokens, setTokens] = useState<SplToken[]>([]);
+  const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +92,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       })
       .filter((t) => t.amount > 0);
     setTokens(spl);
+
+    // Live prices are best-effort — never fail a balance refresh over them.
+    try {
+      setPrices(await fetchPrices([WSOL_MINT, ...spl.map((t) => t.mint)]));
+    } catch {
+      /* leave last known prices in place */
+    }
   }, []);
 
   const refresh = useCallback(async () => {
@@ -169,13 +188,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return sig;
   }, [fetchBalances]);
 
-  const value = useMemo<WalletState>(
-    () => ({
+  const value = useMemo<WalletState>(() => {
+    const solPrice = prices[WSOL_MINT]?.usdPrice ?? null;
+    const solChange24h = prices[WSOL_MINT]?.priceChange24h ?? null;
+    const priceOf = (mint: string) => prices[mint]?.usdPrice;
+    const totalUsd =
+      solBalance == null
+        ? null
+        : solBalance * (solPrice ?? 0) +
+          tokens.reduce((s, t) => s + t.amount * (prices[t.mint]?.usdPrice ?? 0), 0);
+
+    return {
       initializing,
       keypair,
       address: keypair?.publicKey.toBase58() ?? null,
       solBalance,
       tokens,
+      prices,
+      solPrice,
+      solChange24h,
+      totalUsd,
+      priceOf,
       refreshing,
       busy,
       error,
@@ -184,9 +217,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       refresh,
       airdrop,
       send,
-    }),
-    [initializing, keypair, solBalance, tokens, refreshing, busy, error, create, reset, refresh, airdrop, send]
-  );
+    };
+  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, reset, refresh, airdrop, send]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
