@@ -7,6 +7,7 @@ import { Buffer } from "buffer";
 import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
+import { feeBpsFor, SOLANA_FEE_ACCOUNT } from "../config/swapFee";
 
 /**
  * Jupiter's DEX label(s) for the AMMs the treasury owns liquidity on. The treasury
@@ -92,6 +93,8 @@ export interface Quote {
   fellBack: boolean;
   /** How much worse the treasury pool was vs the best market price, in bps (null if unknown). */
   gapBps: number | null;
+  /** Community fee applied to this quote, in bps (0 for XGO trades / when uncollected). */
+  feeBps: number;
 }
 
 interface RawQuote {
@@ -109,11 +112,13 @@ async function requestQuote(
   outputMint: string,
   rawAmount: number,
   slippageBps: number,
-  restrictToTreasury: boolean
+  restrictToTreasury: boolean,
+  platformFeeBps: number
 ): Promise<RawQuote | null> {
   let url =
     `${JUP_QUOTE}?inputMint=${inputMint}&outputMint=${outputMint}` +
     `&amount=${rawAmount}&slippageBps=${slippageBps}`;
+  if (platformFeeBps > 0) url += `&platformFeeBps=${platformFeeBps}`;
   if (restrictToTreasury) {
     // Force a single-hop route on the AMM(s) we own liquidity on.
     url +=
@@ -146,10 +151,14 @@ export async function fetchQuote(
   // Other XGO pairs route through SOL, and we detect our pool from the labels.
   const directlyPoolable = isTreasuryPair && otherMint === TREASURY_QUOTE_MINT;
 
+  // Community fee: 0.44% on non-XGO trades, and only once a treasury fee account is
+  // configured (otherwise we can't collect it, so don't reduce the user's output).
+  const feeBps = SOLANA_FEE_ACCOUNT ? feeBpsFor(input.mint, output.mint) : 0;
+
   const [market, pinned] = await Promise.all([
-    requestQuote(input.mint, output.mint, rawAmount, slippageBps, false),
+    requestQuote(input.mint, output.mint, rawAmount, slippageBps, false, feeBps),
     directlyPoolable
-      ? requestQuote(input.mint, output.mint, rawAmount, slippageBps, true)
+      ? requestQuote(input.mint, output.mint, rawAmount, slippageBps, true, feeBps)
       : Promise.resolve(null),
   ]);
 
@@ -193,6 +202,7 @@ export async function fetchQuote(
     isTreasuryPair,
     fellBack,
     gapBps,
+    feeBps,
   };
 }
 
@@ -210,6 +220,8 @@ export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<
       userPublicKey: keypair.publicKey.toBase58(),
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
+      // Collect the community fee to the treasury's referral account, when configured.
+      ...(SOLANA_FEE_ACCOUNT ? { feeAccount: SOLANA_FEE_ACCOUNT } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Swap build failed (${res.status})`);

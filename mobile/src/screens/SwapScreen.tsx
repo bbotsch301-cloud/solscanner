@@ -248,6 +248,16 @@ export function SwapScreen() {
               value={`${quote.priceImpactPct < 0.01 ? "<0.01" : quote.priceImpactPct.toFixed(2)}%`}
             />
             <Row label="Route" value={quote.routeLabels.join(" → ") || "Direct"} />
+            <Row
+              label="Community fee"
+              value={
+                quote.isTreasuryPair
+                  ? "Free (XGO)"
+                  : quote.feeBps > 0
+                    ? `${(quote.feeBps / 100).toFixed(2)}% → treasury`
+                    : "None"
+              }
+            />
             <View style={styles.feeDivider} />
             <Row label="Network fee" value="~0.000005 SOL" />
           </View>
