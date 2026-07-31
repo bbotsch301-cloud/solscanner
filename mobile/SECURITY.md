@@ -6,6 +6,13 @@
   SecureRandom). No `Math.random` fallback — it throws if no CSPRNG is present.
 - **Derivation**: Solana ed25519 (SLIP-0010) + EVM secp256k1 (`@scure/bip32`), both
   deterministic from the single seed.
+- **BIP39 passphrase (25th word)**: optional, behind an Advanced toggle on create/import.
+  Folded into the seed exactly as typed (case-sensitive, not normalized); verified against
+  the canonical Trezor `"TREZOR"` vector. Empty passphrase is byte-identical to the legacy
+  no-passphrase path, so existing wallets are unaffected. Stored in the same
+  `WHEN_UNLOCKED_THIS_DEVICE_ONLY` slot as the mnemonic (re-derived every unlock). It cannot
+  be validated — any value silently yields a different wallet — so import shows the derived
+  address to confirm, and the backup screen flags that the words alone won't restore.
 - **Signing**: `@noble/curves` with deterministic RFC-6979 nonces. EIP-191 / EIP-712 /
   EIP-1559 verified against published spec vectors. We do **not** use `elliptic` for any
   key or signing operation.

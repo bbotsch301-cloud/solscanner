@@ -1,6 +1,6 @@
 import * as LocalAuthentication from "expo-local-authentication";
 import { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { XGOLogo } from "../components/XGOLogo";
@@ -30,13 +30,14 @@ export function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
 
   if (showImport) {
     return <ImportWallet onDone={unlock} onCancel={() => setShowImport(false)} />;
   }
 
-  const createWithPasskey = async () => {
-    if (busy) return;
+  const doCreate = async () => {
     setBusy(true);
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -50,12 +51,30 @@ export function OnboardingScreen() {
           return;
         }
       }
-      await create(); // generates a keypair, stored in the device keychain
+      await create(passphrase); // generates a keypair, stored in the device keychain
       unlock();
     } catch (e) {
       Alert.alert("Couldn't create wallet", humanizeError(e, { action: "load" }));
       setBusy(false);
     }
+  };
+
+  const createWithPasskey = async () => {
+    if (busy) return;
+    // A passphrase is unrecoverable and required for every future restore — make
+    // sure they understand before it's baked into the wallet.
+    if (passphrase) {
+      Alert.alert(
+        "Use a passphrase (25th word)?",
+        "You'll need BOTH your recovery phrase AND this exact passphrase to ever restore this wallet. If you lose the passphrase, the funds are gone forever — no one can recover it. Save it with your recovery phrase.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "I've saved it — create", style: "destructive", onPress: doCreate },
+        ]
+      );
+      return;
+    }
+    await doCreate();
   };
 
   return (
@@ -76,6 +95,39 @@ export function OnboardingScreen() {
       </View>
 
       <View style={styles.actions}>
+        <Pressable
+          onPress={() => setShowAdvanced((v) => !v)}
+          style={styles.advancedToggle}
+          hitSlop={8}
+        >
+          <Ionicons
+            name={showAdvanced ? "chevron-down" : "chevron-forward"}
+            size={16}
+            color={colors.textMuted}
+          />
+          <Text style={styles.advancedToggleText}>Advanced · add a passphrase (25th word)</Text>
+        </Pressable>
+
+        {showAdvanced && (
+          <View style={styles.advancedBox}>
+            <Text style={styles.advancedHint}>
+              Optional extra secret mixed into your seed for a hidden wallet. You must
+              save it with your recovery phrase — if you lose it, the wallet is gone
+              forever and no one can recover it.
+            </Text>
+            <TextInput
+              value={passphrase}
+              onChangeText={setPassphrase}
+              placeholder="Passphrase (optional)"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              style={styles.passInput}
+            />
+          </View>
+        )}
+
         <Pressable
           onPress={createWithPasskey}
           disabled={busy}
@@ -113,6 +165,20 @@ const styles = StyleSheet.create({
   featureTitle: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   featureSub: { color: colors.textMuted, fontSize: font.small, marginTop: 2 },
   actions: { gap: spacing(3) },
+  advancedToggle: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
+  advancedToggleText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  advancedBox: { gap: spacing(3) },
+  advancedHint: { color: colors.textFaint, fontSize: font.small, lineHeight: 18 },
+  passInput: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing(4),
+    paddingVertical: spacing(3),
+    color: colors.text,
+    fontSize: font.body,
+  },
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",

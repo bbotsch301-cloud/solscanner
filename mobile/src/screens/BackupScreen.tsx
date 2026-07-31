@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getMnemonic } from "../wallet/keystore";
+import { getMnemonic, getPassphrase } from "../wallet/keystore";
 import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
@@ -15,6 +15,7 @@ export function BackupScreen() {
   useSecretScreenGuard();
   const [words, setWords] = useState<string[] | null>(null);
   const [legacy, setLegacy] = useState(false);
+  const [hasPassphrase, setHasPassphrase] = useState(false);
 
   const reveal = useCallback(async () => {
     try {
@@ -31,6 +32,7 @@ export function BackupScreen() {
         setLegacy(true);
         return;
       }
+      setHasPassphrase(!!(await getPassphrase()));
       setWords(mnemonic.split(/\s+/));
     } catch {
       /* leave hidden on failure */
@@ -85,6 +87,17 @@ export function BackupScreen() {
                 </View>
               ))}
             </View>
+
+            {hasPassphrase && (
+              <View style={styles.passNote}>
+                <Ionicons name="key" size={16} color={colors.negative} />
+                <Text style={styles.passNoteText}>
+                  This wallet also has a passphrase (25th word). These words are NOT
+                  enough on their own — restoring needs your passphrase too. It is not
+                  shown here and we don’t keep a copy; store it with this phrase.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.paperNote}>
               <Ionicons name="create-outline" size={16} color={colors.textMuted} />
@@ -143,6 +156,15 @@ const styles = StyleSheet.create({
   },
   wordNum: { color: colors.textFaint, fontSize: font.small, fontWeight: "700", width: 20 },
   word: { color: colors.text, fontSize: font.body, fontWeight: "700" },
+  passNote: {
+    flexDirection: "row",
+    gap: spacing(2),
+    backgroundColor: colors.negative + "18",
+    borderRadius: radius.md,
+    padding: spacing(4),
+    marginTop: spacing(4),
+  },
+  passNoteText: { flex: 1, color: colors.negative, fontSize: font.small, lineHeight: 19 },
   paperNote: { flexDirection: "row", gap: spacing(2), alignItems: "center", justifyContent: "center", paddingVertical: spacing(4), marginTop: spacing(3) },
   paperText: { color: colors.textMuted, fontSize: font.small, textAlign: "center" },
   doneBtn: { backgroundColor: colors.card, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", marginTop: spacing(2) },

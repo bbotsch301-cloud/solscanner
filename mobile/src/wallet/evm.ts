@@ -44,8 +44,13 @@ export interface EvmAccount {
   privateKey: Uint8Array;
 }
 
-export function deriveEvmAccount(mnemonic: string): EvmAccount {
-  const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic));
+/**
+ * Derive the EVM account. The optional BIP39 passphrase (the "25th word") is
+ * folded into the seed exactly as typed — same rules as the Solana derivation,
+ * so one passphrase covers both chains from the same phrase.
+ */
+export function deriveEvmAccount(mnemonic: string, passphrase = ""): EvmAccount {
+  const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);
   const hd = HDKey.fromMasterSeed(new Uint8Array(seed)).derive(EVM_PATH);
   if (!hd.privateKey) throw new Error("Could not derive the EVM account.");
   const privateKey = hd.privateKey;

@@ -98,8 +98,8 @@ interface WalletState {
   refreshing: boolean;
   busy: boolean;
   error: string | null;
-  create: () => Promise<void>;
-  importWallet: (mnemonic: string) => Promise<void>;
+  create: (passphrase?: string) => Promise<void>;
+  importWallet: (mnemonic: string, passphrase?: string) => Promise<void>;
   reset: () => Promise<void>;
   needsBackup: boolean;
   markBackedUp: () => void;
@@ -278,8 +278,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     loadChain(activeChainRef.current);
   }, [loadChain]);
 
-  const create = useCallback(async () => {
-    const kp = await createKeypair();
+  const create = useCallback(async (passphrase = "") => {
+    const kp = await createKeypair(passphrase);
     setKeypair(kp);
     keypairRef.current = kp;
     setNeedsBackupState(true);
@@ -287,8 +287,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [afterKeyChange]);
 
   const importWallet = useCallback(
-    async (mnemonic: string) => {
-      const kp = await importMnemonic(mnemonic);
+    async (mnemonic: string, passphrase = "") => {
+      const kp = await importMnemonic(mnemonic, passphrase);
       setKeypair(kp);
       keypairRef.current = kp;
       setNeedsBackupState(false);
