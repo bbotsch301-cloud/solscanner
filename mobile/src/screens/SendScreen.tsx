@@ -19,6 +19,7 @@ import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
 import { isEvmAddress } from "../wallet/evm";
+import { looksLikeName, resolveName } from "../naming/resolve";
 import { assessRecipient, type RiskReport } from "../safety/risk";
 import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
@@ -63,6 +64,8 @@ export function SendScreen() {
   const [checking, setChecking] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [fee, setFee] = useState<TransferFee | null>(null);
+  const [nameAddr, setNameAddr] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
 
   // Live Token-2022 transfer fee (Solana only, e.g. XGO's 1.11%).
   useEffect(() => {
@@ -78,28 +81,56 @@ export function SendScreen() {
   }, [isSolana, selected.kind, selected.program, selected.mint]);
 
   const trimmedTo = recipient.trim();
-  const validAddress = useMemo(() => {
-    if (!trimmedTo) return false;
+  const nameKind = looksLikeName(trimmedTo);
+
+  const isValidForChain = (addr: string): boolean => {
     if (isSolana) {
       try {
-        return Boolean(new PublicKey(trimmedTo));
+        return Boolean(new PublicKey(addr));
       } catch {
         return false;
       }
     }
-    return isEvmAddress(trimmedTo);
-  }, [trimmedTo, isSolana]);
+    return isEvmAddress(addr);
+  };
+
+  // Resolve .eth / .sol names to an address (debounced).
+  useEffect(() => {
+    setNameAddr(null);
+    if (!nameKind) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    const id = setTimeout(async () => {
+      const addr = await resolveName(trimmedTo);
+      if (!cancelled) {
+        setNameAddr(addr);
+        setResolving(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [trimmedTo, nameKind]);
+
+  // The address we actually send to: a resolved name, or a valid raw address.
+  const rawValid = !nameKind && trimmedTo.length > 0 && isValidForChain(trimmedTo);
+  const effectiveTo = nameKind ? nameAddr : rawValid ? trimmedTo : null;
+  const validAddress = !!effectiveTo && isValidForChain(effectiveTo);
 
   // Screen the recipient (Solana only — the risk engine is Solana-based).
   useEffect(() => {
     setRisk(null);
     setAcknowledged(false);
-    if (!isSolana || !validAddress) return;
+    if (!isSolana || !validAddress || !effectiveTo) return;
     let cancelled = false;
     setChecking(true);
     const id = setTimeout(async () => {
       try {
-        const report = await assessRecipient(trimmedTo, activeAddress);
+        const report = await assessRecipient(effectiveTo, activeAddress);
         if (!cancelled) setRisk(report);
       } catch {
         if (!cancelled) setRisk(null);
@@ -111,7 +142,7 @@ export function SendScreen() {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [trimmedTo, validAddress, activeAddress, isSolana]);
+  }, [effectiveTo, validAddress, activeAddress, isSolana]);
 
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
@@ -122,10 +153,11 @@ export function SendScreen() {
   const maxAmount = selected.kind === "native" ? Math.max(0, selected.balance - buffer) : selected.balance;
 
   const doSend = async () => {
+    if (!effectiveTo) return;
     setSending(true);
     setError(null);
     try {
-      const sig = await sendAsset(selected, trimmedTo, amtNum);
+      const sig = await sendAsset(selected, effectiveTo, amtNum);
       setSignature(sig);
     } catch (e) {
       setError(humanizeError(e, { action: "send", symbol: selected.symbol }));
@@ -142,7 +174,8 @@ export function SendScreen() {
         </View>
         <Text style={styles.successTitle}>Sent</Text>
         <Text style={styles.successSub}>
-          {fmtAmount(amtNum)} {selected.symbol} to {shortAddress(trimmedTo, 4, 4)}
+          {fmtAmount(amtNum)} {selected.symbol} to{" "}
+          {nameKind ? trimmedTo : shortAddress(effectiveTo ?? trimmedTo, 4, 4)}
         </Text>
         <Pressable onPress={() => Linking.openURL(activeChain.explorerTx(signature))}>
           <Text style={styles.link}>View on explorer ↗</Text>
@@ -190,13 +223,23 @@ export function SendScreen() {
           <TextInput
             value={recipient}
             onChangeText={setRecipient}
-            placeholder={isSolana ? "Paste a Solana address" : "Paste a 0x… address"}
+            placeholder={isSolana ? "Address or name.sol" : "0x… address or name.eth"}
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
             style={styles.input}
           />
-          {trimmedTo.length > 0 && !validAddress && (
+          {resolving && <Text style={styles.hintMuted}>Resolving {trimmedTo}…</Text>}
+          {!resolving && nameKind && validAddress && effectiveTo && (
+            <Text style={styles.resolved}>✓ {shortAddress(effectiveTo, 6, 6)}</Text>
+          )}
+          {!resolving && nameKind && nameAddr && !validAddress && (
+            <Text style={styles.warn}>{trimmedTo} resolves to a different chain — switch chains to use it.</Text>
+          )}
+          {!resolving && nameKind && !nameAddr && (
+            <Text style={styles.warn}>Couldn’t resolve {trimmedTo}.</Text>
+          )}
+          {!nameKind && trimmedTo.length > 0 && !validAddress && (
             <Text style={styles.warn}>That doesn’t look like a valid {activeChain.name} address.</Text>
           )}
         </View>
@@ -288,6 +331,8 @@ const styles = StyleSheet.create({
     fontSize: font.body,
   },
   warn: { color: colors.warning, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
+  hintMuted: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
+  resolved: { color: colors.positive, fontSize: font.small, fontWeight: "700", marginTop: spacing(2), marginLeft: spacing(1) },
   amountHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   balance: { color: colors.textMuted, fontSize: font.small, marginBottom: spacing(2) },
   amountBox: {
