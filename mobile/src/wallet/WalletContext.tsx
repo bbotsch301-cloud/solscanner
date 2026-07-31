@@ -17,6 +17,8 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
   getAssociatedTokenAddress,
@@ -26,14 +28,12 @@ import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas } from "../solana/tokens";
 import { clearKeypair, createKeypair, importMnemonic, loadKeypair } from "./keystore";
 
-const TOKEN_PROGRAM_ID = new PublicKey(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-);
-
 export interface SplToken {
   mint: string;
   amount: number;
   decimals: number;
+  /** Which token program owns the mint (Token-2022 tokens like XGO charge fees). */
+  program: "legacy" | "token2022";
   symbol?: string;
   name?: string;
   logoURI?: string;
@@ -90,23 +90,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   keypairRef.current = keypair;
 
   const fetchBalances = useCallback(async (pubkey: PublicKey) => {
-    const [lamports, parsed] = await Promise.all([
+    // Query BOTH token programs so Token-2022 assets (like XGO) show up too.
+    const [lamports, legacy, token2022] = await Promise.all([
       connection.getBalance(pubkey),
-      connection.getParsedTokenAccountsByOwner(pubkey, {
-        programId: TOKEN_PROGRAM_ID,
-      }),
+      connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID }),
+      connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_2022_PROGRAM_ID }),
     ]);
     setSolBalance(lamports / LAMPORTS_PER_SOL);
-    const spl: SplToken[] = parsed.value
-      .map((a) => {
+
+    const toTokens = (
+      res: Awaited<ReturnType<typeof connection.getParsedTokenAccountsByOwner>>,
+      program: SplToken["program"]
+    ): SplToken[] =>
+      res.value.map((a) => {
         const info = a.account.data.parsed.info;
         return {
           mint: info.mint as string,
           amount: info.tokenAmount.uiAmount ?? 0,
           decimals: info.tokenAmount.decimals as number,
+          program,
         };
-      })
-      .filter((t) => t.amount > 0);
+      });
+
+    const spl: SplToken[] = [
+      ...toTokens(legacy, "legacy"),
+      ...toTokens(token2022, "token2022"),
+    ].filter((t) => t.amount > 0);
     setTokens(spl);
 
     const mints = spl.map((t) => t.mint);
@@ -227,20 +236,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!kp) throw new Error("No wallet");
       const mintPk = new PublicKey(mint);
       const toPk = new PublicKey(to); // throws on invalid address
-      const fromAta = await getAssociatedTokenAddress(mintPk, kp.publicKey);
-      const toAta = await getAssociatedTokenAddress(mintPk, toPk);
+
+      // Detect the token program from the mint's owner (legacy vs Token-2022).
+      const mintInfo = await connection.getAccountInfo(mintPk);
+      const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)
+        ? TOKEN_2022_PROGRAM_ID
+        : TOKEN_PROGRAM_ID;
+
+      const fromAta = await getAssociatedTokenAddress(mintPk, kp.publicKey, false, programId);
+      const toAta = await getAssociatedTokenAddress(mintPk, toPk, false, programId);
 
       const tx = new Transaction();
       // Create the recipient's token account if they don't have one yet.
       const toInfo = await connection.getAccountInfo(toAta);
       if (!toInfo) {
         tx.add(
-          createAssociatedTokenAccountInstruction(kp.publicKey, toAta, toPk, mintPk)
+          createAssociatedTokenAccountInstruction(kp.publicKey, toAta, toPk, mintPk, programId)
         );
       }
       const raw = BigInt(Math.round(uiAmount * 10 ** decimals));
+      // For Token-2022 fee tokens (like XGO), the mint applies its transfer fee
+      // automatically; the recipient receives the amount minus the fee.
       tx.add(
-        createTransferCheckedInstruction(fromAta, mintPk, toAta, kp.publicKey, raw, decimals)
+        createTransferCheckedInstruction(fromAta, mintPk, toAta, kp.publicKey, raw, decimals, [], programId)
       );
 
       const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
