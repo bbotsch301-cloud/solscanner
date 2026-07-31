@@ -1,4 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
+import type { RootNav } from "../navigation";
 
 // Illustrative proposals to show the governance UX. Real proposals + on-chain
 // tallies arrive with the vote program; base votes here are in XGO.
@@ -28,6 +30,7 @@ const EXAMPLE_PROPOSALS = [
 
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<RootNav>();
   const { tokens, refresh, refreshing } = useWallet();
   const [supply, setSupply] = useState<number | null>(null);
   const [votes, setVotes] = useState<Record<string, "for" | "against">>({});
@@ -62,7 +65,12 @@ export function GovernScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.header}>Govern</Text>
+      <View style={styles.topBar}>
+        <Text style={styles.header}>Govern</Text>
+        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
+          <Ionicons name="close" size={26} color={colors.textMuted} />
+        </Pressable>
+      </View>
 
       {/* Voting power */}
       <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
@@ -153,7 +161,8 @@ export function GovernScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  header: { color: colors.text, fontSize: font.h1, fontWeight: "900", marginBottom: spacing(4) },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
+  header: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   card: { borderRadius: radius.lg, padding: 1 },
   cardInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(2) },
   cardLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },

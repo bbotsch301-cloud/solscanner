@@ -9,6 +9,8 @@ export type RootStackParamList = {
   Buy: undefined;
   Backup: undefined;
   Activity: undefined;
+  Govern: undefined;
+  Settings: undefined;
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

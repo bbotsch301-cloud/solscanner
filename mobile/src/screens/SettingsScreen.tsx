@@ -57,7 +57,12 @@ export function SettingsScreen() {
       style={styles.screen}
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
     >
-      <Text style={styles.header}>Settings</Text>
+      <View style={styles.topBar}>
+        <Text style={styles.header}>Settings</Text>
+        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
+          <Ionicons name="close" size={26} color={colors.textMuted} />
+        </Pressable>
+      </View>
 
       <View style={styles.walletCard}>
         <View style={styles.walletAvatar}>
@@ -114,7 +119,8 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  header: { color: colors.text, fontSize: font.h1, fontWeight: "900", marginBottom: spacing(4) },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
+  header: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   walletCard: {
     flexDirection: "row",
     alignItems: "center",

@@ -7,6 +7,8 @@ import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
+import { TradeScreen } from "./src/screens/TradeScreen";
+import { MoreScreen } from "./src/screens/MoreScreen";
 import { TreasuryScreen } from "./src/screens/TreasuryScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
@@ -29,9 +31,9 @@ const Tab = createBottomTabNavigator();
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home",
   Wallet: "wallet",
+  "Buy/Swap": "swap-horizontal",
   Treasury: "business",
-  Govern: "people",
-  Settings: "settings",
+  More: "ellipsis-horizontal",
 };
 
 function Tabs() {
@@ -55,9 +57,9 @@ function Tabs() {
     >
       <Tab.Screen name="Home" component={EcosystemScreen} />
       <Tab.Screen name="Wallet" component={HomeScreen} />
+      <Tab.Screen name="Buy/Swap" component={TradeScreen} />
       <Tab.Screen name="Treasury" component={TreasuryScreen} />
-      <Tab.Screen name="Govern" component={GovernScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
 }
@@ -102,6 +104,8 @@ function Root() {
           <Stack.Screen name="Buy" component={BuyScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
+          <Stack.Screen name="Govern" component={GovernScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
