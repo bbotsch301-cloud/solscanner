@@ -7,6 +7,7 @@ import { XGOLogo } from "../components/XGOLogo";
 import { ImportWallet } from "./ImportWallet";
 import { useAuth } from "../auth";
 import { useWallet } from "../wallet/WalletContext";
+import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 
 function Feature({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }) {
@@ -52,7 +53,7 @@ export function OnboardingScreen() {
       await create(); // generates a keypair, stored in the device keychain
       unlock();
     } catch (e) {
-      Alert.alert("Couldn't create wallet", (e as Error).message);
+      Alert.alert("Couldn't create wallet", humanizeError(e, { action: "load" }));
       setBusy(false);
     }
   };

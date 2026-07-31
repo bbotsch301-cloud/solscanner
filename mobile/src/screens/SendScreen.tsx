@@ -20,6 +20,7 @@ import { RiskCard } from "../components/RiskCard";
 import { useWallet } from "../wallet/WalletContext";
 import { assessRecipient, type RiskReport } from "../safety/risk";
 import { solscanTx } from "../solana/connection";
+import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
@@ -141,7 +142,7 @@ export function SendScreen() {
           : await sendToken(selected.mint, to, amtNum, selected.decimals);
       setSignature(sig);
     } catch (e) {
-      setError((e as Error).message);
+      setError(humanizeError(e, { action: "send", symbol: selected.symbol }));
     } finally {
       setSending(false);
     }

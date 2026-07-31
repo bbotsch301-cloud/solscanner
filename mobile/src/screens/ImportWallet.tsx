@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
+import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 
 export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
@@ -31,7 +32,7 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
       await importWallet(phrase);
       onDone();
     } catch (e) {
-      setError((e as Error).message);
+      setError(humanizeError(e, { action: "load" }));
       setBusy(false);
     }
   };

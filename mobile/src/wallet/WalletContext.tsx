@@ -24,6 +24,7 @@ import {
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import { connection } from "../solana/connection";
+import { humanizeError } from "../solana/errors";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas } from "../solana/tokens";
 import {
@@ -150,7 +151,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     try {
       await fetchBalances(kp.publicKey);
     } catch (e) {
-      setError((e as Error).message);
+      setError(humanizeError(e, { action: "load" }));
     } finally {
       setRefreshing(false);
     }
@@ -224,11 +225,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       );
       await fetchBalances(kp.publicKey);
     } catch (e) {
-      setError(
-        (e as Error).message.includes("429")
-          ? "Faucet rate-limited. Try again in a bit."
-          : (e as Error).message
-      );
+      setError(humanizeError(e, { action: "airdrop" }));
     } finally {
       setBusy(false);
     }

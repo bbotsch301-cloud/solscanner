@@ -18,11 +18,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { SWAP_TOKENS, executeSwap, fetchQuote, type Quote, type SwapToken } from "../solana/swap";
 import { IS_MAINNET, solscanTx } from "../solana/connection";
+import { humanizeError } from "../solana/errors";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
+const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112";
+// SOL to keep back for the network fee + token-account rent a swap may create.
+const SWAP_SOL_RESERVE = 0.005;
 
 function TokenPicker({
   selected,
@@ -54,7 +58,7 @@ export function SwapScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
-  const { keypair } = useWallet();
+  const { keypair, solBalance, tokens } = useWallet();
   const [from, setFrom] = useState<SwapToken>(SWAP_TOKENS[0]);
   const [to, setTo] = useState<SwapToken>(SWAP_TOKENS[1]);
   const [amt, setAmt] = useState("");
@@ -78,7 +82,7 @@ export function SwapScreen() {
         const q = await fetchQuote(from, to, amtNum, slippageBps);
         if (!cancelled) setQuote(q);
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (!cancelled) setError(humanizeError(e, { action: "swap", symbol: to.symbol }));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -97,8 +101,30 @@ export function SwapScreen() {
 
   const rate = quote && amtNum > 0 ? quote.outAmount / amtNum : null;
 
+  // Fast, specific check before we ever build/sign — so the common "not enough SOL"
+  // case shows real numbers instead of a cryptic on-chain simulation failure.
+  const preflightError = (): string | null => {
+    const sol = solBalance ?? 0;
+    if (from.mint === SOL_MINT_ADDR) {
+      const need = amtNum + SWAP_SOL_RESERVE;
+      if (sol < need)
+        return `You have ${fmtAmount(sol)} SOL. Swapping ${fmtAmount(amtNum)} SOL needs about ${fmtAmount(need)} SOL — the extra (~${SWAP_SOL_RESERVE}) covers the network fee and token-account rent. Add SOL or lower the amount.`;
+    } else {
+      const bal = tokens.find((t) => t.mint === from.mint)?.amount ?? 0;
+      if (amtNum > bal) return `You only have ${fmtAmount(bal)} ${from.symbol}. Lower the amount.`;
+      if (sol < SWAP_SOL_RESERVE)
+        return `You need a little SOL (about ${SWAP_SOL_RESERVE}) to pay the network fee, even when swapping ${from.symbol}. Add some SOL and try again.`;
+    }
+    return null;
+  };
+
   const doSwap = () => {
     if (!quote || !keypair) return;
+    const pre = preflightError();
+    if (pre) {
+      Alert.alert("Can't swap yet", pre);
+      return;
+    }
     Alert.alert(
       "Confirm swap",
       `Swap ${amtNum} ${from.symbol} for about ${fmtAmount(quote.outAmount)} ${to.symbol}? This uses real funds.`,
@@ -115,7 +141,7 @@ export function SwapScreen() {
                 { text: "Done", onPress: () => nav.goBack() },
               ]);
             } catch (e) {
-              Alert.alert("Swap failed", (e as Error).message);
+              Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol }));
             } finally {
               setSwapping(false);
             }
