@@ -13,8 +13,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { XGO_STATS, XGO_FEES } from "../config/xgo";
-import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
+import { XGO_FEES } from "../config/xgo";
+import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 const USDC_LOGO =
@@ -33,9 +33,6 @@ export function BuyScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
   const [pay, setPay] = useState("");
-
-  const payNum = parseFloat(pay) || 0;
-  const receive = payNum / XGO_STATS.priceUsd;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
@@ -70,15 +67,15 @@ export function BuyScreen() {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.panelLabel}>You receive (estimated)</Text>
+          <Text style={styles.panelLabel}>You receive</Text>
           <View style={styles.payRow}>
-            <Text style={styles.receive}>{receive > 0 ? fmtAmount(receive) : "0"}</Text>
+            <Text style={styles.receive}>—</Text>
             <View style={styles.assetPill}>
               <TokenAvatar symbol="XGO" color={colors.primary} size={22} />
               <Text style={styles.assetText}>XGO</Text>
             </View>
           </View>
-          <Text style={styles.rate}>1 XGO = {XGO_STATS.priceUsd} USDC</Text>
+          <Text style={styles.rate}>Pricing available when XGO lists on mainnet.</Text>
         </View>
 
         <View style={styles.details}>
@@ -95,8 +92,8 @@ export function BuyScreen() {
         <View style={styles.banner}>
           <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
           <Text style={styles.bannerText}>
-            Estimated at the current XGO price. Buying executes on mainnet once XGO is
-            listed — devnet has no market.
+            Buying opens when XGO lists on mainnet. The breakdown above is how value
+            flows on every XGO trade.
           </Text>
         </View>
       </ScrollView>

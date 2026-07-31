@@ -12,32 +12,12 @@ import { tierFor, multiplierFor } from "../config/staking";
 import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
-// Illustrative proposals to show the governance UX. Real proposals + on-chain
-// tallies arrive with the vote program; base votes here are in XGO.
-const EXAMPLE_PROPOSALS = [
-  {
-    id: "p1",
-    title: "Deploy 40% of treasury stablecoins into Solana lending",
-    desc: "Put idle USDC to work in an audited lending market to grow the treasury.",
-    forVotes: 4_200_000,
-    againstVotes: 1_100_000,
-  },
-  {
-    id: "p2",
-    title: "Fund the first real-world revenue pilot",
-    desc: "Allocate treasury capital to acquire a small revenue-producing operation as the first off-chain venture.",
-    forVotes: 2_800_000,
-    againstVotes: 2_400_000,
-  },
-];
-
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
   const { address, tokens, refresh, refreshing } = useWallet();
   const [supply, setSupply] = useState<number | null>(null);
   const [firstSeen, setFirstSeen] = useState<number | null>(null);
-  const [votes, setVotes] = useState<Record<string, "for" | "against">>({});
 
   const held = useMemo(
     () => tokens.find((t) => t.mint === XGO_MINT)?.amount ?? 0,
@@ -170,52 +150,15 @@ export function GovernScreen() {
       </View>
 
       {/* Proposals */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Proposals</Text>
-        <View style={styles.previewTag}>
-          <Text style={styles.previewText}>PREVIEW</Text>
-        </View>
+      <Text style={styles.sectionTitle}>Proposals</Text>
+      <View style={styles.emptyCard}>
+        <Ionicons name="documents-outline" size={22} color={colors.textFaint} />
+        <Text style={styles.emptyTitle}>No proposals yet</Text>
+        <Text style={styles.emptyText}>
+          On-chain voting opens when the governance program ships at launch. Your voting
+          power above is ready to use the moment it does.
+        </Text>
       </View>
-
-      {EXAMPLE_PROPOSALS.map((p) => {
-        const myVote = votes[p.id];
-        const forV = p.forVotes + (myVote === "for" ? power : 0);
-        const againstV = p.againstVotes + (myVote === "against" ? power : 0);
-        const totalV = forV + againstV;
-        const forPct = totalV ? (forV / totalV) * 100 : 50;
-        return (
-          <View key={p.id} style={styles.proposal}>
-            <Text style={styles.proposalTitle}>{p.title}</Text>
-            <Text style={styles.proposalDesc}>{p.desc}</Text>
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${forPct}%` }]} />
-            </View>
-            <View style={styles.tallyRow}>
-              <Text style={styles.tallyFor}>{forPct.toFixed(0)}% For · {fmtCompact(forV)}</Text>
-              <Text style={styles.tallyAgainst}>{fmtCompact(againstV)} · Against {(100 - forPct).toFixed(0)}%</Text>
-            </View>
-            <View style={styles.voteRow}>
-              <Pressable
-                onPress={() => setVotes((v) => ({ ...v, [p.id]: "for" }))}
-                style={[styles.voteBtn, myVote === "for" && styles.voteForActive]}
-              >
-                <Text style={[styles.voteText, myVote === "for" && { color: colors.bg }]}>Vote For</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setVotes((v) => ({ ...v, [p.id]: "against" }))}
-                style={[styles.voteBtn, myVote === "against" && styles.voteAgainstActive]}
-              >
-                <Text style={[styles.voteText, myVote === "against" && { color: colors.bg }]}>Against</Text>
-              </Pressable>
-            </View>
-            {myVote && (
-              <Text style={styles.votedNote}>
-                You voted {myVote} with {fmtCompact(power)} XGO (preview — not yet on-chain).
-              </Text>
-            )}
-          </View>
-        );
-      })}
     </ScrollView>
   );
 }
@@ -247,29 +190,12 @@ const styles = StyleSheet.create({
     marginTop: spacing(6),
     marginBottom: spacing(3),
   },
-  sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
-  previewTag: { backgroundColor: colors.warning + "22", borderRadius: radius.sm, paddingHorizontal: spacing(2), paddingVertical: 2, marginTop: spacing(3) },
-  previewText: { color: colors.warning, fontSize: font.tiny, fontWeight: "800" },
   rewardCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4), gap: spacing(3) },
   rewardRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   rewardLabel: { color: colors.textMuted, fontSize: font.body },
   rewardValue: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  claimBtn: { paddingVertical: spacing(3.5), borderRadius: radius.pill, alignItems: "center", marginTop: spacing(1) },
-  claimDisabled: { backgroundColor: colors.bgElevated },
-  claimDisabledText: { color: colors.textFaint, fontSize: font.body, fontWeight: "700" },
   rewardNote: { color: colors.textFaint, fontSize: font.small, lineHeight: 18 },
-  proposal: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4), gap: spacing(2), marginBottom: spacing(3) },
-  proposalTitle: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
-  proposalDesc: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: colors.negative + "55", overflow: "hidden", marginTop: spacing(2) },
-  barFill: { height: 8, backgroundColor: colors.positive },
-  tallyRow: { flexDirection: "row", justifyContent: "space-between" },
-  tallyFor: { color: colors.positive, fontSize: font.small, fontWeight: "700" },
-  tallyAgainst: { color: colors.negative, fontSize: font.small, fontWeight: "700" },
-  voteRow: { flexDirection: "row", gap: spacing(2), marginTop: spacing(2) },
-  voteBtn: { flex: 1, paddingVertical: spacing(3), borderRadius: radius.pill, alignItems: "center", backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.cardBorder },
-  voteForActive: { backgroundColor: colors.positive, borderColor: colors.positive },
-  voteAgainstActive: { backgroundColor: colors.negative, borderColor: colors.negative },
-  voteText: { color: colors.text, fontSize: font.body, fontWeight: "800" },
-  votedNote: { color: colors.textFaint, fontSize: font.small, marginTop: spacing(1) },
+  emptyCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(5), alignItems: "center", gap: spacing(2) },
+  emptyTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
+  emptyText: { color: colors.textMuted, fontSize: font.small, lineHeight: 19, textAlign: "center" },
 });

@@ -6,10 +6,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { fetchHoldings, TREASURY_ADDRESS, type Holdings } from "../solana/treasury";
-import { getSupply, XGO_MINT } from "../solana/token2022";
+import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
-import { XGO_STATS } from "../config/xgo";
 import { IS_MAINNET } from "../solana/connection";
 import { colors, compact, font, radius, spacing, usd } from "../theme";
 
@@ -34,14 +33,20 @@ export function EcosystemScreen() {
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
   const [supply, setSupply] = useState<number | null>(null);
+  const [fee, setFee] = useState<TransferFee | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [h, s] = await Promise.all([fetchHoldings(TREASURY_ADDRESS), getSupply(XGO_MINT)]);
+      const [h, s, f] = await Promise.all([
+        fetchHoldings(TREASURY_ADDRESS),
+        getSupply(XGO_MINT),
+        getTransferFee(XGO_MINT).catch(() => null),
+      ]);
       setHoldings(h);
       setSupply(s);
+      setFee(f);
       const mints = h.tokens.map((t) => t.mint);
       const [p, m] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
@@ -63,9 +68,6 @@ export function EcosystemScreen() {
   const treasuryValue =
     (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0) +
     (holdings?.tokens ?? []).reduce((s, t) => s + t.amount * (prices[t.mint]?.usdPrice ?? 0), 0);
-
-  const burned = supply != null ? Math.max(0, XGO_STATS.maxSupply - supply) : 0;
-  const burnedPct = supply ? (burned / XGO_STATS.maxSupply) * 100 : 0;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -115,23 +117,14 @@ export function EcosystemScreen() {
         </View>
       </LinearGradient>
 
-      {/* Stat tiles */}
+      {/* Stat tiles — live on-chain only */}
       <View style={styles.tiles}>
-        <StatTile label="XGO Price" value={`$${XGO_STATS.priceUsd}`} delta={`+${XGO_STATS.priceChange24h}%`} deltaUp />
         <StatTile label="Total Supply" value={supply != null ? compact(supply) : "—"} delta="XGO" />
-        <StatTile label="Holders" value={XGO_STATS.holders.toLocaleString()} delta="members" />
-      </View>
-
-      {/* Burn card */}
-      <View style={styles.burnCard}>
-        <View style={styles.burnIcon}>
-          <Ionicons name="flame" size={22} color={colors.warning} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.burnLabel}>XGO Burned</Text>
-          <Text style={styles.burnValue}>{compact(burned)} XGO</Text>
-        </View>
-        <Text style={styles.burnPct}>{burnedPct.toFixed(1)}%</Text>
+        <StatTile
+          label="Transfer Fee"
+          value={fee ? `${(fee.bps / 100).toFixed(2)}%` : "—"}
+          delta="on every transfer"
+        />
       </View>
 
       {/* Treasury assets preview */}
@@ -158,8 +151,8 @@ export function EcosystemScreen() {
       </View>
 
       <Text style={styles.note}>
-        Treasury value and XGO supply are live on-chain. Price and holders are placeholders
-        until XGO lists on mainnet and an indexer is connected.
+        Everything here is read live on-chain — treasury holdings, XGO supply, and the
+        transfer fee.
       </Text>
     </ScrollView>
   );
@@ -181,11 +174,6 @@ const styles = StyleSheet.create({
   tileLabel: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "700" },
   tileValue: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   tileDelta: { fontSize: font.tiny, fontWeight: "700" },
-  burnCard: { flexDirection: "row", alignItems: "center", gap: spacing(3), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginTop: spacing(3) },
-  burnIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.warning + "22", alignItems: "center", justifyContent: "center" },
-  burnLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
-  burnValue: { color: colors.text, fontSize: font.h3, fontWeight: "800", marginTop: 2 },
-  burnPct: { color: colors.warning, fontSize: font.h2, fontWeight: "900" },
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing(6), marginBottom: spacing(3) },
   sectionTitle: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
   viewAll: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
