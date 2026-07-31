@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "./src/screens/HomeScreen";
+import { TreasuryScreen } from "./src/screens/TreasuryScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
@@ -24,6 +25,7 @@ const Tab = createBottomTabNavigator();
 
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "wallet",
+  Treasury: "business",
   Activity: "time",
   Settings: "settings",
 };
@@ -48,6 +50,7 @@ function Tabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Treasury" component={TreasuryScreen} />
       <Tab.Screen name="Activity" component={ActivityScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
