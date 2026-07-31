@@ -1,4 +1,4 @@
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,17 +14,48 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
 import { solscanTx } from "../solana/connection";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
-import type { RootNav } from "../navigation";
+import type { RootNav, RootStackParamList } from "../navigation";
 
+const SOL_LOGO =
+  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
 const FEE_BUFFER = 0.001; // leave a little SOL for the network fee
+
+interface Asset {
+  key: string; // "SOL" or mint
+  symbol: string;
+  decimals: number;
+  balance: number;
+  mint: string | null; // null = native SOL
+  logoURI?: string;
+}
 
 export function SendScreen() {
   const nav = useNavigation<RootNav>();
+  const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
-  const { solBalance, send } = useWallet();
+  const { solBalance, tokens, send, sendToken } = useWallet();
+
+  const assets = useMemo<Asset[]>(
+    () => [
+      { key: "SOL", symbol: "SOL", decimals: 9, balance: solBalance ?? 0, mint: null, logoURI: SOL_LOGO },
+      ...tokens.map((t) => ({
+        key: t.mint,
+        symbol: t.symbol ?? shortAddress(t.mint, 4, 4),
+        decimals: t.decimals,
+        balance: t.amount,
+        mint: t.mint,
+        logoURI: t.logoURI,
+      })),
+    ],
+    [solBalance, tokens]
+  );
+
+  const [assetKey, setAssetKey] = useState(route.params?.asset ?? "SOL");
+  const selected = assets.find((a) => a.key === assetKey) ?? assets[0];
 
   const [recipient, setRecipient] = useState("");
   const [amt, setAmt] = useState("");
@@ -32,19 +63,24 @@ export function SendScreen() {
   const [signature, setSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const balance = solBalance ?? 0;
   const amtNum = parseFloat(amt) || 0;
-  const over = amtNum > balance;
+  const over = amtNum > selected.balance;
   const valid = useMemo(
-    () => recipient.trim().length >= 32 && amtNum > 0 && amtNum <= balance,
-    [recipient, amtNum, balance]
+    () => recipient.trim().length >= 32 && amtNum > 0 && amtNum <= selected.balance,
+    [recipient, amtNum, selected.balance]
   );
+
+  const maxAmount = selected.mint === null ? Math.max(0, selected.balance - FEE_BUFFER) : selected.balance;
 
   const doSend = async () => {
     setSending(true);
     setError(null);
     try {
-      const sig = await send(recipient.trim(), amtNum);
+      const to = recipient.trim();
+      const sig =
+        selected.mint === null
+          ? await send(to, amtNum)
+          : await sendToken(selected.mint, to, amtNum, selected.decimals);
       setSignature(sig);
     } catch (e) {
       setError((e as Error).message);
@@ -61,7 +97,7 @@ export function SendScreen() {
         </View>
         <Text style={styles.successTitle}>Sent</Text>
         <Text style={styles.successSub}>
-          {fmtAmount(amtNum)} SOL to {shortAddress(recipient.trim(), 4, 4)}
+          {fmtAmount(amtNum)} {selected.symbol} to {shortAddress(recipient.trim(), 4, 4)}
         </Text>
         <Pressable onPress={() => Linking.openURL(solscanTx(signature))}>
           <Text style={styles.link}>View on Solscan ↗</Text>
@@ -76,13 +112,34 @@ export function SendScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.title}>Send SOL</Text>
+        <Text style={styles.title}>Send</Text>
         <Pressable onPress={() => nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }} keyboardShouldPersistTaps="handled">
+        <View>
+          <Text style={styles.label}>Asset</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -spacing(1) }}>
+            <View style={styles.chips}>
+              {assets.map((a) => {
+                const active = a.key === selected.key;
+                return (
+                  <Pressable
+                    key={a.key}
+                    onPress={() => { setAssetKey(a.key); setAmt(""); }}
+                    style={[styles.chip, active && styles.chipActive]}
+                  >
+                    <TokenAvatar symbol={a.symbol} color={colors.primary} size={24} logoURI={a.logoURI} />
+                    <Text style={[styles.chipText, active && { color: colors.bg }]}>{a.symbol}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+
         <View>
           <Text style={styles.label}>Recipient address</Text>
           <TextInput
@@ -99,7 +156,7 @@ export function SendScreen() {
         <View>
           <View style={styles.amountHeader}>
             <Text style={styles.label}>Amount</Text>
-            <Text style={styles.balance}>Balance: {fmtAmount(balance)} SOL</Text>
+            <Text style={styles.balance}>Balance: {fmtAmount(selected.balance)} {selected.symbol}</Text>
           </View>
           <View style={[styles.amountBox, over && { borderColor: colors.negative }]}>
             <TextInput
@@ -111,13 +168,10 @@ export function SendScreen() {
               style={styles.amountInput}
             />
             <View style={styles.amountRight}>
-              <Pressable
-                onPress={() => setAmt(String(Math.max(0, balance - FEE_BUFFER)))}
-                style={styles.maxBtn}
-              >
+              <Pressable onPress={() => setAmt(String(maxAmount))} style={styles.maxBtn}>
                 <Text style={styles.maxText}>MAX</Text>
               </Pressable>
-              <Text style={styles.symbolTag}>SOL</Text>
+              <Text style={styles.symbolTag}>{selected.symbol}</Text>
             </View>
           </View>
           <Text style={[styles.usdLine, over && { color: colors.negative }]}>
@@ -134,11 +188,7 @@ export function SendScreen() {
           onPress={doSend}
           style={[styles.primaryBtn, (!valid || sending) && styles.primaryDisabled]}
         >
-          {sending ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.primaryText}>Send</Text>
-          )}
+          {sending ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Send</Text>}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -151,6 +201,20 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   label: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginBottom: spacing(2) },
+  chips: { flexDirection: "row", gap: spacing(2), paddingHorizontal: spacing(1) },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing(2),
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(2),
+    borderRadius: radius.pill,
+  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { color: colors.text, fontSize: font.body, fontWeight: "700" },
   input: {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -184,6 +248,6 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
   successCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginBottom: spacing(2) },
   successTitle: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  successSub: { color: colors.textMuted, fontSize: font.body },
+  successSub: { color: colors.textMuted, fontSize: font.body, textAlign: "center" },
   link: { color: colors.primary, fontSize: font.body, fontWeight: "700", marginTop: spacing(1) },
 });

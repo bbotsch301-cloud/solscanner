@@ -58,7 +58,7 @@ src/screens/          Home, Activity, Settings, Send, Receive, Onboarding, Lock
 
 - **Phase 2 — Devnet:** ✅ real keypair + secure storage, live balances, faucet, and
   signed transfers.
-- **Phase 3 — polish:** SPL token transfers, seed-phrase backup/import, price data,
-  richer parsed activity.
+- **Phase 3 — polish:** ✅ live prices, ✅ readable tokens (names/logos) + SPL token
+  transfers. Still open: seed-phrase backup/import, richer parsed activity, swaps.
 - **Phase 4 — Mainnet:** only after the above is solid, with explicit warnings and
   hardened key handling, does it touch real funds.

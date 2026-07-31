@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
@@ -8,6 +8,9 @@ import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER } from "../solana/connection";
 import { amount as fmtAmount, colors, font, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
+
+const SOL_LOGO =
+  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
 
 export function HomeScreen() {
   const nav = useNavigation<RootNav>();
@@ -71,8 +74,11 @@ export function HomeScreen() {
 
       <Text style={styles.sectionTitle}>Tokens</Text>
       <View style={styles.card}>
-        <View style={styles.tokenRow}>
-          <TokenAvatar symbol="SOL" color={colors.accent} />
+        <Pressable
+          onPress={() => nav.navigate("Send", { asset: "SOL" })}
+          style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+        >
+          <TokenAvatar symbol="SOL" color={colors.accent} logoURI={SOL_LOGO} />
           <View style={styles.mid}>
             <Text style={styles.symbol}>Solana</Text>
             <Text style={styles.sub}>
@@ -87,24 +93,33 @@ export function HomeScreen() {
               <Text style={styles.subUsd}>{usd(solBalance * solPrice)}</Text>
             )}
           </View>
-        </View>
+        </Pressable>
 
         {tokens.map((t) => {
           const p = priceOf(t.mint);
           return (
             <View key={t.mint}>
               <View style={styles.divider} />
-              <View style={styles.tokenRow}>
-                <TokenAvatar symbol={t.mint.slice(0, 3)} color={colors.primary} />
+              <Pressable
+                onPress={() => nav.navigate("Send", { asset: t.mint })}
+                style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+              >
+                <TokenAvatar
+                  symbol={t.symbol ?? t.mint.slice(0, 3)}
+                  color={colors.primary}
+                  logoURI={t.logoURI}
+                />
                 <View style={styles.mid}>
-                  <Text style={styles.symbol}>{shortAddress(t.mint, 4, 4)}</Text>
-                  <Text style={styles.sub}>SPL token</Text>
+                  <Text style={styles.symbol}>{t.name ?? t.symbol ?? shortAddress(t.mint, 4, 4)}</Text>
+                  <Text style={styles.sub}>
+                    {fmtAmount(t.amount)} {t.symbol ?? "SPL"}
+                  </Text>
                 </View>
                 <View style={styles.right}>
                   <Text style={styles.value}>{fmtAmount(t.amount)}</Text>
                   {p != null && <Text style={styles.subUsd}>{usd(t.amount * p)}</Text>}
                 </View>
-              </View>
+              </Pressable>
             </View>
           );
         })}

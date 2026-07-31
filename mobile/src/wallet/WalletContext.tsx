@@ -16,8 +16,14 @@ import {
   Transaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
+import {
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
 import { connection } from "../solana/connection";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
+import { fetchTokenMetas } from "../solana/tokens";
 import { clearKeypair, createKeypair, loadKeypair } from "./keystore";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
@@ -28,6 +34,9 @@ export interface SplToken {
   mint: string;
   amount: number;
   decimals: number;
+  symbol?: string;
+  name?: string;
+  logoURI?: string;
 }
 
 interface WalletState {
@@ -56,6 +65,12 @@ interface WalletState {
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
   send: (to: string, sol: number) => Promise<string>;
+  sendToken: (
+    mint: string,
+    to: string,
+    uiAmount: number,
+    decimals: number
+  ) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -93,11 +108,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       .filter((t) => t.amount > 0);
     setTokens(spl);
 
-    // Live prices are best-effort — never fail a balance refresh over them.
-    try {
-      setPrices(await fetchPrices([WSOL_MINT, ...spl.map((t) => t.mint)]));
-    } catch {
-      /* leave last known prices in place */
+    const mints = spl.map((t) => t.mint);
+    // Prices and metadata are best-effort — never fail a balance refresh over them.
+    const [, metas] = await Promise.all([
+      fetchPrices([WSOL_MINT, ...mints])
+        .then(setPrices)
+        .catch(() => {}),
+      fetchTokenMetas(mints).catch(() => ({}) as Record<string, never>),
+    ]);
+    if (metas && Object.keys(metas).length) {
+      setTokens(spl.map((t) => ({ ...t, ...metas[t.mint] })));
     }
   }, []);
 
@@ -188,6 +208,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return sig;
   }, [fetchBalances]);
 
+  const sendToken = useCallback(
+    async (mint: string, to: string, uiAmount: number, decimals: number): Promise<string> => {
+      const kp = keypairRef.current;
+      if (!kp) throw new Error("No wallet");
+      const mintPk = new PublicKey(mint);
+      const toPk = new PublicKey(to); // throws on invalid address
+      const fromAta = await getAssociatedTokenAddress(mintPk, kp.publicKey);
+      const toAta = await getAssociatedTokenAddress(mintPk, toPk);
+
+      const tx = new Transaction();
+      // Create the recipient's token account if they don't have one yet.
+      const toInfo = await connection.getAccountInfo(toAta);
+      if (!toInfo) {
+        tx.add(
+          createAssociatedTokenAccountInstruction(kp.publicKey, toAta, toPk, mintPk)
+        );
+      }
+      const raw = BigInt(Math.round(uiAmount * 10 ** decimals));
+      tx.add(
+        createTransferCheckedInstruction(fromAta, mintPk, toAta, kp.publicKey, raw, decimals)
+      );
+
+      const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
+      fetchBalances(kp.publicKey).catch(() => {});
+      return sig;
+    },
+    [fetchBalances]
+  );
+
   const value = useMemo<WalletState>(() => {
     const solPrice = prices[WSOL_MINT]?.usdPrice ?? null;
     const solChange24h = prices[WSOL_MINT]?.priceChange24h ?? null;
@@ -217,8 +266,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       refresh,
       airdrop,
       send,
+      sendToken,
     };
-  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, reset, refresh, airdrop, send]);
+  }, [initializing, keypair, solBalance, tokens, prices, refreshing, busy, error, create, reset, refresh, airdrop, send, sendToken]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
