@@ -124,7 +124,7 @@ export function HomeScreen() {
       <Text style={styles.sectionTitle}>Tokens</Text>
       <View style={styles.card}>
         <Pressable
-          onPress={() => nav.navigate("Send", { asset: "native" })}
+          onPress={() => nav.navigate("TokenDetail", { asset: "native" })}
           style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
         >
           <TokenAvatar symbol={native.symbol} color={activeChain.color} />
@@ -144,7 +144,7 @@ export function HomeScreen() {
           <View key={a.key}>
             <View style={styles.divider} />
             <Pressable
-              onPress={() => nav.navigate("Send", { asset: a.key })}
+              onPress={() => nav.navigate("TokenDetail", { asset: a.key })}
               style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
             >
               <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
