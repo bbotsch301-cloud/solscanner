@@ -33,6 +33,17 @@ const PREFER_OWN_POOL_MAX_WORSE_BPS = Number(
   process.env.EXPO_PUBLIC_TREASURY_MAX_WORSE_BPS ?? 150
 );
 
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+/**
+ * The token the treasury pool quotes XGO against. The primary pool is XGO/SOL —
+ * SOL is Solana's universal routing hop, so an XGO/SOL pool sits on the XGO leg of
+ * almost every XGO trade (USDC→SOL→XGO, BONK→SOL→XGO, …), not just direct SOL
+ * swaps. Only SOL↔XGO is a single-hop trade against our pool; for other XGO pairs
+ * we let Jupiter hop through SOL and detect when the route used our pool.
+ */
+const TREASURY_QUOTE_MINT = SOL_MINT;
+
 const JUP_QUOTE = "https://lite-api.jup.ag/swap/v1/quote";
 
 const LOGO = (mint: string) =>
@@ -126,49 +137,53 @@ export async function fetchQuote(
   if (rawAmount <= 0) throw new Error("Enter an amount");
 
   const isTreasuryPair = input.mint === XGO_MINT || output.mint === XGO_MINT;
+  const otherMint = input.mint === XGO_MINT ? output.mint : input.mint;
+  // Only SOL↔XGO is a single hop against our pool; pin routing just for that case.
+  // Other XGO pairs route through SOL, and we detect our pool from the labels.
+  const directlyPoolable = isTreasuryPair && otherMint === TREASURY_QUOTE_MINT;
 
-  // Best open-market route, and (for XGO) a route pinned to the treasury pool.
-  const [market, treasury] = await Promise.all([
+  const [market, pinned] = await Promise.all([
     requestQuote(input.mint, output.mint, rawAmount, slippageBps, false),
-    isTreasuryPair
+    directlyPoolable
       ? requestQuote(input.mint, output.mint, rawAmount, slippageBps, true)
       : Promise.resolve(null),
   ]);
 
-  if (!market && !treasury) throw new Error("No route available");
+  if (!market && !pinned) throw new Error("No route available");
 
-  // Prefer the treasury pool unless it's worse than the market by more than the
-  // "crazy off" threshold. If there's no market quote, take whatever we have.
+  // Prefer the pinned treasury pool unless it's worse than the open market by more
+  // than the "crazy off" threshold. If only one quote exists, take it.
   let chosen: RawQuote;
-  let venue: Venue;
   let fellBack = false;
   let gapBps: number | null = null;
 
-  if (treasury && market) {
-    gapBps = Math.max(0, ((market.outRaw - treasury.outRaw) / market.outRaw) * 10000);
+  if (pinned && market) {
+    gapBps = Math.max(0, ((market.outRaw - pinned.outRaw) / market.outRaw) * 10000);
     if (gapBps <= PREFER_OWN_POOL_MAX_WORSE_BPS) {
-      chosen = treasury;
-      venue = "treasury";
+      chosen = pinned;
     } else {
       chosen = market;
-      venue = "market";
-      fellBack = true;
+      fellBack = true; // our pool was priced too far off; protect the trade
     }
-  } else if (treasury) {
-    chosen = treasury;
-    venue = "treasury";
   } else {
-    chosen = market!;
-    venue = "market";
+    chosen = pinned ?? market!;
   }
 
   const j = chosen.json;
+  const routeLabels = (j.routePlan ?? [])
+    .map((r) => r.swapInfo?.label)
+    .filter((l): l is string => !!l);
+  // Venue is truth-checked against the actual route: treasury when any leg runs on
+  // our AMM (covers both the pinned SOL↔XGO hop and a market route that hops
+  // through our XGO/SOL pool, e.g. USDC→SOL→XGO).
+  const venue: Venue = routeLabels.some((l) => TREASURY_DEX_LABELS.includes(l))
+    ? "treasury"
+    : "market";
+
   return {
     outAmount: chosen.outRaw / 10 ** output.decimals,
     priceImpactPct: Math.abs(Number(j.priceImpactPct ?? 0)) * 100,
-    routeLabels: (j.routePlan ?? [])
-      .map((r) => r.swapInfo?.label)
-      .filter((l): l is string => !!l),
+    routeLabels,
     raw: j,
     venue,
     isTreasuryPair,

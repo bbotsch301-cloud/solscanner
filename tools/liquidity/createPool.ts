@@ -6,11 +6,14 @@
  * liquidity, the app's existing swap flow already uses it and LP fees accrue to the
  * treasury with no app changes.
  *
- *   POOL_QUOTE=USDC  SEED_BASE=1000000  SEED_QUOTE=25000  npm run create-pool
+ *   SEED_BASE=1000000  SEED_QUOTE=90  npm run create-pool          # XGO/SOL (default)
+ *   POOL_QUOTE=USDC  SEED_BASE=1000000  SEED_QUOTE=25000  npm run create-pool  # XGO/USDC
  *
  * SEED_BASE  = XGO to deposit (whole tokens; base side)
- * SEED_QUOTE = quote to deposit (whole USDC or SOL) — sets the opening price
- * POOL_QUOTE = USDC (default) or SOL
+ * SEED_QUOTE = quote to deposit (whole SOL or USDC) — sets the opening price
+ * POOL_QUOTE = SOL (default) or USDC. XGO/SOL is the primary pool: SOL is Solana's
+ *              universal routing hop, so an XGO/SOL pool sits on the XGO leg of
+ *              almost every XGO trade, maximizing fee capture.
  *
  * CPMM (not CLMM) is deliberate: full-range constant product, permissionless
  * creation, and it supports Token-2022 mints with transfer fees (addSupportMintExt).
@@ -32,15 +35,15 @@ function toBaseUnits(whole: string, decimals: number): BN {
 }
 
 async function main() {
-  const quoteSym = (process.env.POOL_QUOTE || "USDC").toUpperCase();
-  if (quoteSym !== "USDC" && quoteSym !== "SOL") die("POOL_QUOTE must be USDC or SOL.");
+  const quoteSym = (process.env.POOL_QUOTE || "SOL").toUpperCase();
+  if (quoteSym !== "USDC" && quoteSym !== "SOL") die("POOL_QUOTE must be SOL or USDC.");
   const seedBase = process.env.SEED_BASE;
   const seedQuote = process.env.SEED_QUOTE;
   if (!seedBase || !seedQuote) die("Set SEED_BASE (XGO) and SEED_QUOTE amounts.");
 
   const { raydium, owner } = await initSdk();
 
-  const quoteMint = quoteSym === "USDC" ? MINTS.USDC : MINTS.SOL;
+  const quoteMint = quoteSym === "SOL" ? MINTS.SOL : MINTS.USDC;
   // getTokenInfo pulls decimals + program (Token-2022 vs legacy) for each side.
   const mintA = await raydium.token.getTokenInfo(MINTS.XGO); // base = XGO
   const mintB = await raydium.token.getTokenInfo(quoteMint); // quote = USDC/SOL
