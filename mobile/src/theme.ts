@@ -60,7 +60,15 @@ export function usd(n: number): string {
   });
 }
 
-/** Format a token amount compactly. */
+/** Format a token amount with up to 4 decimals. */
 export function amount(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
+/** Compact large amounts so they never overflow: 2.94B, 1.2M, 5.0K. */
+export function compact(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }

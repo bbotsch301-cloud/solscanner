@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { TreasuryScreen } from "./src/screens/TreasuryScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
@@ -25,10 +26,10 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Home: "wallet",
+  Home: "home",
+  Wallet: "wallet",
   Treasury: "business",
   Govern: "people",
-  Activity: "time",
   Settings: "settings",
 };
 
@@ -51,10 +52,10 @@ function Tabs() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Home" component={EcosystemScreen} />
+      <Tab.Screen name="Wallet" component={HomeScreen} />
       <Tab.Screen name="Treasury" component={TreasuryScreen} />
       <Tab.Screen name="Govern" component={GovernScreen} />
-      <Tab.Screen name="Activity" component={ActivityScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -98,6 +99,7 @@ function Root() {
           <Stack.Screen name="Receive" component={ReceiveScreen} />
           <Stack.Screen name="Swap" component={SwapScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
+          <Stack.Screen name="Activity" component={ActivityScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>

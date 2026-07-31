@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Receive: undefined;
   Swap: undefined;
   Backup: undefined;
+  Activity: undefined;
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

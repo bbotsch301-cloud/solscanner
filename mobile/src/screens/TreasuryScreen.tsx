@@ -9,7 +9,7 @@ import { fetchHoldings, TREASURY_ADDRESS, type Holdings } from "../solana/treasu
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { solscanAccount, CLUSTER } from "../solana/connection";
-import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
+import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
 
 const SOL_LOGO =
   "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
@@ -151,7 +151,7 @@ function Holding({
       <TokenAvatar symbol={symbol} color={color} logoURI={logoURI} />
       <View style={styles.mid}>
         <Text style={styles.symbol}>{name}</Text>
-        <Text style={styles.sub}>{fmtAmount(amount)} {symbol}</Text>
+        <Text style={styles.sub}>{compact(amount)} {symbol}</Text>
       </View>
       {usdValue != null && <Text style={styles.value}>{usd(usdValue)}</Text>}
     </View>

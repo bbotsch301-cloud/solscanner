@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
-import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
+import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
 
 // Illustrative proposals to show the governance UX. Real proposals + on-chain
 // tallies arrive with the vote program; base votes here are in XGO.
@@ -25,9 +25,6 @@ const EXAMPLE_PROPOSALS = [
     againstVotes: 2_400_000,
   },
 ];
-
-const fmtCompact = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(Math.round(n));
 
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
@@ -72,7 +69,9 @@ export function GovernScreen() {
         <View style={styles.cardInner}>
           <Text style={styles.cardLabel}>Your voting power</Text>
           <View style={styles.powerRow}>
-            <Text style={styles.power}>{fmtAmount(power)}</Text>
+            <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
+              {fmtCompact(power)}
+            </Text>
             <Text style={styles.powerUnit}>XGO</Text>
           </View>
           <Text style={styles.cardSub}>
@@ -149,7 +148,7 @@ export function GovernScreen() {
             </View>
             {myVote && (
               <Text style={styles.votedNote}>
-                You voted {myVote} with {fmtAmount(power)} XGO (preview — not yet on-chain).
+                You voted {myVote} with {fmtCompact(power)} XGO (preview — not yet on-chain).
               </Text>
             )}
           </View>

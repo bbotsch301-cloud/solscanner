@@ -1,12 +1,13 @@
 import { useNavigation } from "@react-navigation/native";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER } from "../solana/connection";
-import { amount as fmtAmount, colors, font, shortAddress, spacing } from "../theme";
+import { amount as fmtAmount, compact, colors, font, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 const SOL_LOGO =
@@ -34,9 +35,6 @@ export function HomeScreen() {
   const usd = (n: number) =>
     n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-
   return (
     <ScrollView
       style={styles.screen}
@@ -46,11 +44,11 @@ export function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
       }
     >
-      <View style={styles.greetRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.greet}>{greeting}</Text>
-          <Text style={styles.greetSub}>Building a Better Tomorrow Together</Text>
-        </View>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Wallet</Text>
+        <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
+          <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+        </Pressable>
       </View>
 
       <BalanceCard
@@ -122,11 +120,11 @@ export function HomeScreen() {
                 <View style={styles.mid}>
                   <Text style={styles.symbol}>{t.name ?? t.symbol ?? shortAddress(t.mint, 4, 4)}</Text>
                   <Text style={styles.sub}>
-                    {fmtAmount(t.amount)} {t.symbol ?? "SPL"}
+                    {compact(t.amount)} {t.symbol ?? "SPL"}
                   </Text>
                 </View>
                 <View style={styles.right}>
-                  <Text style={styles.value}>{fmtAmount(t.amount)}</Text>
+                  <Text style={styles.value}>{compact(t.amount)}</Text>
                   {p != null && <Text style={styles.subUsd}>{usd(t.amount * p)}</Text>}
                 </View>
               </Pressable>
@@ -140,9 +138,8 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  greetRow: { marginBottom: spacing(4) },
-  greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, fontWeight: "600" },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
+  headerTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",

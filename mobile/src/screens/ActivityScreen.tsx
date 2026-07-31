@@ -1,3 +1,4 @@
+import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
 import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,6 +7,7 @@ import { useWallet } from "../wallet/WalletContext";
 import { fetchHistory, type TxSummary } from "../solana/history";
 import { solscanTx } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
+import type { RootNav } from "../navigation";
 
 function timeAgo(ts: number | null): string {
   if (!ts) return "";
@@ -38,6 +40,7 @@ function Row({ item }: { item: TxSummary }) {
 
 export function ActivityScreen() {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<RootNav>();
   const { address } = useWallet();
   const [txs, setTxs] = useState<TxSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,7 +63,12 @@ export function ActivityScreen() {
 
   return (
     <View style={styles.screen}>
-      <Text style={[styles.header, { paddingTop: insets.top + spacing(2) }]}>Activity</Text>
+      <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
+        <Text style={styles.header}>Activity</Text>
+        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
+          <Ionicons name="close" size={26} color={colors.textMuted} />
+        </Pressable>
+      </View>
       <FlatList
         data={txs}
         keyExtractor={(t) => t.signature}
@@ -85,7 +93,8 @@ export function ActivityScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  header: { color: colors.text, fontSize: font.h1, fontWeight: "900", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
+  header: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
   icon: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   mid: { flex: 1, gap: 2 },
