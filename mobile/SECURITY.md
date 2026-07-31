@@ -4,6 +4,14 @@
 - **Seed generation**: 24-word / 256-bit BIP39 via `@noble/hashes` `randomBytes`, which
   uses the OS CSPRNG (`crypto.getRandomValues`, backed by iOS SecRandom / Android
   SecureRandom). No `Math.random` fallback — it throws if no CSPRNG is present.
+- **Entropy guard** (`wallet/entropy.ts`): `generateMnemonic()` calls
+  `assertSecureEntropy()` before minting any seed and REFUSES to create a wallet unless a
+  real CSPRNG is producing the bytes. It detects the one weak path in the stack —
+  `react-native-get-random-values`' `Math.random()` fallback under legacy Chrome remote
+  debugging (`__DEV__` + no `nativeCallSyncHook`, non-bridgeless; unreachable on Expo
+  SDK 48+ where native ExpoCrypto is always used) — and runs a non-degenerate-output smoke
+  test to catch a stuck/absent generator. Motivated by the Coldcard Mk3 weak-entropy
+  thefts (Jul 2025): we fail loudly rather than ever derive a key from guessable randomness.
 - **Derivation**: Solana ed25519 (SLIP-0010) + EVM secp256k1 (`@scure/bip32`), both
   deterministic from the single seed.
 - **BIP39 passphrase (25th word)**: optional, behind an Advanced toggle on create/import.

@@ -11,6 +11,7 @@ import * as bip39 from "bip39";
 import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import { Keypair } from "@solana/web3.js";
+import { assertSecureEntropy } from "./entropy";
 
 const ED25519_SEED = new TextEncoder().encode("ed25519 seed");
 const HARDENED_OFFSET = 0x80000000;
@@ -45,6 +46,9 @@ export function normalizeMnemonic(mnemonic: string): string {
 }
 
 export function generateMnemonic(): string {
+  // Refuse to mint a seed unless the OS CSPRNG is genuinely available — never fall
+  // back to weak randomness (the root cause of the Coldcard Mk3 key thefts).
+  assertSecureEntropy();
   return bip39.generateMnemonic(256);
 }
 

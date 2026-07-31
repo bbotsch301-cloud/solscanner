@@ -41,7 +41,7 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   const asset = ctx.symbol ?? "the token";
 
   // Messages we authored are already friendly and specific — pass them through.
-  if (/recovery phrase|already have a wallet/.test(low)) return raw;
+  if (/recovery phrase|already have a wallet|secure randomness/.test(low)) return raw;
 
   // Connectivity ----------------------------------------------------------------
   if (/network request failed|failed to fetch|networkerror|timeout|timed out|econnreset|network error/.test(low))
