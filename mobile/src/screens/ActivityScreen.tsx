@@ -4,8 +4,8 @@ import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
-import { fetchHistory, type TxSummary } from "../solana/history";
-import { solscanTx } from "../solana/connection";
+import { fetchActivity, type HistoryItem } from "../activity";
+import { evmHistoryEnabled } from "../evm/history";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -17,20 +17,38 @@ function timeAgo(ts: number | null): string {
   return `${Math.floor(s / 86_400)}d ago`;
 }
 
-function Row({ item }: { item: TxSummary }) {
-  const color = item.failed ? colors.negative : colors.primary;
+function titleFor(item: HistoryItem): string {
+  if (item.failed) return "Failed transaction";
+  const verb = item.direction === "in" ? "Received" : item.direction === "out" ? "Sent" : null;
+  if (verb) return item.valueLabel ? `${verb} ${item.valueLabel}` : verb;
+  return "Transaction";
+}
+
+function Row({ item }: { item: HistoryItem }) {
+  const color = item.failed
+    ? colors.negative
+    : item.direction === "in"
+      ? colors.positive
+      : colors.primary;
+  const icon = item.failed
+    ? "close"
+    : item.direction === "in"
+      ? "arrow-down"
+      : item.direction === "out"
+        ? "arrow-up"
+        : "swap-horizontal";
   return (
     <Pressable
-      onPress={() => Linking.openURL(solscanTx(item.signature))}
+      onPress={() => Linking.openURL(item.explorerUrl)}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
     >
       <View style={[styles.icon, { backgroundColor: color + "22" }]}>
-        <Ionicons name={item.failed ? "close" : "swap-horizontal"} size={18} color={color} />
+        <Ionicons name={icon} size={18} color={color} />
       </View>
       <View style={styles.mid}>
-        <Text style={styles.title}>{item.failed ? "Failed transaction" : "Transaction"}</Text>
+        <Text style={styles.title}>{titleFor(item)}</Text>
         <Text style={styles.sub}>
-          {shortAddress(item.signature, 6, 6)} · {timeAgo(item.blockTime)}
+          {shortAddress(item.id, 6, 6)} · {timeAgo(item.time)}
         </Text>
       </View>
       <Ionicons name="open-outline" size={16} color={colors.textFaint} />
@@ -41,21 +59,21 @@ function Row({ item }: { item: TxSummary }) {
 export function ActivityScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
-  const { address } = useWallet();
-  const [txs, setTxs] = useState<TxSummary[]>([]);
+  const { activeChain, activeAddress } = useWallet();
+  const [txs, setTxs] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!address) return;
+    if (!activeAddress) return;
     setLoading(true);
     try {
-      setTxs(await fetchHistory(address, 25));
+      setTxs(await fetchActivity(activeChain, activeAddress, 25));
     } catch {
       /* keep previous list on transient errors */
     } finally {
       setLoading(false);
     }
-  }, [address]);
+  }, [activeChain, activeAddress]);
 
   useEffect(() => {
     load();
@@ -71,7 +89,7 @@ export function ActivityScreen() {
       </View>
       <FlatList
         data={txs}
-        keyExtractor={(t) => t.signature}
+        keyExtractor={(t) => t.id}
         renderItem={({ item }) => <Row item={item} />}
         contentContainerStyle={{ paddingHorizontal: spacing(4), paddingBottom: spacing(10), flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
@@ -80,7 +98,9 @@ export function ActivityScreen() {
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No transactions yet.</Text>
               <Text style={styles.emptySub}>
-                Airdrop some test SOL or send a transaction to see it here.
+                {activeChain.kind === "evm" && !evmHistoryEnabled
+                  ? "Transaction history on this chain needs an Etherscan API key (set EXPO_PUBLIC_ETHERSCAN_KEY)."
+                  : "Send or receive a transaction to see it here."}
               </Text>
             </View>
           ) : null

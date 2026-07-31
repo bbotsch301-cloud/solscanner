@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchHistory, type TxSummary } from "../solana/history";
+import { fetchActivity, type HistoryItem } from "../activity";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { ChainSwitcher } from "../components/ChainSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER, IS_MAINNET, solscanTx } from "../solana/connection";
+import { CLUSTER, IS_MAINNET } from "../solana/connection";
 import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -43,18 +43,18 @@ export function HomeScreen() {
   const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
   const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
 
-  const [recent, setRecent] = useState<TxSummary[]>([]);
+  const [recent, setRecent] = useState<HistoryItem[]>([]);
   const loadRecent = useCallback(async () => {
-    if (!isSolana || !activeAddress) {
+    if (!activeAddress) {
       setRecent([]);
       return;
     }
     try {
-      setRecent(await fetchHistory(activeAddress, 4));
+      setRecent(await fetchActivity(activeChain, activeAddress, 4));
     } catch {
       /* best-effort */
     }
-  }, [isSolana, activeAddress]);
+  }, [activeChain, activeAddress]);
   useEffect(() => {
     loadRecent();
   }, [loadRecent]);
@@ -68,11 +68,9 @@ export function HomeScreen() {
     >
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>Wallet</Text>
-        {isSolana && (
-          <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
-            <Ionicons name="time-outline" size={22} color={colors.textMuted} />
-          </Pressable>
-        )}
+        <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
+          <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+        </Pressable>
       </View>
 
       <ChainSwitcher />
@@ -172,28 +170,45 @@ export function HomeScreen() {
             </Pressable>
           </View>
           <View style={styles.card}>
-            {recent.map((tx, i) => (
-              <View key={tx.signature}>
-                {i > 0 && <View style={styles.divider} />}
-                <Pressable
-                  onPress={() => Linking.openURL(solscanTx(tx.signature))}
-                  style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
-                >
-                  <View style={[styles.actIcon, { backgroundColor: (tx.failed ? colors.negative : colors.primary) + "22" }]}>
-                    <Ionicons
-                      name={tx.failed ? "close" : "swap-horizontal"}
-                      size={16}
-                      color={tx.failed ? colors.negative : colors.primary}
-                    />
-                  </View>
-                  <View style={styles.mid}>
-                    <Text style={styles.symbol}>{tx.failed ? "Failed" : "Transaction"}</Text>
-                    <Text style={styles.sub}>{shortAddress(tx.signature, 6, 6)} · {timeAgo(tx.blockTime)}</Text>
-                  </View>
-                  <Ionicons name="open-outline" size={15} color={colors.textFaint} />
-                </Pressable>
-              </View>
-            ))}
+            {recent.map((tx, i) => {
+              const color = tx.failed
+                ? colors.negative
+                : tx.direction === "in"
+                  ? colors.positive
+                  : colors.primary;
+              const icon = tx.failed
+                ? "close"
+                : tx.direction === "in"
+                  ? "arrow-down"
+                  : tx.direction === "out"
+                    ? "arrow-up"
+                    : "swap-horizontal";
+              const title = tx.failed
+                ? "Failed"
+                : tx.direction === "in"
+                  ? `Received${tx.valueLabel ? ` ${tx.valueLabel}` : ""}`
+                  : tx.direction === "out"
+                    ? `Sent${tx.valueLabel ? ` ${tx.valueLabel}` : ""}`
+                    : "Transaction";
+              return (
+                <View key={tx.id}>
+                  {i > 0 && <View style={styles.divider} />}
+                  <Pressable
+                    onPress={() => Linking.openURL(tx.explorerUrl)}
+                    style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+                  >
+                    <View style={[styles.actIcon, { backgroundColor: color + "22" }]}>
+                      <Ionicons name={icon} size={16} color={color} />
+                    </View>
+                    <View style={styles.mid}>
+                      <Text style={styles.symbol}>{title}</Text>
+                      <Text style={styles.sub}>{shortAddress(tx.id, 6, 6)} · {timeAgo(tx.time)}</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={15} color={colors.textFaint} />
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         </>
       )}
