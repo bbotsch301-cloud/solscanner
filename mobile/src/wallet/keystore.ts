@@ -3,6 +3,11 @@
  * mnemonic and the derived secret key live in the device keychain via
  * expo-secure-store. Legacy wallets (created before recovery phrases) are still
  * loaded from their stored secret key.
+ *
+ * Secrets are written with WHEN_UNLOCKED_THIS_DEVICE_ONLY: encrypted by the OS
+ * (iOS Keychain / Android Keystore), readable only while the device is unlocked, and
+ * — critically — NEVER included in iCloud/iTunes backups and never synced to the
+ * cloud. It's local to this one device, or nowhere.
  */
 import * as SecureStore from "expo-secure-store";
 import { Keypair } from "@solana/web3.js";
@@ -12,6 +17,12 @@ import { deriveEvmAccount, type EvmAccount } from "./evm";
 const SECRET_KEY = "solwallet.secretKey.v1";
 const MNEMONIC = "solwallet.mnemonic.v1";
 const NEEDS_BACKUP = "solwallet.needsBackup.v1";
+const HARDENED = "solwallet.hardened.v1";
+
+/** Local-only, unlock-gated, excluded from device backups. */
+const SECURE_OPTS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
 
 /** True when a freshly-created wallet hasn't been backed up yet. */
 export async function getNeedsBackup(): Promise<boolean> {
@@ -24,12 +35,32 @@ export async function setNeedsBackup(v: boolean): Promise<void> {
 }
 
 async function persist(mnemonic: string | null, kp: Keypair): Promise<void> {
-  if (mnemonic) await SecureStore.setItemAsync(MNEMONIC, mnemonic);
-  await SecureStore.setItemAsync(SECRET_KEY, JSON.stringify(Array.from(kp.secretKey)));
+  if (mnemonic) await SecureStore.setItemAsync(MNEMONIC, mnemonic, SECURE_OPTS);
+  await SecureStore.setItemAsync(SECRET_KEY, JSON.stringify(Array.from(kp.secretKey)), SECURE_OPTS);
+  await SecureStore.setItemAsync(HARDENED, "1", SECURE_OPTS);
+}
+
+/**
+ * One-time upgrade: rewrite pre-existing secrets (stored before this hardening) with
+ * WHEN_UNLOCKED_THIS_DEVICE_ONLY so they leave any device backup. Keychain accessibility
+ * only takes effect on write, so old items keep their old attributes until re-stored.
+ */
+async function migrateHardening(): Promise<void> {
+  try {
+    if ((await SecureStore.getItemAsync(HARDENED)) === "1") return;
+    const mnemonic = await SecureStore.getItemAsync(MNEMONIC);
+    const secret = await SecureStore.getItemAsync(SECRET_KEY);
+    if (mnemonic) await SecureStore.setItemAsync(MNEMONIC, mnemonic, SECURE_OPTS);
+    if (secret) await SecureStore.setItemAsync(SECRET_KEY, secret, SECURE_OPTS);
+    await SecureStore.setItemAsync(HARDENED, "1", SECURE_OPTS);
+  } catch {
+    /* best-effort; never block wallet load */
+  }
 }
 
 export async function loadKeypair(): Promise<Keypair | null> {
   try {
+    await migrateHardening();
     const mnemonic = await SecureStore.getItemAsync(MNEMONIC);
     if (mnemonic) return keypairFromMnemonic(mnemonic);
     const stored = await SecureStore.getItemAsync(SECRET_KEY);
@@ -86,4 +117,5 @@ export async function clearKeypair(): Promise<void> {
   await SecureStore.deleteItemAsync(SECRET_KEY);
   await SecureStore.deleteItemAsync(MNEMONIC);
   await SecureStore.deleteItemAsync(NEEDS_BACKUP);
+  await SecureStore.deleteItemAsync(HARDENED);
 }

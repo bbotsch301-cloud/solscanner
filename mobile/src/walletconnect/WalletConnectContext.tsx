@@ -168,6 +168,9 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
 
   const proposerMeta = proposal?.params?.proposer?.metadata;
   const reqMethod = request?.params?.request?.method;
+  const reqSummary = request ? describeRequest(reqMethod, request.params?.request?.params, request.params?.chainId) : null;
+  const reqSession = request ? sessions.find((s: any) => s.topic === request.topic) : null;
+  const reqAppName = reqSession?.peer?.metadata?.name;
 
   return (
     <Ctx.Provider value={value}>
@@ -192,12 +195,23 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
       <Modal visible={!!request} transparent animationType="fade" onRequestClose={rejectRequest}>
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
-            <Text style={styles.title}>Review request</Text>
-            <Text style={styles.method}>{reqMethod}</Text>
-            <Text style={styles.body} numberOfLines={8}>
-              {request ? describeRequest(reqMethod, request.params?.request?.params) : ""}
+            <Text style={styles.title}>{reqSummary?.title ?? "Review request"}</Text>
+            <Text style={styles.method}>
+              {reqAppName ? `${reqAppName} · ` : ""}
+              {reqMethod}
             </Text>
-            <Text style={styles.warn}>Only approve if you trust this app and understand this action.</Text>
+            <View style={styles.reqBox}>
+              {reqSummary?.lines.map((l, i) => (
+                <View key={i} style={styles.reqRow}>
+                  <Text style={styles.reqLabel}>{l.label}</Text>
+                  <Text style={styles.reqValue} numberOfLines={4}>
+                    {l.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {reqSummary?.danger && <Text style={styles.warn}>{reqSummary.danger}</Text>}
+            <Text style={styles.subtle}>Only approve if you trust this app and understand this action.</Text>
             <Buttons busy={busy} onApprove={approveRequest} onReject={rejectRequest} approveLabel="Approve" />
           </View>
         </View>
@@ -242,7 +256,12 @@ const styles = StyleSheet.create({
   url: { color: colors.primary, fontSize: font.small },
   method: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   body: { color: colors.textMuted, fontSize: font.small, lineHeight: 19 },
-  warn: { color: colors.warning, fontSize: font.small },
+  reqBox: { backgroundColor: colors.bgElevated, borderRadius: radius.md, padding: spacing(3), gap: spacing(2) },
+  reqRow: { gap: 2 },
+  reqLabel: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 },
+  reqValue: { color: colors.text, fontSize: font.small, fontFamily: undefined },
+  warn: { color: colors.negative, fontSize: font.small, fontWeight: "700" },
+  subtle: { color: colors.textMuted, fontSize: font.small },
   btnRow: { flexDirection: "row", gap: spacing(3), marginTop: spacing(2) },
   btn: { flex: 1, paddingVertical: spacing(3.5), borderRadius: radius.pill, alignItems: "center" },
   reject: { backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.cardBorder },

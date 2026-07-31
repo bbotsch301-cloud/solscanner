@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
@@ -6,15 +5,16 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { getMnemonic } from "../wallet/keystore";
+import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 export function BackupScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
+  useSecretScreenGuard();
   const [words, setWords] = useState<string[] | null>(null);
   const [legacy, setLegacy] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const reveal = useCallback(async () => {
     try {
@@ -54,8 +54,11 @@ export function BackupScreen() {
         <View style={styles.warning}>
           <Ionicons name="warning" size={18} color={colors.negative} />
           <Text style={styles.warningText}>
-            Anyone with these words controls this wallet. Never share them, and
-            never type them into a website. Write them down and keep them offline.
+            Write these words on paper, in order, and store them somewhere safe and private.
+            Never take a photo or screenshot, and never type them into a website or message.
+            {"\n\n"}This phrase is the ONLY way to recover your wallet. If you lose it, your
+            funds are gone forever — no one, not even us, can restore them. We never have a
+            copy and cannot help you recover it.
           </Text>
         </View>
 
@@ -83,20 +86,15 @@ export function BackupScreen() {
               ))}
             </View>
 
-            <Pressable
-              onPress={async () => {
-                await Clipboard.setStringAsync(words.join(" "));
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-              style={styles.copyBtn}
-            >
-              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={18} color={colors.primary} />
-              <Text style={styles.copyText}>{copied ? "Copied" : "Copy to clipboard"}</Text>
-            </Pressable>
+            <View style={styles.paperNote}>
+              <Ionicons name="create-outline" size={16} color={colors.textMuted} />
+              <Text style={styles.paperText}>
+                Copying to the clipboard is disabled on purpose — write the words down by hand.
+              </Text>
+            </View>
 
             <Pressable onPress={() => nav.goBack()} style={styles.doneBtn}>
-              <Text style={styles.doneText}>I've saved it</Text>
+              <Text style={styles.doneText}>I’ve written it down</Text>
             </Pressable>
           </>
         )}
@@ -145,8 +143,8 @@ const styles = StyleSheet.create({
   },
   wordNum: { color: colors.textFaint, fontSize: font.small, fontWeight: "700", width: 20 },
   word: { color: colors.text, fontSize: font.body, fontWeight: "700" },
-  copyBtn: { flexDirection: "row", gap: spacing(2), alignItems: "center", justifyContent: "center", paddingVertical: spacing(4), marginTop: spacing(4) },
-  copyText: { color: colors.primary, fontSize: font.body, fontWeight: "700" },
+  paperNote: { flexDirection: "row", gap: spacing(2), alignItems: "center", justifyContent: "center", paddingVertical: spacing(4), marginTop: spacing(3) },
+  paperText: { color: colors.textMuted, fontSize: font.small, textAlign: "center" },
   doneBtn: { backgroundColor: colors.card, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", marginTop: spacing(2) },
   doneText: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
 });

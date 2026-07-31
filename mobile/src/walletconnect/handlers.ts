@@ -22,42 +22,113 @@ function evmChainOf(chainId: string) {
   return CHAINS.find((c) => c.evmChainId === id) ?? null;
 }
 
-/** Short human summary of a request for the approval screen. */
-export function describeRequest(method: string, params: any): string {
-  switch (method) {
-    case "personal_sign":
-      return decodeMaybeHex(params?.[0]);
-    case "eth_sign":
-      return decodeMaybeHex(params?.[1]);
-    case "eth_signTypedData":
-    case "eth_signTypedData_v4":
-      return "Sign typed data (EIP-712)";
-    case "eth_sendTransaction":
-    case "eth_signTransaction":
-      return `Send transaction to ${short(params?.[0]?.to)}`;
-    case "solana_signMessage":
-      return "Sign a Solana message";
-    case "solana_signTransaction":
-    case "solana_signAndSendTransaction":
-      return "Sign a Solana transaction";
-    default:
-      return method;
-  }
+export interface RequestSummary {
+  title: string;
+  lines: { label: string; value: string }[];
+  /** Strong red warning when the action can move funds / grant approvals. */
+  danger: string | null;
 }
 
-function decodeMaybeHex(s?: string): string {
+function decodeText(s?: string): string {
   if (!s) return "";
   if (s.startsWith("0x")) {
     try {
       const bytes = s.slice(2).match(/../g)!.map((b) => parseInt(b, 16));
-      return new TextDecoder().decode(Uint8Array.from(bytes));
+      const txt = new TextDecoder().decode(Uint8Array.from(bytes));
+      // Show the decoded text only if it's readable UTF-8 (no control chars
+      // other than tab/newline/CR); otherwise show the raw hex.
+      const hasControl = [...txt].some((c) => {
+        const code = c.charCodeAt(0);
+        return code < 32 && code !== 9 && code !== 10 && code !== 13;
+      });
+      return hasControl ? s : txt;
     } catch {
       return s;
     }
   }
   return s;
 }
-const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "?");
+
+function fmtWei(hex?: string): string {
+  try {
+    const w = hex && hex !== "0x" ? BigInt(hex) : 0n;
+    return (Number(w) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 8 });
+  } catch {
+    return "0";
+  }
+}
+
+/** Decode a request into a human-readable summary for the approval screen. */
+export function describeRequest(method: string, params: any, chainId?: string): RequestSummary {
+  const sym = String(chainId).startsWith("eip155:56")
+    ? "BNB"
+    : String(chainId).startsWith("eip155:")
+      ? "ETH"
+      : "";
+  switch (method) {
+    case "personal_sign":
+      return { title: "Message signature", lines: [{ label: "Message", value: decodeText(params?.[0]) || "(empty)" }], danger: null };
+    case "eth_sign":
+      return {
+        title: "Raw signature",
+        lines: [{ label: "Data", value: decodeText(params?.[1]) || String(params?.[1]) }],
+        danger: "eth_sign signs raw data and is frequently used in scams. Approve only if you completely trust this app.",
+      };
+    case "eth_signTypedData":
+    case "eth_signTypedData_v4": {
+      let td: any = params?.[1];
+      try {
+        if (typeof td === "string") td = JSON.parse(td);
+      } catch {
+        /* leave as-is */
+      }
+      const msg = td?.message ?? {};
+      const lines = [
+        { label: "App domain", value: td?.domain?.name ?? "unknown" },
+        { label: "Type", value: td?.primaryType ?? "unknown" },
+      ];
+      for (const k of Object.keys(msg).slice(0, 5)) {
+        lines.push({ label: k, value: typeof msg[k] === "object" ? JSON.stringify(msg[k]) : String(msg[k]) });
+      }
+      const permitish = /permit|approv|allowance/i.test(td?.primaryType ?? "") || "spender" in msg || "allowed" in msg;
+      return {
+        title: "Typed-data signature",
+        lines,
+        danger: permitish
+          ? "This can authorize an app to move your tokens without another confirmation. Approve only if you trust it."
+          : null,
+      };
+    }
+    case "eth_sendTransaction":
+    case "eth_signTransaction": {
+      const tx = params?.[0] ?? {};
+      const lines = [
+        { label: "To", value: tx.to ?? "?" },
+        { label: "Amount", value: `${fmtWei(tx.value)} ${sym}`.trim() },
+      ];
+      const hasData = tx.data && tx.data !== "0x";
+      if (hasData) lines.push({ label: "Data", value: `contract call · ${(tx.data.length - 2) / 2} bytes` });
+      return {
+        title: method === "eth_sendTransaction" ? "Send transaction" : "Sign transaction",
+        lines,
+        danger: hasData
+          ? "This interacts with a contract and can move your funds. Make sure you trust this app."
+          : "This will send funds from your wallet.",
+      };
+    }
+    case "solana_signMessage":
+      return { title: "Solana message signature", lines: [{ label: "Message", value: String(params?.message ?? "").slice(0, 120) }], danger: null };
+    case "solana_signTransaction":
+    case "solana_signAndSendTransaction":
+      return {
+        title: method === "solana_signAndSendTransaction" ? "Send Solana transaction" : "Sign Solana transaction",
+        lines: [{ label: "Details", value: "Transaction contents aren’t decoded here." }],
+        danger: "This can move funds on Solana. Approve only if you trust this app.",
+      };
+    default:
+      return { title: method, lines: [], danger: null };
+  }
+}
 
 export async function handleEvmRequest(
   method: string,

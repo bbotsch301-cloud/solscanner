@@ -1,9 +1,9 @@
-import * as Clipboard from "expo-clipboard";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { getMnemonic } from "../wallet/keystore";
+import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
 
 /**
@@ -12,8 +12,8 @@ import { colors, font, radius, spacing } from "../theme";
  */
 export function BackupPrompt({ onDone }: { onDone: () => void }) {
   const insets = useSafeAreaInsets();
+  useSecretScreenGuard();
   const [words, setWords] = useState<string[] | null>(null);
-  const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
@@ -31,7 +31,11 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
 
         <View style={styles.warning}>
           <Ionicons name="warning" size={18} color={colors.negative} />
-          <Text style={styles.warningText}>Never share them. Never type them into a website.</Text>
+          <Text style={styles.warningText}>
+            Never share them, never type them into a website, and never save them as a photo,
+            screenshot, or in the cloud. If you lose this phrase, your funds are gone forever —
+            no one, not even us, can recover them.
+          </Text>
         </View>
 
         {words && words.length > 0 ? (
@@ -44,17 +48,9 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
                 </View>
               ))}
             </View>
-            <Pressable
-              onPress={async () => {
-                await Clipboard.setStringAsync(words.join(" "));
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-              style={styles.copyBtn}
-            >
-              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={18} color={colors.primary} />
-              <Text style={styles.copyText}>{copied ? "Copied" : "Copy"}</Text>
-            </Pressable>
+            <Text style={styles.paperText}>
+              Copy is disabled on purpose — write the words down on paper by hand.
+            </Text>
           </>
         ) : (
           <Text style={styles.sub}>Loading…</Text>
@@ -66,7 +62,7 @@ export function BackupPrompt({ onDone }: { onDone: () => void }) {
             size={22}
             color={confirmed ? colors.primary : colors.textMuted}
           />
-          <Text style={styles.ackText}>I've written down my recovery phrase and stored it safely.</Text>
+          <Text style={styles.ackText}>I’ve written down my recovery phrase and stored it safely.</Text>
         </Pressable>
       </ScrollView>
 
@@ -109,8 +105,7 @@ const styles = StyleSheet.create({
   },
   wordNum: { color: colors.textFaint, fontSize: font.small, fontWeight: "700", width: 20 },
   word: { color: colors.text, fontSize: font.body, fontWeight: "700" },
-  copyBtn: { flexDirection: "row", gap: spacing(2), alignItems: "center", justifyContent: "center", paddingVertical: spacing(4) },
-  copyText: { color: colors.primary, fontSize: font.body, fontWeight: "700" },
+  paperText: { color: colors.textMuted, fontSize: font.small, textAlign: "center", marginTop: spacing(3) },
   ackRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(2) },
   ackText: { flex: 1, color: colors.text, fontSize: font.small, fontWeight: "600" },
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center" },
