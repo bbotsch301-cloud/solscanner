@@ -199,6 +199,25 @@ export function SwapScreen() {
           </View>
         )}
 
+        {quote?.venue === "treasury" && (
+          <View style={styles.venueTreasury}>
+            <Ionicons name="shield-checkmark" size={16} color={colors.accent} />
+            <Text style={styles.venueTreasuryText}>
+              Routed through the XGO treasury pool — trading fees flow back to the treasury.
+            </Text>
+          </View>
+        )}
+        {quote?.isTreasuryPair && quote.fellBack && (
+          <View style={styles.venueFallback}>
+            <Ionicons name="git-branch-outline" size={16} color={colors.warning} />
+            <Text style={styles.venueFallbackText}>
+              Treasury pool price was off by
+              {quote.gapBps != null ? ` ${(quote.gapBps / 100).toFixed(2)}%` : ""} — routed
+              to the best available price to protect your trade.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.banner}>
           <Ionicons name="pricetags-outline" size={16} color={colors.primary} />
           <Text style={styles.bannerText}>
@@ -310,6 +329,22 @@ const styles = StyleSheet.create({
     padding: spacing(4),
   },
   bannerText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
+  venueTreasury: {
+    flexDirection: "row",
+    gap: spacing(2),
+    backgroundColor: colors.accent + "18",
+    borderRadius: radius.md,
+    padding: spacing(4),
+  },
+  venueTreasuryText: { flex: 1, color: colors.accent, fontSize: font.small, lineHeight: 18 },
+  venueFallback: {
+    flexDirection: "row",
+    gap: spacing(2),
+    backgroundColor: colors.warning + "18",
+    borderRadius: radius.md,
+    padding: spacing(4),
+  },
+  venueFallbackText: { flex: 1, color: colors.warning, fontSize: font.small, lineHeight: 18 },
   footer: { paddingHorizontal: spacing(4), paddingTop: spacing(3), borderTopWidth: 1, borderTopColor: colors.cardBorder },
   primaryBtn: { paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },

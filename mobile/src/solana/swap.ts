@@ -6,6 +6,34 @@
 import { Buffer } from "buffer";
 import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "./connection";
+import { XGO_MINT } from "./token2022";
+
+/**
+ * Jupiter's DEX label(s) for the AMMs the treasury owns liquidity on. The treasury
+ * pool is a Raydium CPMM (program CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C).
+ * Jupiter labels it "Raydium CP"; both spellings are included in case the label
+ * text changes — a non-matching label is simply ignored by Jupiter. The exact
+ * current label is the value for that program id at:
+ *   https://lite-api.jup.ag/swap/v1/program-id-to-label
+ * Note: plain "Raydium" (AMM v4) is deliberately NOT listed — that's a different
+ * pool we don't own. If we open treasury pools on Meteora/Orca later, add those.
+ * If the label is ever wrong, routing degrades gracefully: the pinned quote just
+ * returns nothing and we fall back to the open market (which still routes through
+ * our pool whenever it's the deepest XGO liquidity).
+ */
+const TREASURY_DEX_LABELS = ["Raydium CP", "Raydium CPMM"];
+
+/**
+ * Route XGO trades through the treasury's own pool by default, and only fall back
+ * to the open market when the treasury price is worse by MORE than this many basis
+ * points ("unless the price is crazy off"). Higher = stickier to our pool; lower =
+ * quicker to bail for a better fill. 150 bps = 1.5%. Tunable.
+ */
+const PREFER_OWN_POOL_MAX_WORSE_BPS = Number(
+  process.env.EXPO_PUBLIC_TREASURY_MAX_WORSE_BPS ?? 150
+);
+
+const JUP_QUOTE = "https://lite-api.jup.ag/swap/v1/quote";
 
 const LOGO = (mint: string) =>
   `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`;
@@ -26,6 +54,9 @@ export const SWAP_TOKENS: SwapToken[] = [
   { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", decimals: 5 },
 ];
 
+/** Where a quote ends up routing. */
+export type Venue = "treasury" | "market";
+
 export interface Quote {
   /** UI output amount (decimals applied). */
   outAmount: number;
@@ -35,6 +66,54 @@ export interface Quote {
   routeLabels: string[];
   /** Full Jupiter quote response, needed to build the swap transaction. */
   raw: unknown;
+  /** Which liquidity this quote uses. */
+  venue: Venue;
+  /** True when this pair has a treasury pool we try to prefer (i.e. an XGO trade). */
+  isTreasuryPair: boolean;
+  /**
+   * True when it's a treasury pair but the treasury pool was priced badly enough
+   * that we fell back to the open market to protect the trade.
+   */
+  fellBack: boolean;
+  /** How much worse the treasury pool was vs the best market price, in bps (null if unknown). */
+  gapBps: number | null;
+}
+
+interface RawQuote {
+  json: {
+    outAmount?: string;
+    priceImpactPct?: string;
+    routePlan?: { swapInfo?: { label?: string } }[];
+  };
+  outRaw: number;
+}
+
+/** One Jupiter quote request. `restrictToTreasury` pins routing to our pool's AMM. */
+async function requestQuote(
+  inputMint: string,
+  outputMint: string,
+  rawAmount: number,
+  slippageBps: number,
+  restrictToTreasury: boolean
+): Promise<RawQuote | null> {
+  let url =
+    `${JUP_QUOTE}?inputMint=${inputMint}&outputMint=${outputMint}` +
+    `&amount=${rawAmount}&slippageBps=${slippageBps}`;
+  if (restrictToTreasury) {
+    // Force a single-hop route on the AMM(s) we own liquidity on.
+    url +=
+      `&dexes=${encodeURIComponent(TREASURY_DEX_LABELS.join(","))}` +
+      `&onlyDirectRoutes=true`;
+  }
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = (await res.json()) as RawQuote["json"];
+    if (!json?.outAmount) return null;
+    return { json, outRaw: Number(json.outAmount) };
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchQuote(
@@ -46,26 +125,55 @@ export async function fetchQuote(
   const rawAmount = Math.round(uiAmount * 10 ** input.decimals);
   if (rawAmount <= 0) throw new Error("Enter an amount");
 
-  const url =
-    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${input.mint}` +
-    `&outputMint=${output.mint}&amount=${rawAmount}&slippageBps=${slippageBps}`;
+  const isTreasuryPair = input.mint === XGO_MINT || output.mint === XGO_MINT;
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`No route (${res.status})`);
-  const j = (await res.json()) as {
-    outAmount?: string;
-    priceImpactPct?: string;
-    routePlan?: { swapInfo?: { label?: string } }[];
-  };
-  if (!j?.outAmount) throw new Error("No route available");
+  // Best open-market route, and (for XGO) a route pinned to the treasury pool.
+  const [market, treasury] = await Promise.all([
+    requestQuote(input.mint, output.mint, rawAmount, slippageBps, false),
+    isTreasuryPair
+      ? requestQuote(input.mint, output.mint, rawAmount, slippageBps, true)
+      : Promise.resolve(null),
+  ]);
 
+  if (!market && !treasury) throw new Error("No route available");
+
+  // Prefer the treasury pool unless it's worse than the market by more than the
+  // "crazy off" threshold. If there's no market quote, take whatever we have.
+  let chosen: RawQuote;
+  let venue: Venue;
+  let fellBack = false;
+  let gapBps: number | null = null;
+
+  if (treasury && market) {
+    gapBps = Math.max(0, ((market.outRaw - treasury.outRaw) / market.outRaw) * 10000);
+    if (gapBps <= PREFER_OWN_POOL_MAX_WORSE_BPS) {
+      chosen = treasury;
+      venue = "treasury";
+    } else {
+      chosen = market;
+      venue = "market";
+      fellBack = true;
+    }
+  } else if (treasury) {
+    chosen = treasury;
+    venue = "treasury";
+  } else {
+    chosen = market!;
+    venue = "market";
+  }
+
+  const j = chosen.json;
   return {
-    outAmount: Number(j.outAmount) / 10 ** output.decimals,
+    outAmount: chosen.outRaw / 10 ** output.decimals,
     priceImpactPct: Math.abs(Number(j.priceImpactPct ?? 0)) * 100,
     routeLabels: (j.routePlan ?? [])
       .map((r) => r.swapInfo?.label)
       .filter((l): l is string => !!l),
     raw: j,
+    venue,
+    isTreasuryPair,
+    fellBack,
+    gapBps,
   };
 }
 
