@@ -1,168 +1,96 @@
-"use client";
+import Link from "next/link";
+import { SHOWCASE, chainOf } from "@/lib/tokens/showcase";
+import { fetchMarkets, type TokenMarket } from "@/lib/tokens/dexscreener";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import SearchBar from "./components/SearchBar";
-import EntityPanel, {
-  type BalancesData,
-  type EntitySummary,
-} from "./components/EntityPanel";
-import ForceGraph from "./components/ForceGraph";
-import { mergeGraphs, type Graph } from "@/lib/analysis/graph";
-import { DEMO_MINT, DEMO_WALLET } from "@/lib/demo/dataset";
+export const revalidate = 60;
 
-export default function Home() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [entity, setEntity] = useState<EntitySummary | null>(null);
-  const [balances, setBalances] = useState<BalancesData | null>(null);
-  const [graph, setGraph] = useState<Graph | null>(null);
-  const [demo, setDemo] = useState(false);
+function chainLabel(market: TokenMarket | undefined, address: string): string {
+  const id = market?.chainId;
+  if (id === "solana") return "SOL";
+  if (id === "ethereum") return "ETH";
+  if (id === "bsc") return "BNB";
+  return chainOf(address) === "evm" ? "EVM" : "SOL";
+}
 
-  const qs = (address: string, isDemo: boolean, extra = "") =>
-    `address=${encodeURIComponent(address)}${isDemo ? "&demo=1" : ""}${extra}`;
+function fmtPrice(n: number | null): string {
+  if (n == null) return "—";
+  if (n >= 1) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (n >= 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toPrecision(2)}`;
+}
 
-  // Load an entity into the side panel (entity summary + balances/holders).
-  const loadPanel = useCallback(
-    async (address: string, isDemo: boolean) => {
-      const entityRes = await fetch(`/api/entity?${qs(address, isDemo)}`);
-      const entityData = await entityRes.json();
-      if (!entityRes.ok) throw new Error(entityData.error ?? "Lookup failed");
-      setEntity(entityData);
+function fmtCap(n: number | null): string {
+  if (!n) return "—";
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
+}
 
-      const kind = entityData.type === "mint" ? "mint" : "wallet";
-      const balRes = await fetch(`/api/balances?${qs(address, isDemo, `&kind=${kind}`)}`);
-      const balData = await balRes.json();
-      if (balRes.ok) setBalances(balData);
-    },
-    []
-  );
+function short(a: string): string {
+  return a.length > 12 ? `${a.slice(0, 5)}…${a.slice(-4)}` : a;
+}
 
-  const search = useCallback(
-    async (address: string, isDemo = false) => {
-      setLoading(true);
-      setError(null);
-      setEntity(null);
-      setBalances(null);
-      setGraph(null);
-      setDemo(isDemo);
-      // Reflect the search in the URL so the view is shareable.
-      const params = new URLSearchParams({ address });
-      if (isDemo) params.set("demo", "1");
-      window.history.replaceState(null, "", `?${params.toString()}`);
-      try {
-        const graphRes = fetch(`/api/graph?${qs(address, isDemo)}`);
-        await loadPanel(address, isDemo);
-        const gRes = await graphRes;
-        const graphData = await gRes.json();
-        if (gRes.ok) setGraph(graphData);
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loadPanel]
-  );
-
-  // Replay a shared URL (?address=...&demo=1) on first load.
-  const replayed = useRef(false);
-  useEffect(() => {
-    if (replayed.current) return;
-    replayed.current = true;
-    const params = new URLSearchParams(window.location.search);
-    const address = params.get("address");
-    if (address) {
-      const isDemo = params.get("demo") === "1";
-      // Defer so the bootstrap search runs after mount, not synchronously in the effect.
-      queueMicrotask(() => search(address, isDemo));
-    }
-  }, [search]);
-
-  // Clicking a node both re-focuses the panel on it and expands its neighbors.
-  const focusAndExpand = useCallback(
-    async (address: string) => {
-      try {
-        const graphRes = fetch(`/api/graph?${qs(address, demo)}`);
-        await loadPanel(address, demo).catch(() => {});
-        const gRes = await graphRes;
-        const sub = await gRes.json();
-        if (gRes.ok) setGraph((prev) => (prev ? mergeGraphs(prev, sub) : sub));
-      } catch {
-        /* expansion is best-effort */
-      }
-    },
-    [demo, loadPanel]
-  );
+export default async function Home() {
+  const markets = await fetchMarkets(SHOWCASE.map((t) => t.address));
 
   return (
-    <main className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
-      <header className="border-b border-neutral-800 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <h1 className="flex items-center gap-2 text-lg font-semibold">
-            <span className="inline-block h-3 w-3 rounded-full bg-gradient-to-br from-teal-400 to-purple-500" />
-            SolScanner{" "}
-            <span className="text-sm font-normal text-neutral-500">
-              wallet &amp; token forensics
-            </span>
-            {demo && (
-              <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-300">
-                DEMO
-              </span>
-            )}
-          </h1>
-          <div className="flex gap-2 text-xs">
-            <button
-              onClick={() => search(DEMO_WALLET, true)}
-              className="rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-300 hover:border-neutral-500"
-            >
-              ▶ Demo wallet
-            </button>
-            <button
-              onClick={() => search(DEMO_MINT, true)}
-              className="rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-300 hover:border-neutral-500"
-            >
-              ▶ Demo token
-            </button>
-          </div>
-        </div>
-        <div className="mt-3 max-w-2xl">
-          <SearchBar onSearch={(a) => search(a, false)} loading={loading} />
-          {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
-        </div>
-      </header>
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <section className="mb-8">
+        <h1 className="text-3xl font-black text-amber-300 sm:text-4xl">The Gathering</h1>
+        <p className="mt-2 max-w-2xl text-sm text-neutral-400">
+          A curated menagerie of tokens across Solana, Ethereum, and BNB Chain — gathered
+          together to operate in unity. Live prices via DexScreener.
+        </p>
+      </section>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-80 shrink-0 overflow-y-auto border-r border-neutral-800 p-4">
-          {entity ? (
-            <EntityPanel
-              entity={entity}
-              balances={balances ?? undefined}
-              isDemo={demo}
-            />
-          ) : (
-            <div className="text-sm text-neutral-500">
-              <p>
-                Search a wallet or mint to begin. Click any node in the graph to
-                expand its connections.
-              </p>
-              <p className="mt-3 text-neutral-600">
-                No Helius key handy? Hit{" "}
-                <span className="text-amber-300">Demo wallet</span> to explore a
-                simulated pump.fun launch with zero setup.
-              </p>
-            </div>
-          )}
-        </aside>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {SHOWCASE.map((t) => {
+          const m = markets[t.address.toLowerCase()];
+          const change = m?.change24h ?? null;
+          const changeColor =
+            change == null ? "text-neutral-500" : change >= 0 ? "text-emerald-400" : "text-red-400";
+          return (
+            <Link
+              key={t.address}
+              href={`/token/${t.address}`}
+              className="group flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 transition hover:border-amber-500/50 hover:bg-neutral-900"
+            >
+              {m?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={m.imageUrl}
+                  alt=""
+                  className="h-11 w-11 shrink-0 rounded-full bg-neutral-800 object-cover"
+                />
+              ) : (
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-sm font-bold text-amber-300">
+                  {t.name.slice(0, 2)}
+                </div>
+              )}
 
-        <section className="relative min-w-0 flex-1">
-          {graph && graph.nodes.length > 0 ? (
-            <ForceGraph data={graph} onNodeClick={focusAndExpand} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-600">
-              {loading ? "Building graph…" : "No graph yet."}
-            </div>
-          )}
-        </section>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-semibold text-neutral-100">{t.name}</span>
+                  <span className="shrink-0 rounded-full border border-neutral-700 px-1.5 py-0.5 text-[10px] font-bold text-neutral-400">
+                    {chainLabel(m, t.address)}
+                  </span>
+                </div>
+                <div className="mt-0.5 font-mono text-xs text-neutral-500">
+                  {m?.symbol ? m.symbol : short(t.address)}
+                </div>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <div className="font-mono text-sm text-neutral-100">{fmtPrice(m?.priceUsd ?? null)}</div>
+                <div className={`text-xs font-semibold ${changeColor}`}>
+                  {change == null ? "" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(1)}%`}
+                </div>
+                <div className="text-[11px] text-neutral-500">MC {fmtCap(m?.marketCap ?? null)}</div>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </main>
   );
