@@ -10,13 +10,8 @@ import { fetchQuote as jupFetchQuote, executeSwap as jupExecuteSwap } from "../s
 import { metaQuote } from "../evm/swap/metaQuote";
 import { executeEvmSwap } from "../evm/swap/execute";
 import { EVM_FEE_RECIPIENT, feeBpsFor } from "../config/swapFee";
+import { toBaseUnits } from "../evm/units";
 import type { SwapToken, UnifiedQuote } from "./types";
-
-function toWei(uiAmount: number, decimals: number): bigint {
-  const [i, f = ""] = String(uiAmount).split(".");
-  const frac = (f + "0".repeat(decimals)).slice(0, decimals);
-  return BigInt(`${i}${frac}` || "0");
-}
 
 export async function quoteSwap(
   chain: ChainDef,
@@ -52,7 +47,7 @@ export async function quoteSwap(
     chain,
     input,
     output,
-    amountInWei: toWei(uiAmount, input.decimals),
+    amountInWei: toBaseUnits(uiAmount, input.decimals),
     slippageBps,
     owner,
     feeBps,

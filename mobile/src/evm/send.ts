@@ -5,13 +5,7 @@
 import type { ChainDef } from "../chains/registry";
 import { estimateGas, getFees, getNonce, sendRawTransaction } from "./rpc";
 import { erc20TransferData, signEip1559, type EvmTx } from "./tx";
-
-function toBaseUnits(uiAmount: number, decimals: number): bigint {
-  // Build from a fixed-point string to avoid float drift on 18-decimal values.
-  const [i, f = ""] = String(uiAmount).split(".");
-  const frac = (f + "0".repeat(decimals)).slice(0, decimals);
-  return BigInt(`${i}${frac}` || "0");
-}
+import { toBaseUnits } from "./units";
 
 /** Send native ETH/BNB. Returns the tx hash. */
 export async function sendNativeEvm(
