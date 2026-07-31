@@ -55,10 +55,6 @@ export function MoreScreen() {
         <Row icon="heart" label="Impact" soon />
         <View style={styles.divider} />
         <Row icon="storefront" label="Marketplace" soon />
-        <View style={styles.divider} />
-        <Row icon="map" label="Impact Map" soon />
-        <View style={styles.divider} />
-        <Row icon="sparkles" label="Steward AI" soon />
       </View>
     </ScrollView>
   );
