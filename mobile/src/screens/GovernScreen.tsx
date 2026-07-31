@@ -4,8 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { PublicKey } from "@solana/web3.js";
 import { useWallet } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
+import { connection } from "../solana/connection";
+import { tierFor, multiplierFor } from "../config/staking";
 import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -31,23 +34,40 @@ const EXAMPLE_PROPOSALS = [
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
-  const { tokens, refresh, refreshing } = useWallet();
+  const { address, tokens, refresh, refreshing } = useWallet();
   const [supply, setSupply] = useState<number | null>(null);
+  const [firstSeen, setFirstSeen] = useState<number | null>(null);
   const [votes, setVotes] = useState<Record<string, "for" | "against">>({});
 
-  const power = useMemo(
+  const held = useMemo(
     () => tokens.find((t) => t.mint === XGO_MINT)?.amount ?? 0,
     [tokens]
   );
+  // "Staking" is non-custodial: holding = weight; holding longer multiplies it.
+  const loyalty = multiplierFor(firstSeen);
+  const power = held * loyalty.mult; // effective voting power
+  const tier = tierFor(held);
   const share = supply && supply > 0 ? power / supply : null;
 
   const loadSupply = useCallback(async () => {
     setSupply(await getSupply(XGO_MINT));
   }, []);
 
+  const loadFirstSeen = useCallback(async () => {
+    if (!address) return;
+    try {
+      const sigs = await connection.getSignaturesForAddress(new PublicKey(address), { limit: 1000 });
+      const times = sigs.map((s) => s.blockTime).filter((t): t is number => !!t);
+      setFirstSeen(times.length ? Math.min(...times) : null);
+    } catch {
+      /* best-effort */
+    }
+  }, [address]);
+
   useEffect(() => {
     loadSupply();
-  }, [loadSupply]);
+    loadFirstSeen();
+  }, [loadSupply, loadFirstSeen]);
 
   return (
     <ScrollView
@@ -75,15 +95,24 @@ export function GovernScreen() {
       {/* Voting power */}
       <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
         <View style={styles.cardInner}>
-          <Text style={styles.cardLabel}>Your voting power</Text>
+          <View style={styles.heroTop}>
+            <Text style={styles.cardLabel}>Your voting power</Text>
+            {tier.current && (
+              <View style={styles.tierChip}>
+                <Ionicons name="ribbon" size={12} color="#0A0A0C" />
+                <Text style={styles.tierText}>{tier.current.name}</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.powerRow}>
             <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
               {fmtCompact(power)}
             </Text>
-            <Text style={styles.powerUnit}>XGO</Text>
+            <Text style={styles.powerUnit}>votes</Text>
           </View>
           <Text style={styles.cardSub}>
-            {share != null ? `${(share * 100).toFixed(2)}% of all voting power` : "—"}
+            {fmtCompact(held)} XGO × {loyalty.mult}× loyalty
+            {share != null ? ` · ${(share * 100).toFixed(2)}% of all` : ""}
           </Text>
         </View>
       </LinearGradient>
@@ -92,6 +121,38 @@ export function GovernScreen() {
         <Ionicons name="lock-open-outline" size={15} color={colors.primary} />
         <Text style={styles.noteText}>
           Hold XGO to vote on the mission — your tokens never leave your wallet. No lock-up, no custody.
+        </Text>
+      </View>
+
+      {/* Membership / staking (non-custodial) */}
+      <Text style={styles.sectionTitle}>Membership</Text>
+      <View style={styles.rewardCard}>
+        <View style={styles.rewardRow}>
+          <Text style={styles.rewardLabel}>Tier</Text>
+          <Text style={styles.rewardValue}>{tier.current?.name ?? "—"}</Text>
+        </View>
+        <View style={styles.rewardRow}>
+          <Text style={styles.rewardLabel}>Loyalty multiplier</Text>
+          <Text style={styles.rewardValue}>{loyalty.mult}× · {loyalty.label}</Text>
+        </View>
+        {tier.next && (
+          <>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(100, (held / tier.next.min) * 100)}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.rewardNote}>
+              Hold {fmtCompact(tier.toNext)} more XGO to reach {tier.next.name}.
+            </Text>
+          </>
+        )}
+        <Text style={styles.rewardNote}>
+          Your XGO stays in your wallet — no lock-up, no custody. Hold more and longer to rise
+          in tier and multiply your voting weight.
         </Text>
       </View>
 
@@ -170,6 +231,11 @@ const styles = StyleSheet.create({
   power: { color: "#0A0A0C", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
   powerUnit: { color: "#0A0A0C", fontSize: font.h2, fontWeight: "800", marginBottom: spacing(1.5) },
   cardSub: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  tierChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#0A0A0C22", paddingHorizontal: spacing(2.5), paddingVertical: spacing(1), borderRadius: radius.pill },
+  tierText: { color: "#0A0A0C", fontSize: font.tiny, fontWeight: "900" },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.bgElevated, overflow: "hidden", marginTop: spacing(1) },
+  progressFill: { height: 8, backgroundColor: colors.primary },
   noteRow: { flexDirection: "row", gap: spacing(2), alignItems: "flex-start", marginTop: spacing(3) },
   noteText: { flex: 1, color: colors.textMuted, fontSize: font.small, lineHeight: 18 },
   sectionTitle: {
