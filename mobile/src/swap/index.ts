@@ -7,11 +7,13 @@ import type { Keypair } from "@solana/web3.js";
 import type { ChainDef } from "../chains/registry";
 import type { EvmAccount } from "../wallet/evm";
 import { fetchQuote as jupFetchQuote, executeSwap as jupExecuteSwap } from "../solana/swap";
+import { fetchPrices } from "../solana/prices";
 import { metaQuote } from "../evm/swap/metaQuote";
 import { executeEvmSwap } from "../evm/swap/execute";
+import { fetchEvmNativePrices, stableUsd } from "../evm/prices";
 import { EVM_FEE_RECIPIENT, feeBpsFor } from "../config/swapFee";
 import { toBaseUnits } from "../evm/units";
-import type { SwapToken, UnifiedQuote } from "./types";
+import { EVM_NATIVE, type SwapToken, type UnifiedQuote } from "./types";
 
 export async function quoteSwap(
   chain: ChainDef,
@@ -22,7 +24,17 @@ export async function quoteSwap(
   owner: string | null
 ): Promise<UnifiedQuote> {
   if (chain.kind === "solana") {
-    const q = await jupFetchQuote(input, output, uiAmount, slippageBps);
+    // Price BOTH tokens off the same feed as the portfolio (Jupiter Price API), in parallel with
+    // the quote so it adds no latency — the swap then shows a true dollar value on each side,
+    // including an output token the user doesn't hold yet.
+    const [q, px] = await Promise.all([
+      jupFetchQuote(input, output, uiAmount, slippageBps),
+      fetchPrices([input.mint, output.mint]).catch(() => ({} as Record<string, { usdPrice: number }>)),
+    ]);
+    const inP = px[input.mint]?.usdPrice;
+    const outP = px[output.mint]?.usdPrice;
+    const inUsd = inP != null ? uiAmount * inP : undefined;
+    const outUsd = outP != null ? q.outAmount * outP : undefined;
     return {
       provider: "Jupiter",
       kind: "solana",
@@ -33,6 +45,8 @@ export async function quoteSwap(
       priceImpactPct: q.priceImpactPct,
       routeLabels: q.routeLabels,
       feeBps: q.feeBps,
+      inUsd,
+      outUsd,
       solanaRaw: q.raw,
       venue: q.venue,
       isTreasuryPair: q.isTreasuryPair,
@@ -55,6 +69,23 @@ export async function quoteSwap(
     feeRecipient: EVM_FEE_RECIPIENT,
   });
   if (!q) throw new Error("No route available");
+
+  // Best-effort USD on EVM: native via live price, USDC/USDT ~ $1. Other ERC-20s have no in-app
+  // price source, so they stay undefined and the UI estimates that side.
+  try {
+    const nativePrices = await fetchEvmNativePrices();
+    const perUnit = (t: SwapToken): number | null => {
+      if (t.mint.toLowerCase() === EVM_NATIVE.toLowerCase()) return nativePrices[chain.symbol] ?? null;
+      const s = stableUsd(t.symbol);
+      return s > 0 ? s : null;
+    };
+    const inP = perUnit(input);
+    const outP = perUnit(output);
+    if (inP != null) q.inUsd = uiAmount * inP;
+    if (outP != null) q.outUsd = q.outUi * outP;
+  } catch {
+    /* leave USD undefined */
+  }
   return q;
 }
 

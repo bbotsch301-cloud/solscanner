@@ -177,14 +177,19 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   };
   const fromPerUnit = perUnitUsd(from.mint);
   const toPerUnit = perUnitUsd(to.mint);
-  const payUsd = amtNum > 0 && fromPerUnit != null ? amtNum * fromPerUnit : null;
-  const receiveUsd = quote
-    ? toPerUnit != null
-      ? quote.outUi * toPerUnit
-      : payUsd != null
-        ? payUsd * (1 - (quote.priceImpactPct || 0) / 100)
-        : null
-    : null;
+  // Pay side stays live while typing from the owned price; once a quote returns, its price-feed
+  // value (quote.inUsd) backstops an unpriced input. Receive side prefers the quote's true
+  // output USD, then an owned price, then an impact-based estimate.
+  const payUsd =
+    amtNum > 0 && fromPerUnit != null ? amtNum * fromPerUnit : quote?.inUsd ?? null;
+  const receiveUsd =
+    quote?.outUsd != null
+      ? quote.outUsd
+      : quote && toPerUnit != null
+        ? quote.outUi * toPerUnit
+        : quote && payUsd != null
+          ? payUsd * (1 - (quote.priceImpactPct || 0) / 100)
+          : null;
 
   // How much of `from` can actually be sold — for native, hold back the gas/rent reserve.
   const sellable = (): number => {

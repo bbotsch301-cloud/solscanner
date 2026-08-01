@@ -42,6 +42,10 @@ export interface UnifiedQuote {
   priceImpactPct: number;
   routeLabels: string[];
   feeBps: number;
+  /** Live USD value of the input amount and of the expected output, from a token price feed.
+   *  Undefined when no price is available (the UI then estimates the output side). */
+  inUsd?: number;
+  outUsd?: number;
   /** Solana execution payload (raw Jupiter quote). */
   solanaRaw?: unknown;
   /** EVM execution payload. */
