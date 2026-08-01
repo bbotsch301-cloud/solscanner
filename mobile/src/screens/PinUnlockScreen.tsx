@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,6 +24,35 @@ function formatWait(ms: number): string {
   if (s < 60) return `${s}s`;
   const m = Math.ceil(s / 60);
   return m < 60 ? `${m} min` : `${Math.ceil(m / 60)} hr`;
+}
+
+/** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a
+ *  moment on-device). A gently pulsing logo + spinner so the wait reads as progress. */
+function DecryptingSplash() {
+  const insets = useSafeAreaInsets();
+  const [pulse] = useState(() => new Animated.Value(0)); // stable Animated value (not a ref)
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] });
+  return (
+    <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <Animated.View style={{ transform: [{ scale }], opacity }}>
+        <XGOLogo size={92} />
+      </Animated.View>
+      <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: spacing(9) }} />
+      <Text style={styles.splashTitle}>Decrypting your wallets…</Text>
+      <Text style={styles.splashSub}>Unlocking secure storage on this device. This can take a moment.</Text>
+    </View>
+  );
 }
 
 export function PinUnlockScreen() {
@@ -77,6 +108,8 @@ export function PinUnlockScreen() {
     );
   };
 
+  if (busy) return <DecryptingSplash />;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -111,29 +144,16 @@ export function PinUnlockScreen() {
 
       <Pressable
         onPress={submit}
-        disabled={pin.length < 6 || busy || lockedOut}
-        style={[styles.btn, (pin.length < 6 || busy || lockedOut) && styles.btnDisabled]}
+        disabled={pin.length < 6 || lockedOut}
+        style={[styles.btn, (pin.length < 6 || lockedOut) && styles.btnDisabled]}
       >
-        {busy ? (
-          <>
-            <ActivityIndicator color={colors.bg} />
-            <Text style={styles.btnText}>Unlocking…</Text>
-          </>
-        ) : (
-          <>
-            <Ionicons name="lock-open" size={18} color={colors.bg} />
-            <Text style={styles.btnText}>Unlock</Text>
-          </>
-        )}
+        <Ionicons name="lock-open" size={18} color={colors.bg} />
+        <Text style={styles.btnText}>Unlock</Text>
       </Pressable>
 
-      {busy ? (
-        <Text style={styles.busyHint}>Decrypting your wallets — this can take a few seconds.</Text>
-      ) : (
-        <Pressable onPress={forgotPin} style={styles.forgot} hitSlop={8}>
-          <Text style={styles.forgotText}>Forgot PIN?</Text>
-        </Pressable>
-      )}
+      <Pressable onPress={forgotPin} style={styles.forgot} hitSlop={8}>
+        <Text style={styles.forgotText}>Forgot PIN?</Text>
+      </Pressable>
     </KeyboardAvoidingView>
   );
 }
@@ -170,5 +190,7 @@ const styles = StyleSheet.create({
   btnText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
   forgot: { alignItems: "center", paddingVertical: spacing(4) },
   forgotText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
-  busyHint: { color: colors.textMuted, fontSize: font.small, textAlign: "center", paddingVertical: spacing(4) },
+  splash: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing(8) },
+  splashTitle: { color: colors.text, fontSize: font.h2, fontWeight: "900", marginTop: spacing(6), textAlign: "center" },
+  splashSub: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 22, marginTop: spacing(2) },
 });
