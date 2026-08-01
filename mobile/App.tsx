@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, LogBox, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -47,6 +47,10 @@ import { loadApprovals } from "./src/safety/approvals";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
+
+// Dev-only: our RPC layer already retries 429s quietly, but hide the LogBox bar in case any
+// other path logs one — it's transient and self-healing, not an actionable error.
+if (__DEV__) LogBox.ignoreLogs(["Server responded with"]);
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();

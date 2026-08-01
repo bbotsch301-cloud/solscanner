@@ -4,7 +4,13 @@ import { throttledFetch } from "./rpcThrottle";
 
 // Route every RPC request through the shared throttle so parallel bursts stay under the
 // public endpoint's rate limit (fewer 429s). "confirmed" commitment for all connections.
-const CONNECTION_CONFIG = { commitment: "confirmed", fetch: throttledFetch } as const;
+// disableRetryOnRateLimit: our throttle already retries a 429 quietly, so this stops web3.js
+// from ALSO retrying it and logging the noisy "Server responded with 429…" console.error.
+const CONNECTION_CONFIG = {
+  commitment: "confirmed",
+  fetch: throttledFetch,
+  disableRetryOnRateLimit: true,
+} as const;
 
 /**
  * Runtime-switchable network. The choice is persisted and applied at startup
