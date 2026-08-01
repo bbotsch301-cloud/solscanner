@@ -11,17 +11,30 @@ import { solLogo, LOGO_OVERRIDES } from "../config/logos";
 
 // Persistent metadata cache key prefix. Bump the version to invalidate all stored entries.
 const TM_KEY = "tm.v1:";
+// A stored logo older than this is refreshed in the background (stale-while-revalidate), so a
+// token that changed its logo/name eventually updates without ever showing a blank.
+const TM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-async function readPersisted(mint: string): Promise<TokenMeta | undefined> {
+// Mints currently being refreshed in the background — avoids duplicate concurrent refreshes.
+const refreshing = new Set<string>();
+
+/** Read a stored entry. Handles the legacy (unstamped) format too — an unstamped entry reads
+ *  as stale, so it refreshes once and re-saves in the stamped format. */
+async function readPersisted(mint: string): Promise<{ meta: TokenMeta; stale: boolean } | undefined> {
   try {
     const raw = await AsyncStorage.getItem(TM_KEY + mint);
-    return raw ? (JSON.parse(raw) as TokenMeta) : undefined;
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { meta?: TokenMeta; ts?: number } & Partial<TokenMeta>;
+    const meta = (parsed.meta ?? parsed) as TokenMeta; // {meta,ts} (new) or raw TokenMeta (legacy)
+    const ts = parsed.ts ?? 0;
+    if (!meta?.symbol) return undefined;
+    return { meta, stale: Date.now() - ts > TM_TTL_MS };
   } catch {
     return undefined;
   }
 }
 function writePersisted(mint: string, meta: TokenMeta): void {
-  AsyncStorage.setItem(TM_KEY + mint, JSON.stringify(meta)).catch(() => {});
+  AsyncStorage.setItem(TM_KEY + mint, JSON.stringify({ meta, ts: Date.now() })).catch(() => {});
 }
 
 export interface TokenMeta {
@@ -161,17 +174,8 @@ async function fromDexScreener(mint: string): Promise<TokenMeta | undefined> {
   }
 }
 
-export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefined> {
-  if (KNOWN[mint]) return KNOWN[mint];
-  if (cache.has(mint)) return cache.get(mint) ?? undefined;
-
-  // Persistent cache (survives app restarts): a stored hit skips all network resolution.
-  const persisted = await readPersisted(mint);
-  if (persisted) {
-    cache.set(mint, persisted);
-    return persisted;
-  }
-
+/** Resolve a token's metadata from the network (Jupiter + DexScreener + on-chain Metaplex). */
+async function resolveFromNetwork(mint: string): Promise<TokenMeta | undefined> {
   // Jupiter (fast, name+symbol) and DexScreener (reliable CDN image) in parallel; on-chain
   // Metaplex only if either name/symbol or a logo is still missing (keeps RPC load down).
   const [jup, dex] = await Promise.all([fromJupiter(mint), fromDexScreener(mint)]);
@@ -188,7 +192,40 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
   let logoURI = candidates.find(isReliableLogo) ?? candidates[0];
   if (LOGO_OVERRIDES[mint]) logoURI = LOGO_OVERRIDES[mint];
 
-  const result: TokenMeta | undefined = symbol ? { symbol, name: name ?? symbol, logoURI } : undefined;
+  return symbol ? { symbol, name: name ?? symbol, logoURI } : undefined;
+}
+
+/** Re-resolve a stale entry and re-save it, without blocking the caller (stale-while-revalidate). */
+async function refreshInBackground(mint: string): Promise<void> {
+  if (refreshing.has(mint)) return;
+  refreshing.add(mint);
+  try {
+    const fresh = await resolveFromNetwork(mint);
+    if (fresh?.logoURI) {
+      cache.set(mint, fresh);
+      writePersisted(mint, fresh); // re-stamps the timestamp
+    }
+  } catch {
+    /* keep the stale entry */
+  } finally {
+    refreshing.delete(mint);
+  }
+}
+
+export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefined> {
+  if (KNOWN[mint]) return KNOWN[mint];
+  if (cache.has(mint)) return cache.get(mint) ?? undefined;
+
+  // Persistent cache (survives app restarts): a stored hit skips network resolution. If it's
+  // older than the TTL, return it immediately AND refresh in the background for next time.
+  const persisted = await readPersisted(mint);
+  if (persisted) {
+    cache.set(mint, persisted.meta);
+    if (persisted.stale) void refreshInBackground(mint);
+    return persisted.meta;
+  }
+
+  const result = await resolveFromNetwork(mint);
   cache.set(mint, result ?? null);
   // Persist only fully-resolved entries (with a logo) — that's the expensive thing to keep on
   // disk. Logo-less / missed lookups stay in-memory so they retry (and may find a logo) later.
