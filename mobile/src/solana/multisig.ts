@@ -23,6 +23,7 @@ import {
 import * as multisig from "@sqds/multisig";
 import { connection, solscanAccount } from "./connection";
 import { multisigPubkey, vaultPda, addMultisig } from "../config/multisig";
+import { toBaseUnits } from "../units";
 
 export interface MultisigMember {
   key: string;
@@ -330,7 +331,9 @@ async function prepareTx(
     const sim = await connection.simulateTransaction(tx);
     if (sim.value.err) warn = explainSimError(sim.value.err, sim.value.logs ?? []);
   } catch {
-    /* couldn't run simulation — the real send will surface any error */
+    // Simulation itself failed to run (RPC hiccup) — don't silently present "looks good"; say
+    // the pre-check couldn't complete so the user proceeds knowingly.
+    warn = "Couldn't pre-check this on-chain (the RPC didn't respond) — proceed with care, or try again.";
   }
 
   return {
@@ -434,18 +437,26 @@ export async function prepareAddSigner(creator: Keypair, address: string): Promi
 export async function prepareRemoveSigner(creator: Keypair, address: string): Promise<PreparedTx> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
+  const oldMember = new PublicKey(address); // throws on invalid input
   const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+  if (!acc.members.some((m) => m.key.equals(oldMember)))
+    throw new Error("That address isn't a signer on this multisig.");
   const newCount = acc.members.length - 1;
   if (newCount < 1) throw new Error("A multisig must keep at least one signer.");
   const actions: ConfigAction[] = [];
   // Squads rejects threshold > members, so lower the threshold FIRST when the removal would
   // otherwise leave it too high (e.g. 2-of-2 → remove one → must become 1-of-1).
   if (acc.threshold > newCount) actions.push({ __kind: "ChangeThreshold", newThreshold: newCount });
-  actions.push({ __kind: "RemoveMember", oldMember: new PublicKey(address) });
+  actions.push({ __kind: "RemoveMember", oldMember });
   return prepareConfigChange(creator, actions);
 }
 
 export async function prepareChangeThreshold(creator: Keypair, newThreshold: number): Promise<PreparedTx> {
+  const ms = multisigPubkey();
+  if (!ms) throw new Error("No multisig configured.");
+  const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+  if (!Number.isInteger(newThreshold) || newThreshold < 1 || newThreshold > acc.members.length)
+    throw new Error(`Approvals must be a whole number between 1 and ${acc.members.length}.`);
   return prepareConfigChange(creator, [{ __kind: "ChangeThreshold", newThreshold }]);
 }
 
@@ -488,7 +499,7 @@ export async function prepareTransfer(
       SystemProgram.transfer({
         fromPubkey: vault,
         toPubkey: toPk,
-        lamports: Math.round(uiAmount * LAMPORTS_PER_SOL),
+        lamports: toBaseUnits(uiAmount, 9), // exact base units — never float-multiply
       })
     );
   } else {
@@ -505,7 +516,7 @@ export async function prepareTransfer(
       // The vault pays rent for the recipient's token account (it signs these inner ixs).
       ixs.push(createAssociatedTokenAccountInstruction(vault, toAta, toPk, mintPk, programId));
     }
-    const raw = BigInt(Math.round(uiAmount * 10 ** asset.decimals));
+    const raw = toBaseUnits(uiAmount, asset.decimals); // exact base units — never float-multiply
     ixs.push(
       createTransferCheckedInstruction(fromAta, mintPk, toAta, vault, raw, asset.decimals, [], programId)
     );

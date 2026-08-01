@@ -15,6 +15,7 @@ import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
 import { feeBpsFor, TREASURY_FEE_OWNER } from "../config/swapFee";
 import { solLogo } from "../config/logos";
+import { toBaseUnits } from "../units";
 
 /**
  * Jupiter's DEX label(s) for the AMMs the treasury owns liquidity on. The treasury
@@ -125,7 +126,7 @@ interface RawQuote {
 async function requestQuote(
   inputMint: string,
   outputMint: string,
-  rawAmount: number,
+  rawAmount: bigint,
   slippageBps: number,
   restrictToTreasury: boolean,
   platformFeeBps: number
@@ -157,8 +158,8 @@ export async function fetchQuote(
   uiAmount: number,
   slippageBps = 50
 ): Promise<Quote> {
-  const rawAmount = Math.round(uiAmount * 10 ** input.decimals);
-  if (rawAmount <= 0) throw new Error("Enter an amount");
+  const rawAmount = toBaseUnits(uiAmount, input.decimals); // exact base units — never float-multiply
+  if (rawAmount <= 0n) throw new Error("Enter an amount");
 
   const isTreasuryPair = input.mint === XGO_MINT || output.mint === XGO_MINT;
   const otherMint = input.mint === XGO_MINT ? output.mint : input.mint;
@@ -260,14 +261,22 @@ export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<
     }),
   });
   if (!res.ok) throw new Error(`Swap build failed (${res.status})`);
-  const { swapTransaction } = (await res.json()) as { swapTransaction?: string };
+  const { swapTransaction, lastValidBlockHeight } = (await res.json()) as {
+    swapTransaction?: string;
+    lastValidBlockHeight?: number;
+  };
   if (!swapTransaction) throw new Error("No swap transaction returned");
 
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, "base64"));
   tx.sign([keypair]);
 
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  const bh = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({ signature: sig, ...bh }, "confirmed");
+  // Confirm against the transaction's OWN blockhash + expiry window (from Jupiter), not a
+  // blockhash fetched after send — otherwise the confirmation deadline doesn't match the tx.
+  const strategy =
+    lastValidBlockHeight != null
+      ? { signature: sig, blockhash: tx.message.recentBlockhash, lastValidBlockHeight }
+      : { signature: sig, ...(await connection.getLatestBlockhash()) };
+  await connection.confirmTransaction(strategy, "confirmed");
   return sig;
 }

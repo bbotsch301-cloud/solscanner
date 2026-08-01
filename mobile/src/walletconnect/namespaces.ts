@@ -8,7 +8,7 @@ import { SOLANA_CAIP2 } from "./config";
 
 const EVM_METHODS = [
   "personal_sign",
-  "eth_sign",
+  // eth_sign is intentionally omitted — raw-bytes blind signing is a known drainer vector.
   "eth_signTypedData",
   "eth_signTypedData_v4",
   "eth_sendTransaction",

@@ -14,6 +14,7 @@ import { personalSign } from "../evm/message";
 import { signTypedData, type TypedData } from "../evm/eip712";
 import { signEip1559, type EvmTx } from "../evm/tx";
 import { estimateGas, getFees, getNonce, sendRawTransaction } from "../evm/rpc";
+import { summarizeEvmData, summarizeSolanaTx } from "./decode";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
 
@@ -106,25 +107,25 @@ export function describeRequest(method: string, params: any, chainId?: string): 
         { label: "To", value: tx.to ?? "?" },
         { label: "Amount", value: `${fmtWei(tx.value)} ${sym}`.trim() },
       ];
-      const hasData = tx.data && tx.data !== "0x";
-      if (hasData) lines.push({ label: "Data", value: `contract call · ${(tx.data.length - 2) / 2} bytes` });
+      const decoded = summarizeEvmData(tx.data);
+      if (decoded) lines.push(decoded.line);
       return {
         title: method === "eth_sendTransaction" ? "Send transaction" : "Sign transaction",
         lines,
-        danger: hasData
-          ? "This interacts with a contract and can move your funds. Make sure you trust this app."
-          : "This will send funds from your wallet.",
+        danger: decoded?.danger ?? "This will send funds from your wallet.",
       };
     }
     case "solana_signMessage":
       return { title: "Solana message signature", lines: [{ label: "Message", value: String(params?.message ?? "").slice(0, 120) }], danger: null };
     case "solana_signTransaction":
-    case "solana_signAndSendTransaction":
+    case "solana_signAndSendTransaction": {
+      const s = summarizeSolanaTx(String(params?.transaction ?? ""));
       return {
         title: method === "solana_signAndSendTransaction" ? "Send Solana transaction" : "Sign Solana transaction",
-        lines: [{ label: "Details", value: "Transaction contents aren’t decoded here." }],
-        danger: "This can move funds on Solana. Approve only if you trust this app.",
+        lines: s.lines,
+        danger: s.danger,
       };
+    }
     default:
       return { title: method, lines: [], danger: null };
   }
@@ -139,8 +140,7 @@ export async function handleEvmRequest(
   switch (method) {
     case "personal_sign":
       return personalSign(params[0], acct.privateKey);
-    case "eth_sign":
-      return personalSign(params[1], acct.privateKey);
+    // eth_sign (raw-bytes blind signing, a known drainer vector) is deliberately NOT supported.
     case "eth_signTypedData":
     case "eth_signTypedData_v4": {
       const data = params[1];

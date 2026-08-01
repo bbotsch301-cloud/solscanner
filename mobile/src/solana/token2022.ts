@@ -6,6 +6,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, getMint, getTransferFeeConfig } from "@solana/spl-token";
 import { connection } from "./connection";
+import { toBaseUnits } from "../units";
 
 export const XGO_MINT = "4a6CPi8mjbJvpWHajbSjd9CMbKL8UniByoSx7tomLJa7";
 
@@ -54,7 +55,7 @@ export async function getSupply(mint: string): Promise<number | null> {
 
 /** Fee (in UI units) charged on a transfer of `amount`. */
 export function computeFee(amount: number, decimals: number, fee: TransferFee): number {
-  const raw = BigInt(Math.round(amount * 10 ** decimals));
+  const raw = toBaseUnits(amount, decimals);
   let feeRaw = (raw * BigInt(fee.bps)) / BigInt(10_000);
   if (feeRaw > fee.maxFee) feeRaw = fee.maxFee;
   return Number(feeRaw) / 10 ** decimals;

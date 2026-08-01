@@ -21,11 +21,12 @@ import {
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   createTransferCheckedInstruction,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import { connection } from "../solana/connection";
+import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas } from "../solana/tokens";
@@ -526,7 +527,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         SystemProgram.transfer({
           fromPubkey: kp.publicKey,
           toPubkey,
-          lamports: Math.round(sol * LAMPORTS_PER_SOL),
+          lamports: toBaseUnits(sol, 9), // exact base units — never float-multiply
         })
       );
       const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
@@ -551,12 +552,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const fromAta = await getAssociatedTokenAddress(mintPk, kp.publicKey, false, programId);
       const toAta = await getAssociatedTokenAddress(mintPk, toPk, false, programId);
 
+      // Idempotent create: a no-op if the recipient's token account already exists, and safe
+      // against a TOCTOU race (avoids a check-then-create that could fail if it's created between).
       const tx = new Transaction();
-      const toInfo = await connection.getAccountInfo(toAta);
-      if (!toInfo) {
-        tx.add(createAssociatedTokenAccountInstruction(kp.publicKey, toAta, toPk, mintPk, programId));
-      }
-      const raw = BigInt(Math.round(uiAmount * 10 ** decimals));
+      tx.add(createAssociatedTokenAccountIdempotentInstruction(kp.publicKey, toAta, toPk, mintPk, programId));
+      const raw = toBaseUnits(uiAmount, decimals); // exact base units — never float-multiply
       tx.add(
         createTransferCheckedInstruction(fromAta, mintPk, toAta, kp.publicKey, raw, decimals, [], programId)
       );
