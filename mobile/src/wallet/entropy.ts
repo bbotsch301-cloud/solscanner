@@ -44,13 +44,19 @@ function onInsecureDebugPath(): boolean {
  * onInsecureDebugPath() exists — but it does catch a broken or absent generator.
  */
 function producesNonDegenerateBytes(): boolean {
-  const crypto = (globalThis as unknown as { crypto?: Crypto }).crypto;
-  if (!crypto || typeof crypto.getRandomValues !== "function") return false;
-  const a = new Uint8Array(32);
-  crypto.getRandomValues(a);
-  const allZero = a.every((b) => b === 0);
-  const allSame = a.every((b) => b === a[0]);
-  return !allZero && !allSame;
+  try {
+    const crypto = (globalThis as unknown as { crypto?: Crypto }).crypto;
+    if (!crypto || typeof crypto.getRandomValues !== "function") return false;
+    const a = new Uint8Array(32);
+    crypto.getRandomValues(a);
+    const allZero = a.every((b) => b === 0);
+    const allSame = a.every((b) => b === a[0]);
+    return !allZero && !allSame;
+  } catch {
+    // A RNG that throws (e.g. native module absent) is not usable — treat as insecure
+    // so assertSecureEntropy raises our plain-English guidance, not a raw error.
+    return false;
+  }
 }
 
 /**

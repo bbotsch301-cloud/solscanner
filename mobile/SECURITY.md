@@ -15,8 +15,9 @@
 - **Derivation**: Solana ed25519 (SLIP-0010) + EVM secp256k1 (`@scure/bip32`), both
   deterministic from the single seed.
 - **BIP39 passphrase (25th word)**: optional, behind an Advanced toggle on create/import.
-  Folded into the seed exactly as typed (case-sensitive, not normalized); verified against
-  the canonical Trezor `"TREZOR"` vector. Empty passphrase is byte-identical to the legacy
+  Folded into the seed and NFKD-normalized per the BIP39 spec (case preserved, so it stays
+  case-sensitive and cross-wallet compatible); verified against the canonical Trezor
+  `"TREZOR"` vector. Empty passphrase is byte-identical to the legacy
   no-passphrase path, so existing wallets are unaffected. Stored in the same
   `WHEN_UNLOCKED_THIS_DEVICE_ONLY` slot as the mnemonic (re-derived every unlock). It cannot
   be validated — any value silently yields a different wallet — so import shows the derived

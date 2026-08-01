@@ -46,8 +46,8 @@ export interface EvmAccount {
 
 /**
  * Derive the EVM account. The optional BIP39 passphrase (the "25th word") is
- * folded into the seed exactly as typed — same rules as the Solana derivation,
- * so one passphrase covers both chains from the same phrase.
+ * folded into the seed — NFKD-normalized per BIP39, case preserved — same rules as
+ * the Solana derivation, so one passphrase covers both chains from the same phrase.
  */
 export function deriveEvmAccount(mnemonic: string, passphrase = ""): EvmAccount {
   const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);

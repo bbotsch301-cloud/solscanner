@@ -39,13 +39,35 @@ export async function setNeedsBackup(v: boolean): Promise<void> {
 }
 
 async function persist(mnemonic: string | null, passphrase: string, kp: Keypair): Promise<void> {
-  if (mnemonic) await SecureStore.setItemAsync(MNEMONIC, mnemonic, SECURE_OPTS);
-  // Store the passphrase only when set; delete any stale one so importing a
-  // no-passphrase wallet over an old one doesn't leave the old 25th word behind.
+  // Order matters. Write the passphrase FIRST so a partial failure can never leave a
+  // mnemonic stored without its passphrase — that would silently re-derive a DIFFERENT
+  // wallet on the next unlock. (Store only when set; delete any stale one so importing
+  // a no-passphrase wallet over an old one doesn't inherit the old 25th word.)
   if (passphrase) await SecureStore.setItemAsync(PASSPHRASE, passphrase, SECURE_OPTS);
   else await SecureStore.deleteItemAsync(PASSPHRASE);
+  if (mnemonic) await SecureStore.setItemAsync(MNEMONIC, mnemonic, SECURE_OPTS);
   await SecureStore.setItemAsync(SECRET_KEY, JSON.stringify(Array.from(kp.secretKey)), SECURE_OPTS);
   await SecureStore.setItemAsync(HARDENED, "1", SECURE_OPTS);
+
+  // Read-back verification: prove the persisted secrets re-derive to the EXACT address
+  // we just created, before the user could fund an address they can't reload. If a
+  // write was dropped (keychain hiccup, storage pressure, backgrounded mid-write), wipe
+  // the half-written state rather than leave a wallet that silently loads as someone else.
+  const check = await loadKeypair();
+  if (!check || check.publicKey.toBase58() !== kp.publicKey.toBase58()) {
+    await clearKeypair();
+    throw new Error(
+      "We couldn't safely save your wallet to this device's secure storage, so we stopped " +
+        "rather than create a wallet you might not be able to reload. Please try again."
+    );
+  }
+}
+
+/** True if any wallet secret is already stored. Read errors propagate (fail closed). */
+async function existingWalletPresent(): Promise<boolean> {
+  if (await SecureStore.getItemAsync(MNEMONIC)) return true;
+  if (await SecureStore.getItemAsync(SECRET_KEY)) return true;
+  return false;
 }
 
 /**
@@ -88,6 +110,15 @@ export async function loadKeypair(): Promise<Keypair | null> {
  * must be re-entered — alongside the recovery phrase — to ever restore this wallet.
  */
 export async function createKeypair(passphrase = ""): Promise<Keypair> {
+  // Fail closed: never mint a new wallet on top of an existing one. If a transient
+  // keychain read earlier made the app fall back to onboarding, this stops a brand-new
+  // seed from silently overwriting — and orphaning the funds of — a real wallet.
+  if (await existingWalletPresent()) {
+    throw new Error(
+      "A wallet already exists on this device. To create a new one, reset your current " +
+        "wallet first in Settings — this protects you from overwriting a funded wallet."
+    );
+  }
   const mnemonic = generateMnemonic();
   const kp = keypairFromMnemonic(mnemonic, passphrase);
   await persist(mnemonic, passphrase, kp);

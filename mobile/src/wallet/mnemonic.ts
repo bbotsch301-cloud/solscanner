@@ -58,10 +58,11 @@ export function validateMnemonic(mnemonic: string): boolean {
 
 /**
  * Derive the Solana keypair for a mnemonic. An optional BIP39 passphrase (the
- * "25th word") is folded into the seed exactly as typed — it is case-sensitive
- * and NOT normalized, and a different passphrase yields a completely different,
- * still-valid wallet (there is no "wrong passphrase" error). Empty string = the
- * standard no-passphrase wallet, matching Phantom/Solflare/MetaMask defaults.
+ * "25th word") is folded into the seed. Per the BIP39 spec, bip39 NFKD-normalizes
+ * the passphrase (and mnemonic) — case is preserved, so it stays case-sensitive and
+ * cross-wallet compatible (Phantom/Solflare/MetaMask do the same). A different
+ * passphrase yields a completely different, still-valid wallet (there is no "wrong
+ * passphrase" error). Empty string = the standard no-passphrase wallet.
  */
 export function keypairFromMnemonic(mnemonic: string, passphrase = ""): Keypair {
   const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);
