@@ -104,6 +104,24 @@ function kdf(pin: string, salt: Uint8Array, N: number, r: number, p: number): Pr
   return scryptAsync(new TextEncoder().encode(pin.normalize("NFKC")), salt, { N, r, p, dkLen: 32 });
 }
 
+/** Wrap `dekToWrap` under `pin` with the CURRENT scrypt params and persist the lock meta. */
+async function writeLockMeta(pin: string, dekToWrap: Uint8Array): Promise<void> {
+  const salt = rand(16);
+  const kek = await kdf(pin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
+  const wrapNonce = rand(24);
+  const wrappedDek = xchacha20poly1305(kek, wrapNonce).encrypt(dekToWrap);
+  const meta: LockMeta = {
+    v: 1,
+    salt: b64(salt),
+    N: SCRYPT.N,
+    r: SCRYPT.r,
+    p: SCRYPT.p,
+    wrapNonce: b64(wrapNonce),
+    wrappedDek: b64(wrappedDek),
+  };
+  await SecureStore.setItemAsync(LOCK_META, JSON.stringify(meta), SECURE_OPTS);
+}
+
 /** Load whether a PIN is configured (call once at startup). */
 export async function loadLockState(): Promise<boolean> {
   try {
@@ -132,21 +150,8 @@ export function lockNow(): void {
 
 /** Turn a random DEK into a fresh lock wrapped under `pin`. Holds the DEK. */
 export async function createLock(pin: string): Promise<void> {
-  const salt = rand(16);
-  const kek = await kdf(pin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
   const newDek = rand(32);
-  const wrapNonce = rand(24);
-  const wrappedDek = xchacha20poly1305(kek, wrapNonce).encrypt(newDek);
-  const meta: LockMeta = {
-    v: 1,
-    salt: b64(salt),
-    N: SCRYPT.N,
-    r: SCRYPT.r,
-    p: SCRYPT.p,
-    wrapNonce: b64(wrapNonce),
-    wrappedDek: b64(wrappedDek),
-  };
-  await SecureStore.setItemAsync(LOCK_META, JSON.stringify(meta), SECURE_OPTS);
+  await writeLockMeta(pin, newDek);
   await resetAttempts();
   dek = newDek;
   enabledCache = true;
@@ -166,6 +171,15 @@ export async function unlock(pin: string): Promise<boolean> {
   try {
     dek = xchacha20poly1305(kek, unb64(m.wrapNonce)).decrypt(unb64(m.wrappedDek));
     if (attempts.fails || attempts.until) await resetAttempts(); // clean slate on success
+    // Migrate a lock created with heavier (older) params to the current mobile-tuned ones, so
+    // every subsequent unlock is fast. Best-effort — a failure here leaves the working lock as-is.
+    if (m.N > SCRYPT.N || m.r !== SCRYPT.r || m.p !== SCRYPT.p) {
+      try {
+        await writeLockMeta(pin, dek);
+      } catch {
+        /* keep the old meta; this unlock already succeeded */
+      }
+    }
     return true;
   } catch {
     dek = null; // wrong PIN — AEAD tag rejected
@@ -180,21 +194,7 @@ export async function unlock(pin: string): Promise<boolean> {
 /** Re-wrap the current DEK under a new PIN (verify the old one first). */
 export async function rewrap(oldPin: string, newPin: string): Promise<boolean> {
   if (!(await unlock(oldPin))) return false;
-  const current = dek!;
-  const salt = rand(16);
-  const kek = await kdf(newPin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
-  const wrapNonce = rand(24);
-  const wrappedDek = xchacha20poly1305(kek, wrapNonce).encrypt(current);
-  const meta: LockMeta = {
-    v: 1,
-    salt: b64(salt),
-    N: SCRYPT.N,
-    r: SCRYPT.r,
-    p: SCRYPT.p,
-    wrapNonce: b64(wrapNonce),
-    wrappedDek: b64(wrappedDek),
-  };
-  await SecureStore.setItemAsync(LOCK_META, JSON.stringify(meta), SECURE_OPTS);
+  await writeLockMeta(newPin, dek!);
   return true;
 }
 

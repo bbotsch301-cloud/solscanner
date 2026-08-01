@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,7 +26,7 @@ function formatWait(ms: number): string {
 
 export function PinUnlockScreen() {
   const insets = useSafeAreaInsets();
-  const { unlockWithPin, pinLockoutMs } = useWallet();
+  const { unlockWithPin, pinLockoutMs, reset } = useWallet();
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,19 @@ export function PinUnlockScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Safety valve: if the PIN is forgotten (or a device is too slow to unlock), the only way
+  // back in is to wipe the encrypted wallets and restore from the recovery phrase.
+  const forgotPin = () => {
+    Alert.alert(
+      "Forgot your PIN?",
+      "There's no way to recover a lost PIN. You can reset the app and restore your wallets from their recovery phrases. Only do this if you have those phrases saved — otherwise your funds are lost.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset app", style: "destructive", onPress: () => reset() },
+      ]
+    );
   };
 
   return (
@@ -109,6 +123,10 @@ export function PinUnlockScreen() {
           </>
         )}
       </Pressable>
+
+      <Pressable onPress={forgotPin} disabled={busy} style={styles.forgot} hitSlop={8}>
+        <Text style={styles.forgotText}>Forgot PIN?</Text>
+      </Pressable>
     </KeyboardAvoidingView>
   );
 }
@@ -143,4 +161,6 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { backgroundColor: colors.card },
   btnText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
+  forgot: { alignItems: "center", paddingVertical: spacing(4) },
+  forgotText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
 });
