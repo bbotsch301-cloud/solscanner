@@ -1,22 +1,23 @@
+import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { TokenAvatar } from "../components/TokenAvatar";
 import { PieChart } from "../components/PieChart";
+import { Holding } from "../components/Holding";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
-import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
-import { IS_MAINNET } from "../solana/connection";
-import { colors, compact, font, radius, spacing, usd } from "../theme";
+import { fetchOffchainPrices, offchainValue, type OffchainPrices } from "../prices/offchain";
+import { OFFCHAIN_ASSETS } from "../config/treasuryAssets";
+import { nativeLogo } from "../config/logos";
+import { solscanAccount, IS_MAINNET } from "../solana/connection";
+import { colors, compact, font, radius, shortAddress, spacing, usd } from "../theme";
 
-const SOL_LOGO =
-  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
+const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
 
 function StatTile({ label, value, delta, deltaUp }: { label: string; value: string; delta?: string; deltaUp?: boolean }) {
   return (
@@ -30,8 +31,6 @@ function StatTile({ label, value, delta, deltaUp }: { label: string; value: stri
 
 export function EcosystemScreen() {
   const insets = useSafeAreaInsets();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nav = useNavigation<any>();
   const [holdings, setHoldings] = useState<Holdings | null>(null);
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
@@ -39,6 +38,8 @@ export function EcosystemScreen() {
   const [fee, setFee] = useState<TransferFee | null>(null);
   const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const TREASURY_ADDRESS = treasuryAddress();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,26 +72,11 @@ export function EcosystemScreen() {
     load();
   }, [load]);
 
-  // The full Global Goshens treasury allocation — same slices + total the Treasury tab shows
-  // (on-chain holdings + off-chain silver + dinar).
-  const { slices, total: treasuryValue } = buildAllocation(holdings, prices, metas, ocPrices);
+  // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar.
+  const { slices, total: treasuryValue, solUsd, sortedTokens } = buildAllocation(holdings, prices, metas, ocPrices);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-
-  const topAssets = [
-    { key: "SOL", symbol: "SOL", name: "Solana", amount: holdings?.sol ?? 0, logoURI: SOL_LOGO, usdValue: (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0) },
-    ...(holdings?.tokens ?? []).map((t) => ({
-      key: t.mint,
-      symbol: metas[t.mint]?.symbol ?? t.mint.slice(0, 3),
-      name: metas[t.mint]?.name ?? t.mint.slice(0, 4),
-      amount: t.amount,
-      logoURI: metas[t.mint]?.logoURI,
-      usdValue: t.amount * (prices[t.mint]?.usdPrice ?? 0),
-    })),
-  ]
-    .sort((a, b) => b.usdValue - a.usdValue)
-    .slice(0, 4);
 
   return (
     <ScrollView
@@ -119,9 +105,26 @@ export function EcosystemScreen() {
           <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
             {holdings ? usd(treasuryValue) : "—"}
           </Text>
-          <Text style={styles.heroSub}>The mission, on-chain and verifiable</Text>
+          <View style={styles.addrRow}>
+            <Text style={styles.addr}>{shortAddress(TREASURY_ADDRESS, 4, 4)}</Text>
+            <Pressable
+              onPress={async () => {
+                await Clipboard.setStringAsync(TREASURY_ADDRESS);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              hitSlop={10}
+            >
+              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color="#0A0A0C" />
+            </Pressable>
+          </View>
         </View>
       </LinearGradient>
+
+      <Pressable onPress={() => Linking.openURL(solscanAccount(TREASURY_ADDRESS))} style={styles.verify}>
+        <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
+        <Text style={styles.verifyText}>Public & verifiable on-chain — view on Solscan ↗</Text>
+      </Pressable>
 
       {/* Stat tiles — live on-chain only */}
       <View style={styles.tiles}>
@@ -133,47 +136,70 @@ export function EcosystemScreen() {
         />
       </View>
 
-      {/* Treasury allocation — same pie the Treasury tab shows */}
+      {/* Allocation */}
       {holdings && slices.length > 0 && (
         <>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Allocation</Text>
-            <Pressable onPress={() => nav.navigate("Treasury")}>
-              <Text style={styles.viewAll}>View all →</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.sectionTitle}>Allocation</Text>
           <View style={styles.chartCard}>
             <PieChart data={slices} centerValue={usd(treasuryValue)} centerLabel="Total" />
           </View>
         </>
       )}
 
-      {/* Treasury assets preview */}
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Treasury Assets</Text>
-        <Pressable onPress={() => nav.navigate("Treasury")}>
-          <Text style={styles.viewAll}>View all →</Text>
-        </Pressable>
-      </View>
+      {/* Holdings — on-chain + off-chain silver/dinar */}
+      <Text style={styles.sectionTitle}>Holdings</Text>
       <View style={styles.list}>
-        {topAssets.map((a, i) => (
-          <View key={a.key}>
-            {i > 0 && <View style={styles.divider} />}
-            <View style={styles.row}>
-              <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
-              <View style={styles.mid}>
-                <Text style={styles.symbol}>{a.name}</Text>
-                <Text style={styles.sub}>{compact(a.amount)} {a.symbol}</Text>
-              </View>
-              {a.usdValue > 0 && <Text style={styles.value}>{usd(a.usdValue)}</Text>}
+        <Holding
+          symbol="SOL"
+          name="Solana"
+          amount={holdings?.sol ?? 0}
+          usdValue={solUsd}
+          pct={pctOf(solUsd, treasuryValue)}
+          logoURI={nativeLogo.solana}
+          color={colors.accent}
+        />
+        {sortedTokens.map(({ t, value }) => {
+          const meta = metas[t.mint];
+          const price = prices[t.mint]?.usdPrice;
+          return (
+            <View key={t.mint}>
+              <View style={styles.divider} />
+              <Holding
+                symbol={meta?.symbol ?? t.mint.slice(0, 3)}
+                name={meta?.name ?? shortAddress(t.mint, 4, 4)}
+                amount={t.amount}
+                usdValue={price != null ? value : undefined}
+                pct={pctOf(value, treasuryValue)}
+                logoURI={meta?.logoURI}
+                color={colors.primary}
+              />
             </View>
-          </View>
-        ))}
+          );
+        })}
+        {OFFCHAIN_ASSETS.map((a) => {
+          const value = offchainValue(a, ocPrices);
+          return (
+            <View key={a.label}>
+              <View style={styles.divider} />
+              <Holding
+                symbol={a.category}
+                name={a.label}
+                usdValue={value}
+                pct={pctOf(value, treasuryValue)}
+                color={colors.accent}
+                icon={a.icon}
+                offchainDetail={
+                  a.amount != null ? `${a.amount.toLocaleString("en-US")} ${a.unit ?? ""}`.trim() : a.category
+                }
+              />
+            </View>
+          );
+        })}
       </View>
 
       <Text style={styles.note}>
-        Everything here is read live on-chain — treasury holdings, XGO supply, and the
-        transfer fee.
+        On-chain holdings, XGO supply, and the transfer fee are read live from the chain.
+        Off-chain assets (silver, dinar) are stated and live-priced where possible.
       </Text>
     </ScrollView>
   );
@@ -189,22 +215,26 @@ const styles = StyleSheet.create({
   heroInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(1) },
   heroLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
   heroValue: { color: "#0A0A0C", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
-  heroSub: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "600" },
-  tiles: { flexDirection: "row", gap: spacing(2.5), marginTop: spacing(3) },
+  addrRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), marginTop: spacing(1) },
+  addr: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
+  verify: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(3) },
+  verifyText: { color: colors.primary, fontSize: font.small, fontWeight: "600" },
+  tiles: { flexDirection: "row", gap: spacing(2.5), marginTop: spacing(2) },
   tile: { flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(3), gap: 2 },
   tileLabel: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "700" },
   tileValue: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   tileDelta: { fontSize: font.tiny, fontWeight: "700" },
-  chartCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4), marginTop: spacing(3) },
-  sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing(6), marginBottom: spacing(3) },
-  sectionTitle: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
-  viewAll: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
+  chartCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4) },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: font.small,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: spacing(6),
+    marginBottom: spacing(3),
+  },
   list: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(4) },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
-  mid: { flex: 1, gap: 2 },
-  symbol: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
-  sub: { color: colors.textMuted, fontSize: font.small },
-  value: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   note: { color: colors.textFaint, fontSize: font.small, lineHeight: 18, marginTop: spacing(5) },
 });

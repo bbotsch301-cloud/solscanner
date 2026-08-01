@@ -10,7 +10,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
-import { TreasuryScreen } from "./src/screens/TreasuryScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
@@ -51,7 +50,6 @@ const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home",
   Wallet: "wallet",
   "Buy/Swap": "swap-horizontal",
-  Treasury: "business",
   More: "ellipsis-horizontal",
 };
 
@@ -79,7 +77,6 @@ function Tabs() {
       <Tab.Screen name="Buy/Swap" options={{ tabBarLabel: "Swap" }}>
         {() => <SwapScreen asTab />}
       </Tab.Screen>
-      <Tab.Screen name="Treasury" component={TreasuryScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );

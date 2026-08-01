@@ -14,9 +14,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
+import { fetchHoldings, type Holdings } from "../solana/treasury";
 import { multisigConfigured, setMultisigAddress } from "../config/multisig";
 import { solscanAccount } from "../solana/connection";
-import { colors, font, radius, shortAddress, spacing } from "../theme";
+import { colors, compact, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 function ActionRow({
@@ -51,6 +52,7 @@ export function MultisigScreen() {
   const { solanaAddress } = useWallet();
   const [configured, setConfigured] = useState(multisigConfigured());
   const [info, setInfo] = useState<MultisigInfo | null>(null);
+  const [vault, setVault] = useState<Holdings | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -58,11 +60,14 @@ export function MultisigScreen() {
     setConfigured(isConfigured);
     if (!isConfigured) {
       setInfo(null);
+      setVault(null);
       return;
     }
     setLoading(true);
     try {
-      setInfo(await fetchMultisigInfo());
+      const i = await fetchMultisigInfo();
+      setInfo(i);
+      setVault(i ? await fetchHoldings(i.vault).catch(() => null) : null);
     } finally {
       setLoading(false);
     }
@@ -143,6 +148,16 @@ export function MultisigScreen() {
                 <ActivityIndicator color={colors.primary} style={{ marginTop: spacing(2) }} />
               ) : info ? (
                 <>
+                  <Text style={styles.balanceLabel}>Vault balance</Text>
+                  <Text style={styles.balanceValue}>
+                    {vault ? `${compact(vault.sol)} SOL` : "…"}
+                    {vault && vault.tokens.length > 0 && (
+                      <Text style={styles.balanceSub}>
+                        {"  +"}
+                        {vault.tokens.length} token{vault.tokens.length === 1 ? "" : "s"}
+                      </Text>
+                    )}
+                  </Text>
                   <Pressable onPress={() => Linking.openURL(solscanAccount(info.vault))} hitSlop={6}>
                     <Text style={styles.vaultLine}>
                       Vault {shortAddress(info.vault, 5, 5)} · view on Solscan ↗
@@ -203,7 +218,10 @@ const styles = StyleSheet.create({
   statusHead: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   statusTitle: { flex: 1, color: colors.text, fontSize: font.h3, fontWeight: "800" },
   threshold: { color: colors.accent, fontSize: font.body, fontWeight: "900" },
-  vaultLine: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
+  balanceLabel: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginTop: spacing(1) },
+  balanceValue: { color: colors.text, fontSize: font.h2, fontWeight: "900" },
+  balanceSub: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  vaultLine: { color: colors.primary, fontSize: font.small, fontWeight: "700", marginTop: spacing(1) },
   memberLine: { color: colors.textMuted, fontSize: font.small },
   sectionTitle: {
     color: colors.textMuted,

@@ -25,12 +25,14 @@ export interface OffchainAsset {
    * When omitted, `valueUsd` is used as-is.
    */
   live?: "silver" | "iqd";
+  /** Which built-in SVG coin logo to show (see components/AssetLogo). */
+  icon?: "silver" | "dinar";
   /** Optional context, e.g. the rate/date the estimate is based on. */
   note?: string;
 }
 
 export const OFFCHAIN_ASSETS: OffchainAsset[] = [
   // Values are priced live where possible; `valueUsd` is the fallback estimate.
-  { label: "Physical Silver", category: "Silver", amount: 10, unit: "oz", valueUsd: 310, live: "silver", note: "live spot" },
-  { label: "Iraqi Dinar", category: "Currency", amount: 500000, unit: "IQD", valueUsd: 380, live: "iqd", note: "live rate" },
+  { label: "Physical Silver", category: "Silver", amount: 10, unit: "oz", valueUsd: 310, live: "silver", icon: "silver", note: "live spot" },
+  { label: "Iraqi Dinar", category: "Currency", amount: 500000, unit: "IQD", valueUsd: 380, live: "iqd", icon: "dinar", note: "live rate" },
 ];
