@@ -1,6 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { LayoutAnimation, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -58,7 +59,9 @@ export function EcosystemScreen() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const lastLoadRef = useRef(0);
   const load = useCallback(async () => {
+    lastLoadRef.current = Date.now();
     setLoading(true);
     try {
       const [h, s, f] = await Promise.all([
@@ -91,9 +94,14 @@ export function EcosystemScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Reload whenever the tab regains focus (so a swap fee / any inflow shows without a manual pull),
+  // but throttle so rapid tab-hopping doesn't refetch the whole treasury each time. Cached data
+  // stays on screen meanwhile (state is seeded from ecoCache), so this refreshes behind it.
+  useFocusEffect(
+    useCallback(() => {
+      if (Date.now() - lastLoadRef.current > 15_000) load();
+    }, [load])
+  );
 
   // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar, with the
   // long tail of crypto lumped into one "Other holdings" row so the list stays short.
