@@ -39,8 +39,11 @@ import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext"
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
 import { ContactsScreen } from "./src/screens/ContactsScreen";
+import { LegalScreen } from "./src/screens/LegalScreen";
+import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
 import { loadNetworkPref } from "./src/solana/connection";
-import { loadSecurityPref } from "./src/security/prefs";
+import { loadSecurityPref, getAcceptedLegalVersion, setAcceptedLegalVersion } from "./src/security/prefs";
+import { LEGAL_VERSION } from "./src/legal/content";
 import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
@@ -142,8 +145,24 @@ function Root() {
   const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp, shouldPromptPin } =
     useWallet();
   const { unlocked } = useAuth();
+  // One-time legal acceptance, before anything else. Re-shows if LEGAL_VERSION is bumped.
+  const [legalOk, setLegalOk] = useState(getAcceptedLegalVersion() >= LEGAL_VERSION);
 
   if (initializing) return <><StatusBar style="light" /><Splash /></>;
+  if (!legalOk)
+    return (
+      <>
+        <StatusBar style="light" />
+        <Fade>
+          <LegalAcceptScreen
+            onAccept={() => {
+              void setAcceptedLegalVersion(LEGAL_VERSION);
+              setLegalOk(true);
+            }}
+          />
+        </Fade>
+      </>
+    );
   if (!hasWallet) return <><StatusBar style="light" /><Fade><OnboardingScreen /></Fade></>;
   // A PIN (which encrypts the seeds) gates ahead of the biometric lock; when set, it
   // replaces the biometric lock so the user isn't gated twice.
@@ -194,6 +213,7 @@ function Root() {
           <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
           <Stack.Screen name="Contacts" component={ContactsScreen} />
+          <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>

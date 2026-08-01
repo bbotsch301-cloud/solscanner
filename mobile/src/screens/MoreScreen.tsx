@@ -62,6 +62,15 @@ export function MoreScreen() {
         <View style={styles.divider} />
         <Row icon="storefront" label="Marketplace" soon />
       </View>
+
+      <Text style={styles.sectionTitle}>Legal</Text>
+      <View style={styles.group}>
+        <Row icon="shield-checkmark" label="How your keys are protected" onPress={() => nav.navigate("Legal", { doc: "security" })} />
+        <View style={styles.divider} />
+        <Row icon="lock-closed" label="Privacy Policy" onPress={() => nav.navigate("Legal", { doc: "privacy" })} />
+        <View style={styles.divider} />
+        <Row icon="document-text" label="Terms of Service" onPress={() => nav.navigate("Legal", { doc: "terms" })} />
+      </View>
     </ScrollView>
   );
 }

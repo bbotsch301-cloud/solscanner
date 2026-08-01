@@ -1,4 +1,5 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { LegalDocKey } from "./legal/content";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -25,6 +26,7 @@ export type RootStackParamList = {
   WalletConnect: undefined;
   TokenApprovals: undefined;
   Contacts: undefined;
+  Legal: { doc: LegalDocKey };
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;
