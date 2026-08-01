@@ -46,6 +46,7 @@ import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
 import { loadApprovals } from "./src/safety/approvals";
 import { loadContacts } from "./src/contacts/contacts";
+import { loadPubAddresses } from "./src/wallet/pubAddresses";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { haptics } from "./src/ui/haptics";
 import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
@@ -214,6 +215,7 @@ export default function App() {
       loadRecipients(),
       loadApprovals(),
       loadContacts(),
+      loadPubAddresses(),
       preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);

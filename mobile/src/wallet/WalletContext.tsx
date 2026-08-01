@@ -63,6 +63,7 @@ import {
   type SeedMeta,
   type AccountRef,
 } from "./vault";
+import { getPubAddress, putPubAddress } from "./pubAddresses";
 import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
 import { notifyReceived, registerForBackendPush } from "../ui/notifications";
@@ -214,6 +215,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [locked, setLocked] = useState(false);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
+  // The active account's PUBLIC addresses, set instantly from the stored address cache on a switch
+  // so assets render before the (slow) key derivation finishes. The keypair above is derived after
+  // and only needed to sign — the addresses never depend on it.
+  const [activeSolAddress, setActiveSolAddress] = useState<string | null>(null);
+  const [activeEvmAddress, setActiveEvmAddress] = useState<string | null>(null);
   const [needsBackup, setNeedsBackupState] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [tokens, setTokens] = useState<SplToken[]>([]);
@@ -228,6 +234,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const keypairRef = useRef<Keypair | null>(null);
   const evmAccountRef = useRef<EvmAccount | null>(null);
+  // Active public addresses, read by loadChain to fetch balances without needing the keypair.
+  const activeSolAddressRef = useRef<string | null>(null);
+  const activeEvmAddressRef = useRef<string | null>(null);
   const activeChainRef = useRef<ChainId>(DEFAULT_CHAIN);
   const lastActivityRef = useRef(0); // stamped on mount in the inactivity effect below
   // Receive-notification state: last-known per-asset balances for the active address, and the
@@ -270,6 +279,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     keypairRef.current = null;
     setEvmAccount(null);
     evmAccountRef.current = null;
+    setActiveSolAddress(null);
+    activeSolAddressRef.current = null;
+    setActiveEvmAddress(null);
+    activeEvmAddressRef.current = null;
   }, []);
 
   // Any touch anywhere in the app resets the inactivity clock (wired at the root in App).
@@ -327,10 +340,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     ]);
   }, [detectReceipts]);
 
-  const fetchEvm = useCallback(async (chain: ChainDef, acct: EvmAccount) => {
+  const fetchEvm = useCallback(async (chain: ChainDef, address: string) => {
     const [nativeWei, toks, evPrices] = await Promise.all([
-      getEvmBalance(chain, acct.address),
-      fetchEvmTokenBalances(chain, acct.address),
+      getEvmBalance(chain, address),
+      fetchEvmTokenBalances(chain, address),
       fetchEvmNativePrices(),
     ]);
     const nativeAmt = Number(nativeWei) / 10 ** chain.decimals;
@@ -338,7 +351,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setEvmTokens(toks);
     setEvmPrices(evPrices);
 
-    detectReceipts(acct.address, [
+    detectReceipts(address, [
       { key: "native", symbol: chain.symbol, amount: nativeAmt, priceUsd: evPrices[chain.symbol] ?? null },
       ...toks
         .filter((tb) => tb.balance > 0)
@@ -354,11 +367,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         if (chain.kind === "solana") {
-          const kp = keypairRef.current;
-          if (kp) await fetchBalances(kp.publicKey);
+          const a = activeSolAddressRef.current;
+          if (a) await fetchBalances(new PublicKey(a));
         } else {
-          const acct = evmAccountRef.current;
-          if (acct) await fetchEvm(chain, acct);
+          const a = activeEvmAddressRef.current;
+          if (a) await fetchEvm(chain, a);
         }
       } catch (e) {
         setError(humanizeError(e, { action: "load" }));
@@ -383,9 +396,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [loadChain]
   );
 
-  /** Re-derive the signing keys for a (seed, index) and reload its balances. */
+  // Set the active account's public addresses in both state (for the UI) and refs (for loadChain).
+  const setActiveAddresses = useCallback((sol: string | null, evm: string | null) => {
+    setActiveSolAddress(sol);
+    activeSolAddressRef.current = sol;
+    setActiveEvmAddress(evm);
+    activeEvmAddressRef.current = evm;
+  }, []);
+
+  /** Activate a (seed, index): show its assets immediately from the stored PUBLIC address, then
+   *  derive the signing keys (the slow BIP39 step) in the background — they're only needed to sign,
+   *  never to display. First-ever use of an account derives the address, caches it, then loads. */
   const applyActive = useCallback(
     async (ref: AccountRef) => {
+      // Clear the previous account's signing keys + balances right away.
+      setKeypair(null);
+      keypairRef.current = null;
+      setEvmAccount(null);
+      evmAccountRef.current = null;
+      setSolBalance(null);
+      setTokens([]);
+      setEvmNative(null);
+      setEvmTokens([]);
+
+      // Instant view: known address → render + load balances now, without waiting on derivation.
+      const stored = getPubAddress(ref.seedId, ref.index);
+      if (stored) {
+        setActiveAddresses(stored.sol, stored.evm);
+        loadChain(activeChainRef.current);
+      } else {
+        setActiveAddresses(null, null);
+      }
+
+      // Derive the signing keys (slow; only needed to sign). The view above already updated.
       const [kp, acct] = await Promise.all([
         keypairFor(ref.seedId, ref.index),
         evmAccountFor(ref.seedId, ref.index),
@@ -394,13 +437,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       keypairRef.current = kp;
       setEvmAccount(acct);
       evmAccountRef.current = acct;
-      setSolBalance(null);
-      setTokens([]);
-      setEvmNative(null);
-      setEvmTokens([]);
-      loadChain(activeChainRef.current);
+
+      // First-ever activation of this account: we only just learned its address — cache + load now.
+      if (!stored) {
+        const sol = kp?.publicKey.toBase58() ?? null;
+        const evm = acct?.address ?? null;
+        setActiveAddresses(sol, evm);
+        if (sol) putPubAddress(ref.seedId, ref.index, { sol, evm });
+        loadChain(activeChainRef.current);
+      }
     },
-    [loadChain]
+    [loadChain, setActiveAddresses]
   );
 
   // Load the vault (migrating a v1 single wallet) on startup.
@@ -585,6 +632,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         keypairRef.current = null;
         setEvmAccount(null);
         evmAccountRef.current = null;
+        setActiveSolAddress(null);
+        activeSolAddressRef.current = null;
+        setActiveEvmAddress(null);
+        activeEvmAddressRef.current = null;
         setNeedsBackupState(false);
         setSolBalance(null);
         setTokens([]);
@@ -618,6 +669,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     keypairRef.current = null;
     setEvmAccount(null);
     evmAccountRef.current = null;
+    setActiveSolAddress(null);
+    activeSolAddressRef.current = null;
+    setActiveEvmAddress(null);
+    activeEvmAddressRef.current = null;
     setNeedsBackupState(false);
     setSolBalance(null);
     setTokens([]);
@@ -782,8 +837,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const solPrice = prices[WSOL_MINT]?.usdPrice ?? null;
     const solChange24h = prices[WSOL_MINT]?.priceChange24h ?? null;
     const priceOf = (mint: string) => prices[mint]?.usdPrice;
-    const solanaAddress = keypair?.publicKey.toBase58() ?? null;
-    const evmAddress = evmAccount?.address ?? null;
+    // Public addresses come from the stored-address state (set instantly on switch), NOT the
+    // keypair — so assets show before the signing key finishes deriving.
+    const solanaAddress = activeSolAddress;
+    const evmAddress = activeEvmAddress;
     const activeChain = getChain(activeChainId);
 
     let activeAddress: string | null;
@@ -909,7 +966,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     changePin,
     skipPinPrompt,
     keypair,
-    evmAccount,
+    activeSolAddress,
+    activeEvmAddress,
     needsBackup,
     markBackedUp,
     switchAccount,

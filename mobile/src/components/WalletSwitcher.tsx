@@ -10,14 +10,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { deriveAccount } from "../wallet/vault";
+import { getPubAddress, type PubAddress } from "../wallet/pubAddresses";
 import { PressableScale } from "./PressableScale";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
-
-// Public addresses are stable per (seed, index), so cache them across opens — a reopened menu
-// shows them immediately with no re-derivation flash.
-const ADDR_CACHE: Record<string, { sol: string; evm: string | null }> = {};
 
 export function WalletSwitcher() {
   const insets = useSafeAreaInsets();
@@ -25,25 +22,33 @@ export function WalletSwitcher() {
   const { seeds, activeSeedId, activeIndex, switchAccount } = useWallet();
 
   const [open, setOpen] = useState(false);
-  const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>(() => ({ ...ADDR_CACHE }));
+  const [addrs, setAddrs] = useState<Record<string, PubAddress>>({});
 
-  // Derive each account's public addresses for display — only while the menu is open. Cheap now
-  // that the BIP39 seed is cached in the vault, and results are memoized in ADDR_CACHE.
+  // Show each account's public addresses. They're stable, so read them instantly from the shared
+  // persisted store (populated by any prior derivation) and only derive the ones we've never seen.
   const structureKey = seeds.map((s) => `${s.id}:${s.accounts.join(",")}`).join("|");
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const map: Record<string, { sol: string; evm: string | null }> = { ...ADDR_CACHE };
+      const map: Record<string, PubAddress> = {};
+      for (const s of seeds) for (const i of s.accounts) {
+        const stored = getPubAddress(s.id, i);
+        if (stored) map[`${s.id}:${i}`] = stored;
+      }
+      if (!cancelled) setAddrs({ ...map }); // instant paint from the cache
+
       for (const s of seeds) {
         for (const i of s.accounts) {
           const key = `${s.id}:${i}`;
           if (map[key]) continue;
-          const d = await deriveAccount(s.id, i);
-          if (d) map[key] = ADDR_CACHE[key] = { sol: d.solanaAddress, evm: d.evmAddress };
+          const d = await deriveAccount(s.id, i); // caches into the shared store
+          if (d && !cancelled) {
+            map[key] = { sol: d.solanaAddress, evm: d.evmAddress };
+            setAddrs({ ...map });
+          }
         }
       }
-      if (!cancelled) setAddrs(map);
     })();
     return () => {
       cancelled = true;

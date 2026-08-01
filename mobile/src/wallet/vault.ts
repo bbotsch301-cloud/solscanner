@@ -25,6 +25,7 @@ import {
   validateMnemonic,
 } from "./mnemonic";
 import { evmAccountFromSeed, type EvmAccount } from "./evm";
+import { putPubAddress, dropPubAddresses } from "./pubAddresses";
 import * as lock from "./lock";
 
 const INDEX_KEY = "solwallet.vault.v2";
@@ -168,44 +169,37 @@ export interface DerivedAccount {
   evmAddress: string | null;
 }
 
-// In-memory cache of the 64-byte BIP39 seed per wallet. Computing it (PBKDF2-HMAC-SHA512 × 2048)
-// is the dominant cost of key derivation on Hermes and does NOT depend on the account index, so we
-// pay it once per wallet per unlocked session and derive every account (both chains, any index)
-// from the cached seed — that's what makes account/wallet switching feel instant. Cleared on lock
-// (lockSeeds) and when a wallet is removed (deleteSeedKeys); it lives exactly as long as the
-// mnemonic it came from is already available in memory, so it adds no exposure.
-const seedCache = new Map<string, Uint8Array>();
-
-/** Resolve a wallet's derivation material: the cached BIP39 `seed` for mnemonic wallets (computing
- *  + caching it on first use), or the raw `secretKey` for legacy key-only seeds. A cache hit skips
- *  the SecureStore reads entirely. */
+/** Resolve a wallet's derivation material: the BIP39 `seed` for mnemonic wallets, or the raw
+ *  `secretKey` for legacy key-only seeds. The seed is computed fresh each call and is NEVER cached —
+ *  it exists only transiently, for the single derivation that needs it (nothing seed-equivalent is
+ *  retained between calls). Callers that just need addresses use the cheap persisted address store. */
 async function resolveSeed(seedId: string): Promise<{ seed: Uint8Array | null; secretKey: string | null }> {
-  const hit = seedCache.get(seedId);
-  if (hit) return { seed: hit, secretKey: null };
   const { mnemonic, passphrase, secretKey } = await seedSecret(seedId);
-  if (mnemonic) {
-    const seed = bip39SeedSync(mnemonic, passphrase);
-    seedCache.set(seedId, seed);
-    return { seed, secretKey: null };
-  }
+  if (mnemonic) return { seed: bip39SeedSync(mnemonic, passphrase), secretKey: null };
   return { seed: null, secretKey };
 }
 
 const legacyKeypair = (secretKey: string): Keypair =>
   Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey) as number[]));
 
-/** Public addresses for one (seed, index). Null if the seed material can't be read. */
+/** Public addresses for one (seed, index). Null if the seed material can't be read. Derives the
+ *  BIP39 seed once and both chains from it, and write-through caches the (public) addresses so a
+ *  later wallet switch can show assets without re-deriving. */
 export async function deriveAccount(seedId: string, index: number): Promise<DerivedAccount | null> {
   try {
     const { seed, secretKey } = await resolveSeed(seedId);
     if (seed) {
       const kp = keypairFromSeed(seed, index);
       const evm = evmAccountFromSeed(seed, index);
-      return { seedId, index, solanaAddress: kp.publicKey.toBase58(), evmAddress: evm.address };
+      const out = { seedId, index, solanaAddress: kp.publicKey.toBase58(), evmAddress: evm.address };
+      putPubAddress(seedId, index, { sol: out.solanaAddress, evm: out.evmAddress });
+      return out;
     }
     if (secretKey) {
       const kp = legacyKeypair(secretKey);
-      return { seedId, index: 0, solanaAddress: kp.publicKey.toBase58(), evmAddress: null };
+      const out = { seedId, index: 0, solanaAddress: kp.publicKey.toBase58(), evmAddress: null };
+      putPubAddress(seedId, 0, { sol: out.solanaAddress, evm: null });
+      return out;
     }
     return null;
   } catch {
@@ -432,7 +426,7 @@ export async function clearVault(): Promise<void> {
 }
 
 async function deleteSeedKeys(id: string): Promise<void> {
-  seedCache.delete(id); // forget the cached seed for a wallet we're removing
+  dropPubAddresses(id); // forget the removed wallet's cached public addresses
   await SecureStore.deleteItemAsync(seedKey(id, "mnemonic"));
   await SecureStore.deleteItemAsync(seedKey(id, "passphrase"));
   await SecureStore.deleteItemAsync(seedKey(id, "secretKey"));
@@ -463,7 +457,6 @@ export function pinLockoutMs(): number {
 /** Drop the in-memory key (on background / auto-lock). */
 export function lockSeeds(): void {
   lock.lockNow();
-  seedCache.clear(); // drop cached BIP39 seeds so nothing derivable survives the lock
 }
 
 /**
