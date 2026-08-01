@@ -15,8 +15,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { deriveAccount } from "../wallet/vault";
-import { ImportWallet } from "./ImportWallet";
-import { CreateWallet } from "./CreateWallet";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -28,8 +26,6 @@ export function WalletsScreen() {
 
   const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [showImport, setShowImport] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; label: string } | null>(null);
 
   // Derive the (public) addresses for every account to show under each wallet.
@@ -76,12 +72,6 @@ export function WalletsScreen() {
     }
   };
 
-  if (showImport) {
-    return <ImportWallet onDone={() => setShowImport(false)} onCancel={() => setShowImport(false)} />;
-  }
-  if (showCreate) {
-    return <CreateWallet onDone={() => setShowCreate(false)} onCancel={() => setShowCreate(false)} />;
-  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
@@ -159,21 +149,11 @@ export function WalletsScreen() {
           </View>
         ))}
 
-        <Pressable
-          onPress={() => setShowCreate(true)}
-          style={styles.primaryBtn}
-          disabled={busy === "create"}
-        >
-          {busy === "create" ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <>
-              <Ionicons name="add-circle" size={20} color={colors.bg} />
-              <Text style={styles.primaryText}>Create new wallet</Text>
-            </>
-          )}
+        <Pressable onPress={() => nav.navigate("CreateWallet")} style={styles.primaryBtn}>
+          <Ionicons name="add-circle" size={20} color={colors.bg} />
+          <Text style={styles.primaryText}>Create new wallet</Text>
         </Pressable>
-        <Pressable onPress={() => setShowImport(true)} style={styles.secondaryBtn}>
+        <Pressable onPress={() => nav.navigate("ImportWallet")} style={styles.secondaryBtn}>
           <Ionicons name="download" size={18} color={colors.text} />
           <Text style={styles.secondaryText}>Import a wallet</Text>
         </Pressable>
