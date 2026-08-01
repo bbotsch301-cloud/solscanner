@@ -58,6 +58,33 @@ export async function fetchMultisigInfo(): Promise<MultisigInfo | null> {
   }
 }
 
+/**
+ * Validate + read a multisig by an arbitrary address WITHOUT persisting it — backs the
+ * "connect an existing multisig" flow. Returns its info, or null if the address isn't a
+ * readable Squads multisig (bad base58, wrong account type, or not found).
+ */
+export async function inspectMultisig(address: string): Promise<MultisigInfo | null> {
+  let ms: PublicKey;
+  try {
+    ms = new PublicKey(address.trim());
+  } catch {
+    return null;
+  }
+  try {
+    const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+    const [vault] = multisig.getVaultPda({ multisigPda: ms, index: 0 });
+    return {
+      address: ms.toBase58(),
+      vault: vault.toBase58(),
+      threshold: acc.threshold,
+      members: acc.members.map((m) => ({ key: m.key.toBase58(), permissions: m.permissions.mask })),
+      transactionIndex: Number(acc.transactionIndex.toString()),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** True if `address` is a member of the multisig. */
 export function isMember(info: MultisigInfo | null, address: string | null): boolean {
   if (!info || !address) return false;

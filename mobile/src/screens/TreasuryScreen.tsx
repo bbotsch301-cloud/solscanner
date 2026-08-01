@@ -151,16 +151,22 @@ export function TreasuryScreen() {
       )}
 
       {!multisigConfigured() && (
-        <Pressable style={styles.msCard} onPress={() => nav.navigate("CreateSquad")}>
-          <View style={styles.msHead}>
-            <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
-            <Text style={styles.msTitle}>Set up a multisig treasury</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-          </View>
-          <Text style={styles.msSub}>
-            Require multiple signers to approve every spend — powered by Squads Protocol (audited).
-          </Text>
-        </Pressable>
+        <>
+          <Pressable style={styles.msCard} onPress={() => nav.navigate("CreateSquad")}>
+            <View style={styles.msHead}>
+              <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
+              <Text style={styles.msTitle}>Set up a multisig treasury</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+            </View>
+            <Text style={styles.msSub}>
+              Require multiple signers to approve every spend — powered by Squads Protocol (audited).
+            </Text>
+          </Pressable>
+          <Pressable style={styles.msLink} onPress={() => nav.navigate("ConnectMultisig")}>
+            <Ionicons name="link-outline" size={16} color={colors.primary} />
+            <Text style={styles.msLinkText}>Connect an existing multisig</Text>
+          </Pressable>
+        </>
       )}
 
       {holdings && slices.length > 0 && (
@@ -282,6 +288,8 @@ const styles = StyleSheet.create({
   msTitle: { flex: 1, color: colors.text, fontSize: font.h3, fontWeight: "800" },
   msThreshold: { color: colors.accent, fontSize: font.body, fontWeight: "900" },
   msSub: { color: colors.textMuted, fontSize: font.small, lineHeight: 18 },
+  msLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(1) },
+  msLinkText: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.small,
