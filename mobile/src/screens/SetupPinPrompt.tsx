@@ -1,9 +1,11 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,14 +19,14 @@ import { colors, font, radius, spacing } from "../theme";
 const MIN = 6;
 
 /**
- * Mandatory PIN setup, shown after wallet setup (and to any older wallet that has no
- * PIN yet). The PIN is the primary lock AND the only thing that encrypts every seed at
- * rest on this device, so it can't be skipped — a wallet is never left with its recovery
- * phrase unencrypted. It can still be changed later in Settings.
+ * PIN setup, shown after wallet setup (and to any older wallet that has no PIN yet). The PIN
+ * is the primary lock AND the extra layer that encrypts every seed at rest on this device.
+ * It's strongly recommended, but skippable — "Skip for now" leaves the seed protected by the
+ * OS keychain alone, and a PIN can still be added later in Settings.
  */
 export function SetupPinPrompt() {
   const insets = useSafeAreaInsets();
-  const { enablePin } = useWallet();
+  const { enablePin, skipPinPrompt } = useWallet();
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,6 +35,7 @@ export function SetupPinPrompt() {
   const digits = (t: string) => t.replace(/[^0-9]/g, "");
 
   const setIt = async () => {
+    Keyboard.dismiss();
     setError(null);
     if (pin.length < MIN) return setError(`Use at least ${MIN} digits.`);
     if (pin !== confirm) return setError("The two PINs don't match.");
@@ -45,64 +48,86 @@ export function SetupPinPrompt() {
     }
   };
 
+  const skip = async () => {
+    if (busy) return;
+    Keyboard.dismiss();
+    setBusy(true);
+    await skipPinPrompt();
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={[styles.screen, { paddingTop: insets.top + spacing(8), paddingBottom: insets.bottom + spacing(6) }]}
+      style={styles.screen}
     >
-      <View style={styles.hero}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="keypad" size={30} color={colors.primary} />
-        </View>
-        <Text style={styles.title}>Set your PIN</Text>
-        <Text style={styles.sub}>
-          Your PIN is your wallet lock and encrypts your recovery phrase on this device. It’s
-          required — without it your seed would sit unencrypted. You can change it later in Settings.
-        </Text>
-      </View>
-
-      <View style={styles.form}>
-        <TextInput
-          value={pin}
-          onChangeText={(t) => setPin(digits(t))}
-          placeholder="PIN (min 6 digits)"
-          placeholderTextColor={colors.textFaint}
-          keyboardType="number-pad"
-          secureTextEntry
-          maxLength={32}
-          style={styles.input}
-        />
-        <TextInput
-          value={confirm}
-          onChangeText={(t) => setConfirm(digits(t))}
-          placeholder="Confirm PIN"
-          placeholderTextColor={colors.textFaint}
-          keyboardType="number-pad"
-          secureTextEntry
-          maxLength={32}
-          style={styles.input}
-        />
-        {error && <Text style={styles.error}>{error}</Text>}
-        <View style={styles.warn}>
-          <Ionicons name="warning" size={14} color={colors.warning} />
-          <Text style={styles.warnText}>
-            We can’t reset your PIN. If you forget it, you’d reset the app and restore from
-            your recovery phrase.
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing(8), paddingBottom: insets.bottom + spacing(6) },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="keypad" size={30} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>Set your PIN</Text>
+          <Text style={styles.sub}>
+            Your PIN is your wallet lock and adds a layer of encryption over your recovery phrase
+            on this device. Strongly recommended. You can also add it later in Settings.
           </Text>
         </View>
-      </View>
 
-      <View style={{ flex: 1 }} />
+        <View style={styles.form}>
+          <TextInput
+            value={pin}
+            onChangeText={(t) => setPin(digits(t))}
+            placeholder="PIN (min 6 digits)"
+            placeholderTextColor={colors.textFaint}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={32}
+            style={styles.input}
+          />
+          <TextInput
+            value={confirm}
+            onChangeText={(t) => setConfirm(digits(t))}
+            placeholder="Confirm PIN"
+            placeholderTextColor={colors.textFaint}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={32}
+            style={styles.input}
+          />
+          {error && <Text style={styles.error}>{error}</Text>}
+          <View style={styles.warn}>
+            <Ionicons name="warning" size={14} color={colors.warning} />
+            <Text style={styles.warnText}>
+              We can’t reset your PIN. If you forget it, you’d reset the app and restore from
+              your recovery phrase.
+            </Text>
+          </View>
+        </View>
 
-      <Pressable onPress={setIt} disabled={busy} style={[styles.primaryBtn, busy && { opacity: 0.7 }]}>
-        {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Set PIN</Text>}
-      </Pressable>
+        <View style={styles.spacer} />
+
+        <Pressable onPress={setIt} disabled={busy} style={[styles.primaryBtn, busy && { opacity: 0.7 }]}>
+          {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Set PIN</Text>}
+        </Pressable>
+        <Pressable onPress={skip} disabled={busy} style={styles.skipBtn}>
+          <Text style={styles.skipText}>Skip for now</Text>
+        </Pressable>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(6) },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  content: { flexGrow: 1, paddingHorizontal: spacing(6) },
+  spacer: { flex: 1, minHeight: spacing(6) },
   hero: { alignItems: "center", gap: spacing(2) },
   iconWrap: {
     width: 64,
@@ -146,4 +171,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
+  skipBtn: { alignItems: "center", paddingVertical: spacing(3), marginTop: spacing(1) },
+  skipText: { color: colors.textMuted, fontSize: font.body, fontWeight: "700" },
 });

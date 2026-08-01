@@ -198,9 +198,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [vault, setVault] = useState<VaultIndex | null>(null);
   const [pinEnabled, setPinEnabled] = useState(false);
-  // PIN is mandatory now, so nothing gates on "was the user prompted?" — we still record it
-  // (harmless) but the value is never read, hence only the setter is bound.
-  const [, setPinPromptedState] = useState(isPinPrompted());
+  // Whether the user has already been offered the PIN setup (so "Skip for now" dismisses it
+  // and we don't re-prompt). Enabling a PIN also counts as prompted.
+  const [pinPrompted, setPinPromptedState] = useState(isPinPrompted());
   const [locked, setLocked] = useState(false);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
@@ -788,10 +788,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       enablePin,
       disablePin,
       changePin,
-      // A PIN is mandatory: it's the only thing that encrypts the seed at rest, so every
-      // wallet without one (new OR an older plaintext wallet) is required to set one. This
-      // is a hard gate — there is no "skip" — so a seed is never left unencrypted on disk.
-      shouldPromptPin: vault != null && !pinEnabled,
+      // Offer PIN setup once (after wallet creation, or to an older wallet without one).
+      // Strongly recommended but skippable — "Skip for now" sets pinPrompted so we don't
+      // nag, and a PIN can still be added later in Settings.
+      shouldPromptPin: vault != null && !pinEnabled && !pinPrompted,
       skipPinPrompt,
       refresh,
       airdrop,
@@ -815,6 +815,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     initializing,
     vault,
     pinEnabled,
+    pinPrompted,
     locked,
     unlockWithPin,
     bumpActivity,
