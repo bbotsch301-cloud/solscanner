@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,10 +11,34 @@ import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
-import { useWallet } from "../wallet/WalletContext";
+import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
-import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
+import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav } from "../navigation";
+
+/** One token row in the Wallet list. Memoized + a stable `onOpen` so it skips re-render when
+ *  the screen re-renders (e.g. on pull-to-refresh) with unchanged token data. */
+const WalletTokenRow = memo(function WalletTokenRow({
+  asset,
+  onOpen,
+}: {
+  asset: UnifiedAsset;
+  onOpen: (key: string) => void;
+}) {
+  return (
+    <PressableScale onPress={() => onOpen(asset.key)} style={styles.tokenRow}>
+      <TokenAvatar symbol={asset.symbol} color={colors.primary} logoURI={asset.logoURI} />
+      <View style={styles.mid}>
+        <Text style={styles.symbol}>{asset.name ?? asset.symbol}</Text>
+        <Text style={styles.sub}>{compact(asset.balance)} {asset.symbol}</Text>
+      </View>
+      <View style={styles.right}>
+        <Text style={styles.value}>{compact(asset.balance)}</Text>
+        {asset.usd != null && asset.usd > 0 && <Text style={styles.subUsd}>{fmtUsd(asset.usd)}</Text>}
+      </View>
+    </PressableScale>
+  );
+});
 
 function timeAgo(ts: number | null): string {
   if (!ts) return "";
@@ -34,16 +58,16 @@ export function HomeScreen() {
     assets,
     solChange24h,
     totalUsd,
-    busy,
-    error,
     refresh,
     airdrop,
   } = useWallet();
+  const { busy, error } = useWalletStatus();
 
   const isSolana = activeChain.kind === "solana";
   const empty = (native.balance ?? 0) === 0 && assets.length === 0;
   const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
   const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
+  const openToken = useCallback((key: string) => nav.navigate("TokenDetail", { asset: key }), [nav]);
 
   const [recent, setRecent] = useState<HistoryItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -154,20 +178,7 @@ export function HomeScreen() {
           : assets.map((a) => (
               <View key={a.key}>
                 <View style={styles.divider} />
-                <PressableScale
-                  onPress={() => nav.navigate("TokenDetail", { asset: a.key })}
-                  style={styles.tokenRow}
-                >
-                  <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
-                  <View style={styles.mid}>
-                    <Text style={styles.symbol}>{a.name ?? a.symbol}</Text>
-                    <Text style={styles.sub}>{compact(a.balance)} {a.symbol}</Text>
-                  </View>
-                  <View style={styles.right}>
-                    <Text style={styles.value}>{compact(a.balance)}</Text>
-                    {a.usd != null && a.usd > 0 && <Text style={styles.subUsd}>{usd(a.usd)}</Text>}
-                  </View>
-                </PressableScale>
+                <WalletTokenRow asset={a} onOpen={openToken} />
               </View>
             ))}
       </View>

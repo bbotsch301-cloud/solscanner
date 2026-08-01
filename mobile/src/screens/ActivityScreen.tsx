@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +24,7 @@ function titleFor(item: HistoryItem): string {
   return "Transaction";
 }
 
-function Row({ item }: { item: HistoryItem }) {
+const Row = memo(function Row({ item }: { item: HistoryItem }) {
   const color = item.failed
     ? colors.negative
     : item.direction === "in"
@@ -54,7 +54,7 @@ function Row({ item }: { item: HistoryItem }) {
       <Ionicons name="open-outline" size={16} color={colors.textFaint} />
     </Pressable>
   );
-}
+});
 
 // Last-good history per (chain, address), kept in memory so re-opening Activity shows the
 // list instantly and refreshes behind it, instead of a blank list on every visit.

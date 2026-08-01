@@ -1,11 +1,13 @@
-/** A single treasury holding row — on-chain token (TokenAvatar) or off-chain asset (AssetLogo). */
+/** A single treasury holding row — on-chain token (TokenAvatar) or off-chain asset (AssetLogo).
+ *  Memoized so it doesn't re-render when the parent list re-renders with unchanged props. */
+import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "./TokenAvatar";
 import { AssetLogo, type AssetIcon } from "./AssetLogo";
 import { compact, colors, font, spacing, usd } from "../theme";
 
-export function Holding({
+export const Holding = memo(function Holding({
   symbol,
   name,
   amount,
@@ -61,7 +63,7 @@ export function Holding({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },

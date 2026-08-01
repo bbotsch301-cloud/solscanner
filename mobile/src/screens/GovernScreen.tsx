@@ -5,7 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PublicKey } from "@solana/web3.js";
-import { useWallet } from "../wallet/WalletContext";
+import { useWallet, useWalletStatus } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { connection } from "../solana/connection";
 import { tierFor, multiplierFor } from "../config/staking";
@@ -15,7 +15,8 @@ import type { RootNav } from "../navigation";
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
-  const { address, tokens, refresh, refreshing } = useWallet();
+  const { address, tokens, refresh } = useWallet();
+  const { refreshing } = useWalletStatus();
   const [supply, setSupply] = useState<number | null>(null);
   const [firstSeen, setFirstSeen] = useState<number | null>(null);
 

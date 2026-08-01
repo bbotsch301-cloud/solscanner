@@ -118,9 +118,6 @@ interface WalletState {
   solChange24h: number | null;
   totalUsd: number | null;
   priceOf: (mint: string) => number | undefined;
-  refreshing: boolean;
-  busy: boolean;
-  error: string | null;
   create: (passphrase?: string) => Promise<void>;
   importWallet: (mnemonic: string, passphrase?: string, indices?: number[]) => Promise<void>;
   reset: () => Promise<void>;
@@ -192,7 +189,16 @@ interface WalletState {
   revokeApproval: (token: string, spender: string) => Promise<string>;
 }
 
+/** Volatile status kept in a SEPARATE context so a pull-to-refresh (which toggles `refreshing`)
+ *  doesn't re-render every `useWallet()` consumer or rebuild the derived `assets`/`native`. */
+export interface WalletStatus {
+  refreshing: boolean;
+  busy: boolean;
+  error: string | null;
+}
+
 const WalletContext = createContext<WalletState | null>(null);
+const WalletStatusContext = createContext<WalletStatus | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
@@ -764,9 +770,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       solChange24h,
       totalUsd,
       priceOf,
-      refreshing,
-      busy,
-      error,
       create,
       importWallet,
       reset,
@@ -838,9 +841,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     evmNative,
     evmTokens,
     evmPrices,
-    refreshing,
-    busy,
-    error,
     create,
     importWallet,
     reset,
@@ -856,7 +856,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     revokeApproval,
   ]);
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  const status = useMemo<WalletStatus>(() => ({ refreshing, busy, error }), [refreshing, busy, error]);
+
+  return (
+    <WalletContext.Provider value={value}>
+      <WalletStatusContext.Provider value={status}>{children}</WalletStatusContext.Provider>
+    </WalletContext.Provider>
+  );
+}
+
+export function useWalletStatus(): WalletStatus {
+  const ctx = useContext(WalletStatusContext);
+  if (!ctx) throw new Error("useWalletStatus must be used within WalletProvider");
+  return ctx;
 }
 
 export function useWallet(): WalletState {
