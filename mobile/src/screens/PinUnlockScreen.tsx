@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { XGOLogo } from "../components/XGOLogo";
+import { Crown } from "../components/Crown";
 import { colors, font, radius, spacing } from "../theme";
 
 /** Full-screen gate shown at launch when an app PIN is set (seeds are encrypted). */
@@ -27,30 +28,39 @@ function formatWait(ms: number): string {
 }
 
 /** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a
- *  moment on-device). A gently pulsing logo + spinner so the wait reads as progress. */
+ *  moment on-device). The Kingdom crown starts upside down and rights itself as it loads;
+ *  a gentle pulse + spinner keep the wait reading as progress. */
 function DecryptingSplash() {
   const insets = useSafeAreaInsets();
-  const [pulse] = useState(() => new Animated.Value(0)); // stable Animated value (not a ref)
+  const [pulse] = useState(() => new Animated.Value(0)); // stable Animated values (not refs)
+  const [spin] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    const anim = Animated.loop(
+    const pulseAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(pulse, { toValue: 0, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
     );
-    anim.start();
-    return () => anim.stop();
-  }, [pulse]);
+    // Rotate from upside-down (180°) to upright (0°) once, settling as the wallet unlocks.
+    const rightUp = Animated.timing(spin, { toValue: 1, duration: 1900, easing: Easing.out(Easing.cubic), useNativeDriver: true });
+    pulseAnim.start();
+    rightUp.start();
+    return () => {
+      pulseAnim.stop();
+      rightUp.stop();
+    };
+  }, [pulse, spin]);
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
   const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] });
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "0deg"] });
   return (
     <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Animated.View style={{ transform: [{ scale }], opacity }}>
-        <XGOLogo size={92} />
+      <Animated.View style={{ transform: [{ rotate }, { scale }], opacity }}>
+        <Crown size={112} />
       </Animated.View>
       <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: spacing(9) }} />
-      <Text style={styles.splashTitle}>Decrypting your wallets…</Text>
-      <Text style={styles.splashSub}>Unlocking secure storage on this device. This can take a moment.</Text>
+      <Text style={styles.splashTitle}>Entering the Kingdom…</Text>
+      <Text style={styles.splashSub}>Decrypting your wallets on this device. This can take a moment.</Text>
     </View>
   );
 }
