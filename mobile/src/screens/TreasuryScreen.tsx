@@ -13,6 +13,9 @@ import { solscanAccount, CLUSTER } from "../solana/connection";
 import { nativeLogo } from "../config/logos";
 import { OFFCHAIN_ASSETS, type OffchainAsset } from "../config/treasuryAssets";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
+import { multisigConfigured } from "../config/multisig";
+import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
+import { useWallet } from "../wallet/WalletContext";
 import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
 
 const SOL_LOGO = nativeLogo.solana;
@@ -33,8 +36,10 @@ export function TreasuryScreen() {
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
   const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
+  const [msInfo, setMsInfo] = useState<MultisigInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { solanaAddress } = useWallet();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,14 +47,16 @@ export function TreasuryScreen() {
       const h = await fetchHoldings(TREASURY_ADDRESS);
       setHoldings(h);
       const mints = h.tokens.map((t) => t.mint);
-      const [p, m, oc] = await Promise.all([
+      const [p, m, oc, ms] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
         fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
+        multisigConfigured() ? fetchMultisigInfo().catch(() => null) : Promise.resolve(null),
       ]);
       setPrices(p);
       setMetas(m);
       setOcPrices(oc);
+      setMsInfo(ms);
     } catch {
       /* keep last data on transient errors */
     } finally {
@@ -120,6 +127,23 @@ export function TreasuryScreen() {
         <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
         <Text style={styles.verifyText}>Public & verifiable on-chain — view on Solscan ↗</Text>
       </Pressable>
+
+      {msInfo && (
+        <View style={styles.msCard}>
+          <View style={styles.msHead}>
+            <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
+            <Text style={styles.msTitle}>Squads multisig</Text>
+            <Text style={styles.msThreshold}>
+              {msInfo.threshold} of {msInfo.members.length}
+            </Text>
+          </View>
+          <Text style={styles.msSub}>
+            {isMember(msInfo, solanaAddress)
+              ? "You're a signer — proposals need this many approvals to spend."
+              : "View only — you're not a signer on this treasury."}
+          </Text>
+        </View>
+      )}
 
       {holdings && slices.length > 0 && (
         <>
@@ -235,6 +259,11 @@ const styles = StyleSheet.create({
   addr: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   verify: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(3) },
   verifyText: { color: colors.primary, fontSize: font.small, fontWeight: "600" },
+  msCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginTop: spacing(2), gap: spacing(2) },
+  msHead: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  msTitle: { flex: 1, color: colors.text, fontSize: font.h3, fontWeight: "800" },
+  msThreshold: { color: colors.accent, fontSize: font.body, fontWeight: "900" },
+  msSub: { color: colors.textMuted, fontSize: font.small, lineHeight: 18 },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.small,

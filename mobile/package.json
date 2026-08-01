@@ -16,6 +16,7 @@
     "@scure/bip32": "^1.7.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
+    "@sqds/multisig": "^2.1.4",
     "@walletconnect/core": "^2.23.10",
     "@walletconnect/react-native-compat": "^2.23.10",
     "@walletconnect/utils": "^2.23.10",
