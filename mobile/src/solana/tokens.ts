@@ -6,7 +6,7 @@
  */
 import { PublicKey } from "@solana/web3.js";
 import { connection } from "./connection";
-import { solLogo } from "../config/logos";
+import { solLogo, LOGO_OVERRIDES } from "../config/logos";
 
 export interface TokenMeta {
   symbol: string;
@@ -141,6 +141,9 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
   fill(await fromJupiter(mint));
   if (!merged.symbol || !merged.logoURI) fill(await fromDexScreener(mint));
   if (!merged.symbol || !merged.logoURI) fill(await fetchOnChainMeta(mint));
+
+  // A manual override always wins for the logo.
+  if (LOGO_OVERRIDES[mint]) merged.logoURI = LOGO_OVERRIDES[mint];
 
   const result: TokenMeta | undefined = merged.symbol
     ? { symbol: merged.symbol, name: merged.name ?? merged.symbol, logoURI: merged.logoURI }

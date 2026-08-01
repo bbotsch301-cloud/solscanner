@@ -21,6 +21,16 @@ export const evmLogo = (chain: "ethereum" | "smartchain", address: string): stri
  *  SOL native logo, so it loads wherever the natives do. */
 export const solAsset = (mint: string): string => `${TW}/solana/assets/${mint}/logo.png`;
 
+/**
+ * Manual logo overrides by mint — highest priority, for tokens no source resolves
+ * (unpooled pump.fun tokens whose on-chain image is IPFS-only). Add `mint: url` here.
+ */
+export const LOGO_OVERRIDES: Record<string, string> = {
+  // Giraffe Coin — best-effort DexScreener CDN; replace with an exact URL if it 404s.
+  "4r4Z6oodFM5VnVgdC8bfVj75UrrFv2vb2ShcuPjRpump":
+    "https://dd.dexscreener.com/ds-data/tokens/solana/4r4Z6oodFM5VnVgdC8bfVj75UrrFv2vb2ShcuPjRpump.png",
+};
+
 /** Curated Solana token logos (the swap defaults), all on the one working pattern. */
 export const solLogo: Record<string, string> = {
   So11111111111111111111111111111111111111112: nativeLogo.solana, // SOL
