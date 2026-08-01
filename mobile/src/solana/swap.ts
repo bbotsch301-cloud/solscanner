@@ -4,10 +4,16 @@
  * on devnet; executeSwap only does anything real once NETWORK is mainnet.
  */
 import { Buffer } from "buffer";
-import { Keypair, VersionedTransaction } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction, VersionedTransaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
-import { feeBpsFor, SOLANA_FEE_ACCOUNT } from "../config/swapFee";
+import { feeBpsFor, TREASURY_FEE_OWNER } from "../config/swapFee";
 import { solLogo } from "../config/logos";
 
 /**
@@ -160,9 +166,9 @@ export async function fetchQuote(
   // Other XGO pairs route through SOL, and we detect our pool from the labels.
   const directlyPoolable = isTreasuryPair && otherMint === TREASURY_QUOTE_MINT;
 
-  // Community fee: 0.44% on non-XGO trades, and only once a treasury fee account is
-  // configured (otherwise we can't collect it, so don't reduce the user's output).
-  const feeBps = SOLANA_FEE_ACCOUNT ? feeBpsFor(input.mint, output.mint) : 0;
+  // Community fee: 0.44% on non-XGO trades (0 for XGO, which its own transfer fee already taxes),
+  // collected to the treasury. executeSwap deposits it into the treasury's output-token account.
+  const feeBps = TREASURY_FEE_OWNER ? feeBpsFor(input.mint, output.mint) : 0;
 
   const [market, pinned] = await Promise.all([
     requestQuote(input.mint, output.mint, rawAmount, slippageBps, false, feeBps),
@@ -221,6 +227,27 @@ export async function fetchQuote(
  * the wallet keypair, and submits it. Returns the transaction signature.
  */
 export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<string> {
+  // The community fee (present on the quote as `platformFee`) is taken in the OUTPUT token and
+  // paid to the treasury's associated token account for that mint. Jupiter won't create that
+  // account, so create it idempotently first (a one-time ~0.002 SOL rent, only the first time
+  // anyone swaps into a given token). Then hand the account to Jupiter as the feeAccount.
+  const q = rawQuote as { outputMint?: string; platformFee?: { amount?: string } | null };
+  let feeAccount: string | undefined;
+  if (q.platformFee && q.outputMint && TREASURY_FEE_OWNER) {
+    const owner = new PublicKey(TREASURY_FEE_OWNER);
+    const mintPk = new PublicKey(q.outputMint);
+    const mintInfo = await connection.getAccountInfo(mintPk);
+    const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    const ata = getAssociatedTokenAddressSync(mintPk, owner, true, programId);
+    if (!(await connection.getAccountInfo(ata))) {
+      const setup = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(keypair.publicKey, ata, owner, mintPk, programId)
+      );
+      await sendAndConfirmTransaction(connection, setup, [keypair]);
+    }
+    feeAccount = ata.toBase58();
+  }
+
   const res = await fetch("https://lite-api.jup.ag/swap/v1/swap", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -229,8 +256,7 @@ export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<
       userPublicKey: keypair.publicKey.toBase58(),
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
-      // Collect the community fee to the treasury's referral account, when configured.
-      ...(SOLANA_FEE_ACCOUNT ? { feeAccount: SOLANA_FEE_ACCOUNT } : {}),
+      ...(feeAccount ? { feeAccount } : {}),
     }),
   });
   if (!res.ok) throw new Error(`Swap build failed (${res.status})`);

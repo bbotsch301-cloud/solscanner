@@ -21,10 +21,14 @@ export function feeBpsFor(inputMint: string, outputMint: string): number {
 }
 
 /**
- * Treasury fee destinations (mainnet, treasury-owned). Empty until set up:
- * - Solana: a Jupiter referral fee-token account (referral.jup.ag). Without it the
- *   fee is simply not applied — swaps still work, just uncollected.
- * - EVM: the treasury's 0x address (used by the EVM-swaps build).
+ * Treasury wallet that OWNS the community-fee token accounts (mainnet). The 0.44% is taken in
+ * the swap's OUTPUT token and deposited into this wallet's associated token account for that
+ * mint. Jupiter (since Jan 2025) needs no referral program — any token account works — but it
+ * won't create the account, so the swap flow creates it idempotently on first use. Override with
+ * EXPO_PUBLIC_SOLANA_FEE_OWNER; defaults to the Global Goshens treasury.
  */
-export const SOLANA_FEE_ACCOUNT = process.env.EXPO_PUBLIC_SOLANA_FEE_ACCOUNT ?? "";
+export const TREASURY_FEE_OWNER =
+  process.env.EXPO_PUBLIC_SOLANA_FEE_OWNER || "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
+
+/** EVM fee recipient (the treasury's 0x address), used by the EVM-swaps build. */
 export const EVM_FEE_RECIPIENT = process.env.EXPO_PUBLIC_EVM_FEE_RECIPIENT ?? "";
