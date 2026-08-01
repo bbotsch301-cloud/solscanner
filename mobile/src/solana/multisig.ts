@@ -3,7 +3,21 @@
  * audited `@sqds/multisig` SDK — no custom fund logic. Propose/approve/execute (which
  * sign with the active member's key) build on these reads in a later phase.
  */
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+  TransactionMessage,
+} from "@solana/web3.js";
+import {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token";
 import * as multisig from "@sqds/multisig";
 import { connection, solscanAccount } from "./connection";
 import { multisigPubkey, vaultPda, setMultisigAddress } from "../config/multisig";
@@ -294,4 +308,94 @@ export async function proposeRemoveSigner(creator: Keypair, address: string): Pr
 
 export async function proposeChangeThreshold(creator: Keypair, newThreshold: number): Promise<string> {
   return proposeConfigChange(creator, [{ __kind: "ChangeThreshold", newThreshold }]);
+}
+
+// ---- spend proposals (transfer SOL/SPL out of the vault) ----------------------
+
+export interface TransferAsset {
+  /** "sol" = native lamports; "spl" = an SPL/Token-2022 mint. */
+  kind: "sol" | "spl";
+  /** Mint address (spl only). */
+  mint?: string;
+  decimals: number;
+  symbol: string;
+}
+
+/**
+ * Propose a transfer OUT of the multisig vault. Wraps a SOL or SPL transfer (executed by the
+ * vault PDA) in a Squads vault transaction + proposal the members must approve, then execute.
+ * Signed here by the proposing member; the vault itself only moves funds on execution after
+ * the threshold approves. `to` is the recipient (base58). Returns the proposal signature.
+ */
+export async function proposeTransfer(
+  creator: Keypair,
+  to: string,
+  uiAmount: number,
+  asset: TransferAsset
+): Promise<string> {
+  const ms = multisigPubkey();
+  const vault = vaultPda();
+  if (!ms || !vault) throw new Error("No multisig configured.");
+  const toPk = new PublicKey(to); // throws on an invalid address
+  if (!(uiAmount > 0)) throw new Error("Enter an amount greater than zero.");
+
+  const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+  const index = BigInt(acc.transactionIndex.toString()) + 1n;
+
+  // Inner instructions the VAULT executes (vault PDA is the payer/authority of these).
+  const ixs: TransactionInstruction[] = [];
+  if (asset.kind === "sol") {
+    ixs.push(
+      SystemProgram.transfer({
+        fromPubkey: vault,
+        toPubkey: toPk,
+        lamports: Math.round(uiAmount * LAMPORTS_PER_SOL),
+      })
+    );
+  } else {
+    const mintPk = new PublicKey(asset.mint ?? "");
+    const mintInfo = await connection.getAccountInfo(mintPk);
+    const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)
+      ? TOKEN_2022_PROGRAM_ID
+      : TOKEN_PROGRAM_ID;
+    // Vault + recipient are (or may be) PDAs/off-curve, so allowOwnerOffCurve = true.
+    const fromAta = await getAssociatedTokenAddress(mintPk, vault, true, programId);
+    const toAta = await getAssociatedTokenAddress(mintPk, toPk, true, programId);
+    const toInfo = await connection.getAccountInfo(toAta);
+    if (!toInfo) {
+      // The vault pays rent for the recipient's token account (it signs these inner ixs).
+      ixs.push(createAssociatedTokenAccountInstruction(vault, toAta, toPk, mintPk, programId));
+    }
+    const raw = BigInt(Math.round(uiAmount * 10 ** asset.decimals));
+    ixs.push(
+      createTransferCheckedInstruction(fromAta, mintPk, toAta, vault, raw, asset.decimals, [], programId)
+    );
+  }
+
+  const { blockhash } = await connection.getLatestBlockhash();
+  const transactionMessage = new TransactionMessage({
+    payerKey: vault,
+    recentBlockhash: blockhash,
+    instructions: ixs,
+  });
+
+  await multisig.rpc.vaultTransactionCreate({
+    connection,
+    feePayer: creator,
+    multisigPda: ms,
+    transactionIndex: index,
+    creator: creator.publicKey,
+    vaultIndex: 0,
+    ephemeralSigners: 0,
+    transactionMessage,
+    memo: `Send ${uiAmount} ${asset.symbol}`,
+  });
+
+  return multisig.rpc.proposalCreate({
+    connection,
+    feePayer: creator,
+    creator,
+    multisigPda: ms,
+    transactionIndex: index,
+  });
 }

@@ -116,6 +116,13 @@ export function TreasuryMultisigScreen() {
           </Pressable>
         )}
 
+        {member && (
+          <Pressable style={styles.proposeBtn} onPress={() => nav.navigate("ProposeTransfer")}>
+            <Ionicons name="add-circle" size={20} color={colors.bg} />
+            <Text style={styles.proposeText}>Propose a transfer</Text>
+          </Pressable>
+        )}
+
         {!multisigConfigured() ? (
           <Text style={styles.empty}>No multisig is configured for this wallet.</Text>
         ) : proposals.length === 0 && !loading ? (
@@ -196,6 +203,17 @@ const styles = StyleSheet.create({
   manageText: { color: colors.primary, fontSize: font.small, fontWeight: "800" },
   headerThreshold: { color: colors.accent, fontSize: font.h3, fontWeight: "900" },
   headerSub: { color: colors.textMuted, fontSize: font.small, marginTop: 2 },
+  proposeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing(2),
+    backgroundColor: colors.primary,
+    paddingVertical: spacing(3.5),
+    borderRadius: radius.pill,
+    marginBottom: spacing(3),
+  },
+  proposeText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
   empty: { color: colors.textMuted, fontSize: font.body, textAlign: "center", paddingVertical: spacing(8) },
   card: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginBottom: spacing(3), gap: spacing(2) },
   cardHead: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
