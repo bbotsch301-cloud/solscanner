@@ -11,7 +11,7 @@ import {
 } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { getSdkError } from "@walletconnect/utils";
-import { getEvmAccount } from "../wallet/keystore";
+import { activeEvmAccount as getEvmAccount } from "../wallet/vault";
 import type { EvmAccount } from "../wallet/evm";
 import { useWallet } from "../wallet/WalletContext";
 import { connection } from "../solana/connection";

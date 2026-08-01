@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { HelpTip } from "../components/HelpTip";
 import { keypairFromMnemonic, validateMnemonic } from "../wallet/mnemonic";
+import { discoverAccounts } from "../wallet/discovery";
 import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -25,6 +26,7 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
   const [passphrase, setPassphrase] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const words = phrase.trim().split(/\s+/).filter(Boolean);
@@ -46,10 +48,23 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
     setBusy(true);
     setError(null);
     try {
-      await importWallet(phrase, passphrase);
+      // Scan derivation indices for on-chain activity so existing accounts (e.g. your
+      // Phantom accounts) come in automatically. Best-effort — falls back to account 0.
+      setScanMsg("Looking for your accounts…");
+      let indices: number[] = [0];
+      try {
+        indices = await discoverAccounts(phrase, passphrase, {
+          onProgress: (p) => setScanMsg(`Scanning… checked ${p.scanned}, found ${p.found + 1}`),
+        });
+      } catch {
+        indices = [0];
+      }
+      setScanMsg(indices.length > 1 ? `Found ${indices.length} accounts — importing…` : "Importing…");
+      await importWallet(phrase, passphrase, indices);
       onDone();
     } catch (e) {
       setError(humanizeError(e, { action: "load" }));
+      setScanMsg(null);
       setBusy(false);
     }
   };
@@ -142,6 +157,7 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
         {error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
 
+      {busy && scanMsg && <Text style={styles.scan}>{scanMsg}</Text>}
       <Pressable
         disabled={!validCount || busy}
         onPress={submit}
@@ -205,6 +221,7 @@ const styles = StyleSheet.create({
   previewAddr: { color: colors.primary, fontSize: font.body, fontWeight: "700", marginTop: spacing(1) },
   previewHint: { color: colors.textMuted, fontSize: font.small, lineHeight: 18, marginTop: spacing(2) },
   error: { color: colors.negative, fontSize: font.small, marginTop: spacing(3) },
+  scan: { color: colors.textMuted, fontSize: font.small, textAlign: "center", marginBottom: spacing(2) },
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },

@@ -21,6 +21,7 @@ import { SwapScreen } from "./src/screens/SwapScreen";
 import { TokenDetailScreen } from "./src/screens/TokenDetailScreen";
 import { BuyScreen } from "./src/screens/BuyScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
+import { WalletsScreen } from "./src/screens/WalletsScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
@@ -114,6 +115,7 @@ function Root() {
           <Stack.Screen name="TokenDetail" component={TokenDetailScreen} />
           <Stack.Screen name="Buy" component={BuyScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
+          <Stack.Screen name="Wallets" component={WalletsScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />

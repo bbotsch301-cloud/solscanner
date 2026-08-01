@@ -15,14 +15,15 @@ import { assertSecureEntropy } from "./entropy";
 
 const ED25519_SEED = new TextEncoder().encode("ed25519 seed");
 const HARDENED_OFFSET = 0x80000000;
-// m/44'/501'/0'/0' — every segment is hardened for ed25519.
-const SOLANA_PATH = [44, 501, 0, 0];
+// m/44'/501'/<account>'/0' — every segment is hardened for ed25519. The account
+// index is Phantom's account numbering, so account N here == Phantom's account N.
+const solanaPath = (account: number) => [44, 501, account, 0];
 
-function deriveEd25519Seed(seed: Uint8Array): Uint8Array {
+function deriveEd25519Seed(seed: Uint8Array, account = 0): Uint8Array {
   let I = hmac(sha512, ED25519_SEED, seed);
   let key = I.slice(0, 32);
   let chainCode = I.slice(32);
-  for (const segment of SOLANA_PATH) {
+  for (const segment of solanaPath(account)) {
     const index = (segment + HARDENED_OFFSET) >>> 0;
     const data = new Uint8Array(37);
     data[0] = 0x00;
@@ -64,8 +65,8 @@ export function validateMnemonic(mnemonic: string): boolean {
  * passphrase yields a completely different, still-valid wallet (there is no "wrong
  * passphrase" error). Empty string = the standard no-passphrase wallet.
  */
-export function keypairFromMnemonic(mnemonic: string, passphrase = ""): Keypair {
+export function keypairFromMnemonic(mnemonic: string, passphrase = "", account = 0): Keypair {
   const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);
-  const derived = deriveEd25519Seed(new Uint8Array(seed));
+  const derived = deriveEd25519Seed(new Uint8Array(seed), account);
   return Keypair.fromSeed(derived);
 }

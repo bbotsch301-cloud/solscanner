@@ -36,14 +36,21 @@ import { sendNativeEvm, sendTokenEvm } from "../evm/send";
 import { executeUnifiedSwap } from "../swap";
 import type { UnifiedQuote } from "../swap/types";
 import {
-  clearKeypair,
-  createKeypair,
-  getEvmAccount,
-  getNeedsBackup,
-  importMnemonic,
-  loadKeypair,
-  setNeedsBackup,
-} from "./keystore";
+  loadVault,
+  keypairFor,
+  evmAccountFor,
+  addNewSeed,
+  importSeed,
+  addAccount as vaultAddAccount,
+  setActive,
+  removeSeed,
+  renameSeed,
+  markSeedBackedUp,
+  clearVault,
+  type VaultIndex,
+  type SeedMeta,
+  type AccountRef,
+} from "./vault";
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
@@ -99,10 +106,23 @@ interface WalletState {
   busy: boolean;
   error: string | null;
   create: (passphrase?: string) => Promise<void>;
-  importWallet: (mnemonic: string, passphrase?: string) => Promise<void>;
+  importWallet: (mnemonic: string, passphrase?: string, indices?: number[]) => Promise<void>;
   reset: () => Promise<void>;
   needsBackup: boolean;
   markBackedUp: () => void;
+
+  // ---- Multiple wallets (vault) ----
+  /** All seeds (independent wallets) on this device. */
+  seeds: SeedMeta[];
+  activeSeedId: string | null;
+  activeIndex: number;
+  /** Switch the active account (re-derives keys, reloads balances). */
+  switchAccount: (seedId: string, index: number) => Promise<void>;
+  /** Derive the next account index for a seed and switch to it. */
+  addAccount: (seedId: string) => Promise<void>;
+  /** Remove a whole wallet (seed) and all its accounts. */
+  removeWallet: (seedId: string) => Promise<void>;
+  renameWallet: (seedId: string, label: string) => Promise<void>;
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
   send: (to: string, sol: number) => Promise<string>;
@@ -132,6 +152,7 @@ const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
+  const [vault, setVault] = useState<VaultIndex | null>(null);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
   const [needsBackup, setNeedsBackupState] = useState(false);
@@ -242,68 +263,132 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [loadChain]
   );
 
-  // Load a previously created wallet on startup.
-  useEffect(() => {
-    (async () => {
-      const [kp, acct, savedChain] = await Promise.all([
-        loadKeypair(),
-        getEvmAccount(),
-        SecureStore.getItemAsync(ACTIVE_CHAIN_KEY),
+  /** Re-derive the signing keys for a (seed, index) and reload its balances. */
+  const applyActive = useCallback(
+    async (ref: AccountRef) => {
+      const [kp, acct] = await Promise.all([
+        keypairFor(ref.seedId, ref.index),
+        evmAccountFor(ref.seedId, ref.index),
       ]);
-      if (acct) {
-        setEvmAccount(acct);
-        evmAccountRef.current = acct;
-      }
-      const startChain = (CHAINS.find((c) => c.id === savedChain)?.id ?? DEFAULT_CHAIN) as ChainId;
-      setActiveChainId(startChain);
-      activeChainRef.current = startChain;
-      if (kp) {
-        setKeypair(kp);
-        keypairRef.current = kp;
-        setNeedsBackupState(await getNeedsBackup());
-        loadChain(startChain);
-      }
-      setInitializing(false);
-    })();
-  }, [loadChain]);
-
-  const afterKeyChange = useCallback(async () => {
-    const acct = await getEvmAccount();
-    setEvmAccount(acct);
-    evmAccountRef.current = acct;
-    setSolBalance(0);
-    setTokens([]);
-    setEvmNative(null);
-    setEvmTokens([]);
-    loadChain(activeChainRef.current);
-  }, [loadChain]);
-
-  const create = useCallback(async (passphrase = "") => {
-    const kp = await createKeypair(passphrase);
-    setKeypair(kp);
-    keypairRef.current = kp;
-    setNeedsBackupState(true);
-    await afterKeyChange();
-  }, [afterKeyChange]);
-
-  const importWallet = useCallback(
-    async (mnemonic: string, passphrase = "") => {
-      const kp = await importMnemonic(mnemonic, passphrase);
       setKeypair(kp);
       keypairRef.current = kp;
-      setNeedsBackupState(false);
-      await afterKeyChange();
+      setEvmAccount(acct);
+      evmAccountRef.current = acct;
+      setSolBalance(null);
+      setTokens([]);
+      setEvmNative(null);
+      setEvmTokens([]);
+      loadChain(activeChainRef.current);
     },
-    [afterKeyChange]
+    [loadChain]
   );
 
-  const markBackedUp = useCallback(async () => {
-    await setNeedsBackup(false);
-    setNeedsBackupState(false);
+  // Load the vault (migrating a v1 single wallet) on startup.
+  useEffect(() => {
+    (async () => {
+      try {
+        const [v, savedChain] = await Promise.all([
+          loadVault(),
+          SecureStore.getItemAsync(ACTIVE_CHAIN_KEY).catch(() => null),
+        ]);
+        const startChain = (CHAINS.find((c) => c.id === savedChain)?.id ?? DEFAULT_CHAIN) as ChainId;
+        setActiveChainId(startChain);
+        activeChainRef.current = startChain;
+        if (v) {
+          setVault(v);
+          const meta = v.seeds.find((s) => s.id === v.active.seedId);
+          setNeedsBackupState(meta?.needsBackup ?? false);
+          await applyActive(v.active);
+        }
+      } catch {
+        /* leave keypair null → onboarding; never hang on the splash screen */
+      } finally {
+        setInitializing(false);
+      }
+    })();
+  }, [applyActive]);
+
+  const syncBackupFlag = useCallback((v: VaultIndex) => {
+    const meta = v.seeds.find((s) => s.id === v.active.seedId);
+    setNeedsBackupState(meta?.needsBackup ?? false);
   }, []);
 
+  const create = useCallback(
+    async (passphrase = "") => {
+      const { vault: v } = await addNewSeed(passphrase);
+      setVault(v);
+      setNeedsBackupState(true);
+      await applyActive(v.active);
+    },
+    [applyActive]
+  );
+
+  const importWallet = useCallback(
+    async (mnemonic: string, passphrase = "", indices: number[] = [0]) => {
+      const { vault: v } = await importSeed(mnemonic, passphrase, indices);
+      setVault(v);
+      syncBackupFlag(v);
+      await applyActive(v.active);
+    },
+    [applyActive, syncBackupFlag]
+  );
+
+  const switchAccount = useCallback(
+    async (seedId: string, index: number) => {
+      const v = await setActive({ seedId, index });
+      setVault(v);
+      syncBackupFlag(v);
+      await applyActive(v.active);
+    },
+    [applyActive, syncBackupFlag]
+  );
+
+  const addAccount = useCallback(
+    async (seedId: string) => {
+      const { index } = await vaultAddAccount(seedId);
+      const v = await setActive({ seedId, index });
+      setVault(v);
+      syncBackupFlag(v);
+      await applyActive(v.active);
+    },
+    [applyActive, syncBackupFlag]
+  );
+
+  const removeWallet = useCallback(
+    async (seedId: string) => {
+      const v = await removeSeed(seedId);
+      setVault(v);
+      if (!v) {
+        setKeypair(null);
+        keypairRef.current = null;
+        setEvmAccount(null);
+        evmAccountRef.current = null;
+        setNeedsBackupState(false);
+        setSolBalance(null);
+        setTokens([]);
+        setEvmNative(null);
+        setEvmTokens([]);
+      } else {
+        syncBackupFlag(v);
+        await applyActive(v.active);
+      }
+    },
+    [applyActive, syncBackupFlag]
+  );
+
+  const renameWallet = useCallback(async (seedId: string, label: string) => {
+    setVault(await renameSeed(seedId, label));
+  }, []);
+
+  const markBackedUp = useCallback(async () => {
+    const v = await markSeedBackedUp(vault?.active.seedId ?? "");
+    if (v) setVault(v);
+    setNeedsBackupState(false);
+  }, [vault]);
+
   const reset = useCallback(async () => {
-    await clearKeypair();
+    await clearVault();
+    setVault(null);
     setKeypair(null);
     keypairRef.current = null;
     setEvmAccount(null);
@@ -512,6 +597,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       reset,
       needsBackup,
       markBackedUp,
+      seeds: vault?.seeds ?? [],
+      activeSeedId: vault?.active.seedId ?? null,
+      activeIndex: vault?.active.index ?? 0,
+      switchAccount,
+      addAccount,
+      removeWallet,
+      renameWallet,
       refresh,
       airdrop,
       send,
@@ -530,10 +622,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, [
     initializing,
+    vault,
     keypair,
     evmAccount,
     needsBackup,
     markBackedUp,
+    switchAccount,
+    addAccount,
+    removeWallet,
+    renameWallet,
     solBalance,
     tokens,
     prices,

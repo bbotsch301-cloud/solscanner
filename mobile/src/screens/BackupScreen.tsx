@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getMnemonic, getPassphrase } from "../wallet/keystore";
+import { activeMnemonic as getMnemonic, activeHasPassphrase } from "../wallet/vault";
 import { HelpTip } from "../components/HelpTip";
 import { useSecretScreenGuard } from "../security/secretScreen";
 import { colors, font, radius, spacing } from "../theme";
@@ -33,7 +33,7 @@ export function BackupScreen() {
         setLegacy(true);
         return;
       }
-      setHasPassphrase(!!(await getPassphrase()));
+      setHasPassphrase(await activeHasPassphrase());
       setWords(mnemonic.split(/\s+/));
     } catch {
       /* leave hidden on failure */
