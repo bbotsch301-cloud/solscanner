@@ -24,6 +24,7 @@ export type RootStackParamList = {
   Settings: undefined;
   WalletConnect: undefined;
   TokenApprovals: undefined;
+  Contacts: undefined;
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

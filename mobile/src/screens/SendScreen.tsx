@@ -29,6 +29,9 @@ import { looksLikeName, resolveName } from "../naming/resolve";
 import { assessRecipient, type RiskReport } from "../safety/risk";
 import { assessEvmRecipient } from "../safety/evmRisk";
 import { findLookalike, recordRecipient } from "../safety/recipients";
+import { findContact } from "../contacts/contacts";
+import { ContactPicker } from "../components/ContactPicker";
+import { ContactFormModal } from "../components/ContactFormModal";
 import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
@@ -104,6 +107,9 @@ export function SendScreen() {
   const selected = assetList.find((a) => a.key === assetKey) ?? assetList[0];
 
   const [recipient, setRecipient] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saveAddr, setSaveAddr] = useState<string | null>(null); // address pending "save to contacts"
+  const [contactsRev, setContactsRev] = useState(0); // bump to re-read the contact match after saving
   const [amt, setAmt] = useState("");
   const [sending, setSending] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
@@ -202,6 +208,11 @@ export function SendScreen() {
     () => (validAddress && effectiveTo ? findLookalike(effectiveTo) : null),
     [validAddress, effectiveTo]
   );
+  // A saved address-book match for the recipient (shown by name; also treated as trusted).
+  const matchedContact = useMemo(() => {
+    void contactsRev; // recompute after a contact is saved
+    return validAddress && effectiveTo ? findContact(effectiveTo) : undefined;
+  }, [validAddress, effectiveTo, contactsRev]);
 
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
@@ -366,7 +377,13 @@ export function SendScreen() {
         </View>
 
         <View>
-          <Text style={styles.label}>Recipient address</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Recipient address</Text>
+            <Pressable onPress={() => setPickerOpen(true)} style={styles.contactsBtn} hitSlop={8}>
+              <Ionicons name="people" size={15} color={colors.primary} />
+              <Text style={styles.contactsBtnText}>Contacts</Text>
+            </Pressable>
+          </View>
           <TextInput
             value={recipient}
             onChangeText={setRecipient}
@@ -376,6 +393,14 @@ export function SendScreen() {
             autoCorrect={false}
             style={styles.input}
           />
+          {matchedContact && (
+            <Text style={styles.resolved}>✓ {matchedContact.name}</Text>
+          )}
+          {validAddress && effectiveTo && !matchedContact && !nameKind && (
+            <Pressable onPress={() => setSaveAddr(effectiveTo)} hitSlop={6}>
+              <Text style={styles.saveLink}>＋ Save to contacts</Text>
+            </Pressable>
+          )}
           {resolving && <Text style={styles.hintMuted}>Resolving {trimmedTo}…</Text>}
           {!resolving && nameKind && validAddress && effectiveTo && (
             <Text style={styles.resolved}>✓ {shortAddress(effectiveTo, 6, 6)}</Text>
@@ -468,6 +493,19 @@ export function SendScreen() {
           )}
         </PressableScale>
       </View>
+
+      <ContactPicker
+        visible={pickerOpen}
+        kind={isSolana ? "solana" : "evm"}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(addr) => setRecipient(addr)}
+      />
+      <ContactFormModal
+        visible={saveAddr != null}
+        presetAddress={saveAddr ?? undefined}
+        onClose={() => setSaveAddr(null)}
+        onSaved={() => setContactsRev((r) => r + 1)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -477,6 +515,10 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   label: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginBottom: spacing(2) },
+  labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  contactsBtn: { flexDirection: "row", alignItems: "center", gap: spacing(1), paddingBottom: spacing(2) },
+  contactsBtnText: { color: colors.primary, fontSize: font.small, fontWeight: "800" },
+  saveLink: { color: colors.primary, fontSize: font.small, fontWeight: "700", marginTop: spacing(2), marginLeft: spacing(1) },
   chips: { flexDirection: "row", gap: spacing(2), paddingHorizontal: spacing(1) },
   chip: {
     flexDirection: "row",

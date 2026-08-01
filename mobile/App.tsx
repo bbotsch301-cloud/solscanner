@@ -38,12 +38,14 @@ import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
+import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
 import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
 import { loadApprovals } from "./src/safety/approvals";
+import { loadContacts } from "./src/contacts/contacts";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { haptics } from "./src/ui/haptics";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
@@ -188,6 +190,7 @@ function Root() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
+          <Stack.Screen name="Contacts" component={ContactsScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
@@ -207,6 +210,7 @@ export default function App() {
       loadMultisigPref(),
       loadRecipients(),
       loadApprovals(),
+      loadContacts(),
       preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);
