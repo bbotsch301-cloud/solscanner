@@ -4,9 +4,11 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { Sparkline } from "../components/Sparkline";
+import { CandleChart } from "../components/CandleChart";
+import { PressableScale } from "../components/PressableScale";
 import { useWallet } from "../wallet/WalletContext";
-import { fetchTokenChart, type TokenChart } from "../prices/chart";
+import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
+import { haptics } from "../ui/haptics";
 import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
@@ -36,47 +38,48 @@ export function TokenDetailScreen() {
     };
   }, [assetKey, native, assets, activeChain]);
 
-  const [chart, setChart] = useState<TokenChart | null>(null);
+  const [range, setRange] = useState<ChartRange>("1W");
+  const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [scrub, setScrub] = useState<Candle | null>(null); // candle under the crosshair, if any
 
-  const loadChart = useCallback(async (): Promise<TokenChart | null> => {
-    if (!view) return null;
-    return fetchTokenChart({
-      chainId: activeChain.id,
-      symbol: view.symbol,
-      isNative: view.isNative,
-      contract: view.contract,
-    });
-  }, [view, activeChain.id]);
+  const loadCandles = useCallback(async (): Promise<Candle[]> => {
+    if (!view) return [];
+    return fetchCandles(
+      { chainId: activeChain.id, symbol: view.symbol, isNative: view.isNative, contract: view.contract },
+      range
+    );
+  }, [view, activeChain.id, range]);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const c = await loadChart();
+    void (async () => {
+      setLoading(true);
+      const c = await loadCandles();
       if (!cancelled) {
-        setChart(c);
+        setCandles(c);
         setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadChart]);
+  }, [loadCandles]);
 
   // Pull-to-refresh: re-price the wallet (updates this token's balance + USD value) and reload
-  // the chart. fetchPrices/fetchTokenChart aren't cached, so this pulls genuinely fresh numbers.
+  // the candles for the current range.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [c] = await Promise.all([loadChart(), refreshWallet()]);
-      setChart(c);
+      const [c] = await Promise.all([loadCandles(), refreshWallet()]);
+      setCandles(c);
     } catch {
       /* keep last */
     } finally {
       setRefreshing(false);
     }
-  }, [loadChart, refreshWallet]);
+  }, [loadCandles, refreshWallet]);
 
   if (!view) {
     return (
@@ -89,8 +92,18 @@ export function TokenDetailScreen() {
     );
   }
 
-  const perUnit = view.balance > 0 && view.usd != null ? view.usd / view.balance : chart?.priceUsd ?? null;
-  const change = chart?.changePct ?? null;
+  // Live price = wallet-derived per-unit, else the latest candle close. When scrubbing, show the
+  // hovered candle's close instead. Range change = first open → last close of the loaded candles.
+  const latestClose = candles.length ? candles[candles.length - 1].close : null;
+  const livePrice = view.balance > 0 && view.usd != null ? view.usd / view.balance : latestClose;
+  const displayPrice = scrub ? scrub.close : livePrice;
+  const change =
+    candles.length >= 2 && candles[0].open > 0
+      ? ((candles[candles.length - 1].close - candles[0].open) / candles[0].open) * 100
+      : null;
+  const scrubTime = scrub
+    ? new Date(scrub.time * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : null;
 
   return (
     <ScrollView
@@ -108,21 +121,46 @@ export function TokenDetailScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.price}>{perUnit != null ? fmtUsd(perUnit) : "—"}</Text>
-      {change != null && (
-        <Text style={[styles.change, { color: change >= 0 ? colors.positive : colors.negative }]}>
-          {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(2)}% · 7d
-        </Text>
+      <Text style={styles.price}>{displayPrice != null ? fmtUsd(displayPrice) : "—"}</Text>
+      {scrubTime ? (
+        <Text style={styles.scrubTime}>{scrubTime}</Text>
+      ) : (
+        change != null && (
+          <Text style={[styles.change, { color: change >= 0 ? colors.positive : colors.negative }]}>
+            {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(2)}% · {range}
+          </Text>
+        )
       )}
 
       <View style={styles.chartCard}>
         {loading ? (
           <ActivityIndicator color={colors.primary} />
-        ) : chart ? (
-          <Sparkline data={chart.prices} height={90} />
+        ) : candles.length >= 2 ? (
+          <CandleChart candles={candles} height={220} onScrub={setScrub} />
         ) : (
           <Text style={styles.sub}>No price chart for this token.</Text>
         )}
+      </View>
+
+      <View style={styles.rangeRow}>
+        {CHART_RANGES.map((r) => {
+          const on = r === range;
+          return (
+            <PressableScale
+              key={r}
+              haptic={null}
+              onPress={() => {
+                if (on) return;
+                haptics.select();
+                setScrub(null);
+                setRange(r);
+              }}
+              style={[styles.rangePill, on && styles.rangePillOn]}
+            >
+              <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{r}</Text>
+            </PressableScale>
+          );
+        })}
       </View>
 
       <View style={styles.balanceCard}>
@@ -153,6 +191,20 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   price: { color: colors.text, fontSize: 40, fontWeight: "900", letterSpacing: -1 },
   change: { fontSize: font.body, fontWeight: "800", marginTop: spacing(1) },
+  scrubTime: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginTop: spacing(1) },
+  rangeRow: { flexDirection: "row", gap: spacing(2), marginTop: spacing(3) },
+  rangePill: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing(2.5),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.card,
+  },
+  rangePillOn: { backgroundColor: colors.primary + "22", borderColor: colors.primary },
+  rangeText: { color: colors.textMuted, fontSize: font.small, fontWeight: "800" },
+  rangeTextOn: { color: colors.text },
   chartCard: {
     backgroundColor: colors.card,
     borderWidth: 1,
