@@ -92,29 +92,61 @@ async function fetchOnChainMeta(mint: string): Promise<TokenMeta | undefined> {
   }
 }
 
-export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefined> {
-  if (KNOWN[mint]) return KNOWN[mint];
-  if (cache.has(mint)) return cache.get(mint) ?? undefined;
-
-  // 1) Jupiter (fast, covers listed tokens).
+async function fromJupiter(mint: string): Promise<TokenMeta | undefined> {
   try {
     const res = await fetch(`https://tokens.jup.ag/token/${mint}`);
     if (res.ok) {
       const j = (await res.json()) as { symbol?: string; name?: string; logoURI?: string } | null;
-      if (j && j.symbol) {
-        const meta: TokenMeta = { symbol: j.symbol, name: j.name ?? j.symbol, logoURI: j.logoURI };
-        cache.set(mint, meta);
-        return meta;
-      }
+      if (j?.symbol) return { symbol: j.symbol, name: j.name ?? j.symbol, logoURI: j.logoURI };
     }
   } catch {
-    /* offline / not listed — fall through to on-chain */
+    /* offline / not listed */
   }
+  return undefined;
+}
 
-  // 2) On-chain Metaplex metadata (memecoins Jupiter hasn't indexed).
-  const onchain = await fetchOnChainMeta(mint);
-  cache.set(mint, onchain ?? null);
-  return onchain;
+/** DexScreener — reliable HTTPS CDN logo (and name/symbol) for any pooled token. */
+async function fromDexScreener(mint: string): Promise<TokenMeta | undefined> {
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+    if (!res.ok) return undefined;
+    const j = (await res.json()) as {
+      pairs?: { baseToken?: { address?: string; name?: string; symbol?: string }; info?: { imageUrl?: string } }[];
+    };
+    const mine = (j.pairs ?? []).filter((p) => p.baseToken?.address?.toLowerCase() === mint.toLowerCase());
+    if (!mine.length) return undefined;
+    const best = mine.find((p) => p.info?.imageUrl) ?? mine[0];
+    const bt = best.baseToken ?? {};
+    if (!bt.symbol && !best.info?.imageUrl) return undefined;
+    return { symbol: bt.symbol ?? "", name: bt.name ?? bt.symbol ?? "", logoURI: best.info?.imageUrl };
+  } catch {
+    return undefined;
+  }
+}
+
+export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefined> {
+  if (KNOWN[mint]) return KNOWN[mint];
+  if (cache.has(mint)) return cache.get(mint) ?? undefined;
+
+  // Merge across sources: name/symbol from the first that has them, logo from the first
+  // that has one. Jupiter (fast) → DexScreener (reliable CDN logo) → on-chain (unlisted).
+  const merged: { symbol?: string; name?: string; logoURI?: string } = {};
+  const fill = (m?: TokenMeta) => {
+    if (!m) return;
+    merged.symbol ||= m.symbol || undefined;
+    merged.name ||= m.name || undefined;
+    merged.logoURI ||= m.logoURI || undefined;
+  };
+
+  fill(await fromJupiter(mint));
+  if (!merged.symbol || !merged.logoURI) fill(await fromDexScreener(mint));
+  if (!merged.symbol || !merged.logoURI) fill(await fetchOnChainMeta(mint));
+
+  const result: TokenMeta | undefined = merged.symbol
+    ? { symbol: merged.symbol, name: merged.name ?? merged.symbol, logoURI: merged.logoURI }
+    : undefined;
+  cache.set(mint, result ?? null);
+  return result;
 }
 
 /** Resolve metadata for many mints at once. */
