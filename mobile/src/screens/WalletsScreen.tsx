@@ -15,24 +15,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { deriveAccount } from "../wallet/vault";
-import { HelpTip } from "../components/HelpTip";
 import { ImportWallet } from "./ImportWallet";
+import { CreateWallet } from "./CreateWallet";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
 export function WalletsScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
-  const { seeds, activeSeedId, activeIndex, switchAccount, addAccount, removeWallet, renameWallet, create } =
+  const { seeds, activeSeedId, activeIndex, switchAccount, addAccount, removeWallet, renameWallet } =
     useWallet();
 
   const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
-  const [renaming, setRenaming] = useState<{ id: string; label: string } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [createPass, setCreatePass] = useState("");
-  const [createAdvanced, setCreateAdvanced] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; label: string } | null>(null);
 
   // Derive the (public) addresses for every account to show under each wallet.
   const structureKey = seeds.map((s) => `${s.id}:${s.accounts.join(",")}`).join("|");
@@ -78,31 +76,11 @@ export function WalletsScreen() {
     }
   };
 
-  const doCreate = () => {
-    const run = async () => {
-      const pass = createPass;
-      setShowCreate(false);
-      setCreatePass("");
-      setCreateAdvanced(false);
-      await withBusy("create", () => create(pass));
-    };
-    // A passphrase is unrecoverable and required for every future restore — confirm first.
-    if (createPass) {
-      Alert.alert(
-        "Use a passphrase (25th word)?",
-        "You'll need BOTH your recovery phrase AND this exact passphrase to ever restore this wallet. If you lose the passphrase, the funds are gone forever — no one can recover it. Save it with your recovery phrase.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "I've saved it — create", style: "destructive", onPress: run },
-        ]
-      );
-    } else {
-      run();
-    }
-  };
-
   if (showImport) {
     return <ImportWallet onDone={() => setShowImport(false)} onCancel={() => setShowImport(false)} />;
+  }
+  if (showCreate) {
+    return <CreateWallet onDone={() => setShowCreate(false)} onCancel={() => setShowCreate(false)} />;
   }
 
   return (
@@ -200,56 +178,6 @@ export function WalletsScreen() {
           <Text style={styles.secondaryText}>Import a wallet</Text>
         </Pressable>
       </ScrollView>
-
-      <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setShowCreate(false)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Create a new wallet</Text>
-            <Text style={styles.createSub}>
-              A fresh 24-word recovery phrase. You&apos;ll be asked to back it up next.
-            </Text>
-
-            <View style={styles.advRow}>
-              <Pressable
-                onPress={() => setCreateAdvanced((v) => !v)}
-                style={styles.advToggle}
-                hitSlop={8}
-              >
-                <Ionicons
-                  name={createAdvanced ? "chevron-down" : "chevron-forward"}
-                  size={16}
-                  color={colors.textMuted}
-                />
-                <Text style={styles.advText}>Advanced · add a passphrase (25th word)</Text>
-              </Pressable>
-              <HelpTip topic="passphrase" />
-            </View>
-
-            {createAdvanced && (
-              <>
-                <Text style={styles.advHint}>
-                  Optional extra secret mixed into your seed for a hidden wallet. Save it with
-                  your recovery phrase — if you lose it, the wallet is gone forever.
-                </Text>
-                <TextInput
-                  value={createPass}
-                  onChangeText={setCreatePass}
-                  placeholder="Passphrase (optional)"
-                  placeholderTextColor={colors.textFaint}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  secureTextEntry
-                  style={styles.modalInput}
-                />
-              </>
-            )}
-
-            <Pressable onPress={doCreate} style={styles.primaryBtn}>
-              <Text style={styles.primaryText}>Create wallet</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       <Modal visible={!!renaming} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
         <Pressable style={styles.backdrop} onPress={() => setRenaming(null)}>
@@ -354,11 +282,6 @@ const styles = StyleSheet.create({
     padding: spacing(5),
   },
   modalTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800", marginBottom: spacing(3) },
-  createSub: { color: colors.textMuted, fontSize: font.small, lineHeight: 18, marginBottom: spacing(3) },
-  advRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  advToggle: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
-  advText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
-  advHint: { color: colors.textFaint, fontSize: font.small, lineHeight: 17, marginTop: spacing(2), marginBottom: spacing(2) },
   modalInput: {
     backgroundColor: colors.card,
     borderWidth: 1,
