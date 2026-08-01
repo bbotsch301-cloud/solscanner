@@ -31,7 +31,6 @@ export function HomeScreen() {
     assets,
     solChange24h,
     totalUsd,
-    refreshing,
     busy,
     error,
     refresh,
@@ -44,6 +43,7 @@ export function HomeScreen() {
   const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
 
   const [recent, setRecent] = useState<HistoryItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const loadRecent = useCallback(async () => {
     if (!activeAddress) {
       setRecent([]);
@@ -59,12 +59,23 @@ export function HomeScreen() {
     loadRecent();
   }, [loadRecent]);
 
+  // Local refreshing state so the spinner reliably shows for the whole fetch (set true
+  // synchronously on pull), and refresh BOTH balances/prices and the recent-activity list.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refresh(), loadRecent()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh, loadRecent]);
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
       showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>Wallet</Text>
