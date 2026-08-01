@@ -77,7 +77,7 @@ export function WalletsScreen() {
     <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
       <View style={styles.topBar}>
         <Text style={styles.title}>Wallets & accounts</Text>
-        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
+        <Pressable onPress={() => nav.canGoBack() && nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
       </View>

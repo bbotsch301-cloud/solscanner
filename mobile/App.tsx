@@ -124,14 +124,18 @@ function Root() {
         <Stack.Screen name="Tabs" component={Tabs} />
         {/* Card/push screens (slide in from the right, matching their back chevrons). */}
         <Stack.Screen name="CreateWallet">
-          {({ navigation }) => (
-            <CreateWallet onDone={() => navigation.goBack()} onCancel={() => navigation.goBack()} />
-          )}
+          {({ navigation }) => {
+            // After create/import the Root gate may swap the whole navigator (e.g. to the
+            // backup prompt), so only go back if there's still something to go back to.
+            const back = () => navigation.canGoBack() && navigation.goBack();
+            return <CreateWallet onDone={back} onCancel={back} />;
+          }}
         </Stack.Screen>
         <Stack.Screen name="ImportWallet">
-          {({ navigation }) => (
-            <ImportWallet onDone={() => navigation.goBack()} onCancel={() => navigation.goBack()} />
-          )}
+          {({ navigation }) => {
+            const back = () => navigation.canGoBack() && navigation.goBack();
+            return <ImportWallet onDone={back} onCancel={back} />;
+          }}
         </Stack.Screen>
         <Stack.Group screenOptions={{ presentation: "modal", animation: "slide_from_bottom" }}>
           <Stack.Screen name="Send" component={SendScreen} />
