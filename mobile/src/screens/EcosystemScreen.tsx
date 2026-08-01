@@ -5,10 +5,13 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { PieChart } from "../components/PieChart";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
+import { buildAllocation } from "../solana/allocation";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
+import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { IS_MAINNET } from "../solana/connection";
 import { colors, compact, font, radius, spacing, usd } from "../theme";
 
@@ -34,6 +37,7 @@ export function EcosystemScreen() {
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
   const [supply, setSupply] = useState<number | null>(null);
   const [fee, setFee] = useState<TransferFee | null>(null);
+  const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -48,12 +52,14 @@ export function EcosystemScreen() {
       setSupply(s);
       setFee(f);
       const mints = h.tokens.map((t) => t.mint);
-      const [p, m] = await Promise.all([
+      const [p, m, oc] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
+        fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
       ]);
       setPrices(p);
       setMetas(m);
+      setOcPrices(oc);
     } catch {
       /* keep last data */
     } finally {
@@ -65,9 +71,9 @@ export function EcosystemScreen() {
     load();
   }, [load]);
 
-  const treasuryValue =
-    (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0) +
-    (holdings?.tokens ?? []).reduce((s, t) => s + t.amount * (prices[t.mint]?.usdPrice ?? 0), 0);
+  // The full Global Goshens treasury allocation — same slices + total the Treasury tab shows
+  // (on-chain holdings + off-chain silver + dinar).
+  const { slices, total: treasuryValue } = buildAllocation(holdings, prices, metas, ocPrices);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -127,6 +133,21 @@ export function EcosystemScreen() {
         />
       </View>
 
+      {/* Treasury allocation — same pie the Treasury tab shows */}
+      {holdings && slices.length > 0 && (
+        <>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Allocation</Text>
+            <Pressable onPress={() => nav.navigate("Treasury")}>
+              <Text style={styles.viewAll}>View all →</Text>
+            </Pressable>
+          </View>
+          <View style={styles.chartCard}>
+            <PieChart data={slices} centerValue={usd(treasuryValue)} centerLabel="Total" />
+          </View>
+        </>
+      )}
+
       {/* Treasury assets preview */}
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Treasury Assets</Text>
@@ -174,6 +195,7 @@ const styles = StyleSheet.create({
   tileLabel: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "700" },
   tileValue: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   tileDelta: { fontSize: font.tiny, fontWeight: "700" },
+  chartCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4), marginTop: spacing(3) },
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing(6), marginBottom: spacing(3) },
   sectionTitle: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
   viewAll: { color: colors.primary, fontSize: font.small, fontWeight: "700" },

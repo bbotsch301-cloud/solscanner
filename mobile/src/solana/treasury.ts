@@ -8,17 +8,18 @@
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { connection } from "./connection";
-import { vaultPda } from "../config/multisig";
 
-const DEFAULT_TREASURY = "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
+/** The main Global Goshens communal treasury — swap for the dedicated wallet when ready. */
+const GOSHENS_TREASURY = "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
 
 /**
- * The treasury address the app displays — the Squads multisig vault when one is configured
- * (so holdings/allocation reflect the multisig), else the plain treasury wallet. This is a
- * function (not a const) so it reflects a multisig created/loaded at runtime.
+ * The treasury address the app displays on Home + the Treasury tab: always the main Global
+ * Goshens treasury. Deliberately independent of any Squads multisig — a connected multisig is
+ * its own feature (its vault balance shows inside the multisig hub), so it never hijacks the
+ * treasury view. Kept a function so a future runtime-set treasury address is a one-line change.
  */
 export function treasuryAddress(): string {
-  return vaultPda()?.toBase58() ?? DEFAULT_TREASURY;
+  return GOSHENS_TREASURY;
 }
 
 export interface Holding {

@@ -1,36 +1,25 @@
 import * as Clipboard from "expo-clipboard";
-import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { PieChart, PIE_COLORS, type PieSlice } from "../components/PieChart";
+import { PieChart } from "../components/PieChart";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
+import { buildAllocation } from "../solana/allocation";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { solscanAccount, CLUSTER } from "../solana/connection";
 import { nativeLogo } from "../config/logos";
-import { OFFCHAIN_ASSETS, type OffchainAsset } from "../config/treasuryAssets";
-import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
-import { multisigConfigured } from "../config/multisig";
-import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
-import { useWallet } from "../wallet/WalletContext";
+import { OFFCHAIN_ASSETS } from "../config/treasuryAssets";
+import { fetchOffchainPrices, offchainValue, type OffchainPrices } from "../prices/offchain";
 import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
-import type { RootNav } from "../navigation";
 
 const SOL_LOGO = nativeLogo.solana;
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
-
-/** USD value of an off-chain asset — live-priced when possible, else its estimate. */
-function offchainValue(a: OffchainAsset, p: OffchainPrices): number {
-  if (a.live === "silver" && p.silverPerOz && a.amount) return a.amount * p.silverPerOz;
-  if (a.live === "iqd" && p.iqdPerUsd && a.amount) return a.amount / p.iqdPerUsd;
-  return a.valueUsd;
-}
 
 export function TreasuryScreen() {
   const insets = useSafeAreaInsets();
@@ -38,11 +27,8 @@ export function TreasuryScreen() {
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
   const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
-  const [msInfo, setMsInfo] = useState<MultisigInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { solanaAddress } = useWallet();
-  const nav = useNavigation<RootNav>();
   const TREASURY_ADDRESS = treasuryAddress();
 
   const load = useCallback(async () => {
@@ -51,16 +37,14 @@ export function TreasuryScreen() {
       const h = await fetchHoldings(treasuryAddress());
       setHoldings(h);
       const mints = h.tokens.map((t) => t.mint);
-      const [p, m, oc, ms] = await Promise.all([
+      const [p, m, oc] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
         fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
-        multisigConfigured() ? fetchMultisigInfo().catch(() => null) : Promise.resolve(null),
       ]);
       setPrices(p);
       setMetas(m);
       setOcPrices(oc);
-      setMsInfo(ms);
     } catch {
       /* keep last data on transient errors */
     } finally {
@@ -72,28 +56,7 @@ export function TreasuryScreen() {
     load();
   }, [load]);
 
-  const solUsd = (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0);
-  const sortedTokens = (holdings?.tokens ?? [])
-    .map((t) => ({ t, value: t.amount * (prices[t.mint]?.usdPrice ?? 0) }))
-    .sort((a, b) => b.value - a.value);
-  const tokensUsd = sortedTokens.reduce((s, x) => s + x.value, 0);
-  const offchainUsd = OFFCHAIN_ASSETS.reduce((s, a) => s + offchainValue(a, ocPrices), 0);
-  const total = solUsd + tokensUsd + offchainUsd;
-
-  // Allocation slices: SOL, each token, each off-chain asset — colored from the palette.
-  const slices: PieSlice[] = [
-    { label: "SOL", value: solUsd, color: PIE_COLORS[0] },
-    ...sortedTokens.map((x, i) => ({
-      label: metas[x.t.mint]?.symbol ?? shortAddress(x.t.mint, 3, 3),
-      value: x.value,
-      color: PIE_COLORS[(i + 1) % PIE_COLORS.length],
-    })),
-    ...OFFCHAIN_ASSETS.map((a, i) => ({
-      label: a.label,
-      value: offchainValue(a, ocPrices),
-      color: PIE_COLORS[(sortedTokens.length + 1 + i) % PIE_COLORS.length],
-    })),
-  ].filter((s) => s.value > 0);
+  const { slices, total, solUsd, sortedTokens } = buildAllocation(holdings, prices, metas, ocPrices);
 
   return (
     <ScrollView
@@ -131,43 +94,6 @@ export function TreasuryScreen() {
         <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
         <Text style={styles.verifyText}>Public & verifiable on-chain — view on Solscan ↗</Text>
       </Pressable>
-
-      {msInfo && (
-        <Pressable style={styles.msCard} onPress={() => nav.navigate("TreasuryMultisig")}>
-          <View style={styles.msHead}>
-            <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
-            <Text style={styles.msTitle}>Squads multisig</Text>
-            <Text style={styles.msThreshold}>
-              {msInfo.threshold} of {msInfo.members.length}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-          </View>
-          <Text style={styles.msSub}>
-            {isMember(msInfo, solanaAddress)
-              ? "You're a signer — tap to review & approve proposals."
-              : "View only — tap to see pending proposals."}
-          </Text>
-        </Pressable>
-      )}
-
-      {!multisigConfigured() && (
-        <>
-          <Pressable style={styles.msCard} onPress={() => nav.navigate("CreateSquad")}>
-            <View style={styles.msHead}>
-              <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
-              <Text style={styles.msTitle}>Set up a multisig treasury</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-            </View>
-            <Text style={styles.msSub}>
-              Require multiple signers to approve every spend — powered by Squads Protocol (audited).
-            </Text>
-          </Pressable>
-          <Pressable style={styles.msLink} onPress={() => nav.navigate("ConnectMultisig")}>
-            <Ionicons name="link-outline" size={16} color={colors.primary} />
-            <Text style={styles.msLinkText}>Connect an existing multisig</Text>
-          </Pressable>
-        </>
-      )}
 
       {holdings && slices.length > 0 && (
         <>
@@ -283,13 +209,6 @@ const styles = StyleSheet.create({
   addr: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   verify: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(3) },
   verifyText: { color: colors.primary, fontSize: font.small, fontWeight: "600" },
-  msCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginTop: spacing(2), gap: spacing(2) },
-  msHead: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
-  msTitle: { flex: 1, color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  msThreshold: { color: colors.accent, fontSize: font.body, fontWeight: "900" },
-  msSub: { color: colors.textMuted, fontSize: font.small, lineHeight: 18 },
-  msLink: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(1) },
-  msLinkText: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.small,
