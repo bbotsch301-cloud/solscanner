@@ -27,10 +27,13 @@ export interface Deposit {
   explorerUrl: string;
 }
 
-const MAX_TOKEN_ACCOUNTS = 15; // bound the number of getSignaturesForAddress calls
-const PER_ACCOUNT_SIGS = 10;
+// Bounds kept modest because getSignaturesForAddress + getParsedTransactions are the
+// heaviest, most rate-limited RPC methods on the public endpoint — a big fan-out here is the
+// main source of 429s. A private RPC (EXPO_PUBLIC_MAINNET_RPC) can afford much more.
+const MAX_TOKEN_ACCOUNTS = 8; // bound the number of getSignaturesForAddress calls
+const PER_ACCOUNT_SIGS = 6;
 
-export async function fetchDeposits(address: string, limit = 15): Promise<Deposit[]> {
+export async function fetchDeposits(address: string, limit = 10): Promise<Deposit[]> {
   let owner: PublicKey;
   try {
     owner = new PublicKey(address);

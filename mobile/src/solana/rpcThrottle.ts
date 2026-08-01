@@ -12,8 +12,8 @@
  * With a dedicated RPC (EXPO_PUBLIC_MAINNET_RPC) the limit is far higher; the throttle is a
  * safe no-op-ish ceiling there.
  */
-const MAX_CONCURRENT = 4; // in-flight requests at once
-const MIN_SPACING_MS = 90; // ~11 request starts/sec ceiling
+const MAX_CONCURRENT = 3; // in-flight requests at once
+const MIN_SPACING_MS = 140; // ~7 request starts/sec — under the public endpoint's soft cap
 
 let active = 0;
 let lastStart = 0;
