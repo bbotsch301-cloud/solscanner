@@ -5,8 +5,24 @@
  * mint, which is expected.
  */
 import { PublicKey } from "@solana/web3.js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { connection } from "./connection";
 import { solLogo, LOGO_OVERRIDES } from "../config/logos";
+
+// Persistent metadata cache key prefix. Bump the version to invalidate all stored entries.
+const TM_KEY = "tm.v1:";
+
+async function readPersisted(mint: string): Promise<TokenMeta | undefined> {
+  try {
+    const raw = await AsyncStorage.getItem(TM_KEY + mint);
+    return raw ? (JSON.parse(raw) as TokenMeta) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function writePersisted(mint: string, meta: TokenMeta): void {
+  AsyncStorage.setItem(TM_KEY + mint, JSON.stringify(meta)).catch(() => {});
+}
 
 export interface TokenMeta {
   symbol: string;
@@ -149,6 +165,13 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
   if (KNOWN[mint]) return KNOWN[mint];
   if (cache.has(mint)) return cache.get(mint) ?? undefined;
 
+  // Persistent cache (survives app restarts): a stored hit skips all network resolution.
+  const persisted = await readPersisted(mint);
+  if (persisted) {
+    cache.set(mint, persisted);
+    return persisted;
+  }
+
   // Jupiter (fast, name+symbol) and DexScreener (reliable CDN image) in parallel; on-chain
   // Metaplex only if either name/symbol or a logo is still missing (keeps RPC load down).
   const [jup, dex] = await Promise.all([fromJupiter(mint), fromDexScreener(mint)]);
@@ -167,6 +190,9 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
 
   const result: TokenMeta | undefined = symbol ? { symbol, name: name ?? symbol, logoURI } : undefined;
   cache.set(mint, result ?? null);
+  // Persist only fully-resolved entries (with a logo) — that's the expensive thing to keep on
+  // disk. Logo-less / missed lookups stay in-memory so they retry (and may find a logo) later.
+  if (result?.logoURI) writePersisted(mint, result);
   return result;
 }
 

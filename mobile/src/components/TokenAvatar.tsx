@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { colors } from "../theme";
 
 // Fallback IPFS gateways, tried in order if the resolved one fails to load on-device.
@@ -35,6 +36,9 @@ export function TokenAvatar({
       <Image
         source={{ uri: src }}
         onError={() => setIdx((i) => i + 1)}
+        cachePolicy="memory-disk" // keep the downloaded logo on disk (persists across restarts)
+        contentFit="cover"
+        transition={120}
         style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.bgElevated }}
       />
     );
