@@ -4,56 +4,95 @@
  * Devnet test tokens usually aren't listed anywhere — those fall back to a short
  * mint, which is expected.
  */
+import { PublicKey } from "@solana/web3.js";
+import { connection } from "./connection";
+import { solLogo } from "../config/logos";
+
 export interface TokenMeta {
   symbol: string;
   name: string;
   logoURI?: string;
 }
 
-const LOGO = (mint: string) =>
-  `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`;
-
 const KNOWN: Record<string, TokenMeta> = {
   // XGO — the treasury/community token (Token-2022, 1.11% transfer fee).
   "4a6CPi8mjbJvpWHajbSjd9CMbKL8UniByoSx7tomLJa7": { symbol: "XGO", name: "XGO" },
-  So11111111111111111111111111111111111111112: {
-    symbol: "SOL",
-    name: "Solana",
-    logoURI: LOGO("So11111111111111111111111111111111111111112"),
-  },
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: {
-    symbol: "USDC",
-    name: "USD Coin",
-    logoURI: LOGO("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
-  },
-  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: {
-    symbol: "USDT",
-    name: "Tether USD",
-    logoURI: LOGO("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),
-  },
-  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: {
-    symbol: "BONK",
-    name: "Bonk",
-  },
-  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: {
-    symbol: "JUP",
-    name: "Jupiter",
-  },
+  So11111111111111111111111111111111111111112: { symbol: "SOL", name: "Solana", logoURI: solLogo["So11111111111111111111111111111111111111112"] },
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { symbol: "USDC", name: "USD Coin", logoURI: solLogo["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"] },
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: { symbol: "USDT", name: "Tether USD", logoURI: solLogo["Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"] },
+  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: { symbol: "BONK", name: "Bonk", logoURI: solLogo["DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"] },
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: { symbol: "JUP", name: "Jupiter", logoURI: solLogo["JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"] },
 };
 
 const cache = new Map<string, TokenMeta | null>();
 
+const TOKEN_METADATA_PROGRAM = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+/** ipfs:// and bare-CID URIs → an HTTPS gateway; https/http pass through. */
+function toHttp(uri: string): string {
+  const u = uri.trim();
+  if (u.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${u.slice("ipfs://".length)}`;
+  if (/^[A-Za-z0-9]{46,}$/.test(u)) return `https://ipfs.io/ipfs/${u}`;
+  return u;
+}
+
+/** Read a borsh String (u32-LE length + bytes) at `offset`; NUL-trimmed. */
+function readBorshString(buf: Buffer, offset: number): { value: string; next: number } {
+  const len = buf.readUInt32LE(offset);
+  const start = offset + 4;
+  const raw = buf.subarray(start, start + len).toString("utf8");
+  return { value: raw.replace(/\0/g, "").trim(), next: start + len };
+}
+
+/**
+ * On-chain Metaplex metadata — the fallback when Jupiter doesn't list a token (e.g. fresh
+ * pump.fun memecoins like Giraffe). Reads the metadata account for name/symbol, then its
+ * off-chain JSON for the image. Best-effort; mainnet only.
+ */
+async function fetchOnChainMeta(mint: string): Promise<TokenMeta | undefined> {
+  try {
+    const mintKey = new PublicKey(mint);
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM.toBuffer(), mintKey.toBuffer()],
+      TOKEN_METADATA_PROGRAM
+    );
+    const info = await connection.getAccountInfo(pda);
+    if (!info?.data) return undefined;
+    const data = info.data as Buffer;
+
+    // key(1) + updateAuthority(32) + mint(32) → name starts at 65.
+    const name = readBorshString(data, 1 + 32 + 32);
+    const symbol = readBorshString(data, name.next);
+    const uri = readBorshString(data, symbol.next);
+    if (!name.value && !symbol.value) return undefined;
+
+    let logoURI: string | undefined;
+    if (uri.value) {
+      try {
+        const res = await fetch(toHttp(uri.value));
+        if (res.ok) {
+          const j = (await res.json()) as { image?: string } | null;
+          if (j?.image) logoURI = toHttp(j.image);
+        }
+      } catch {
+        /* off-chain JSON unreachable — keep name/symbol */
+      }
+    }
+    return { symbol: symbol.value || name.value, name: name.value || symbol.value, logoURI };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefined> {
   if (KNOWN[mint]) return KNOWN[mint];
   if (cache.has(mint)) return cache.get(mint) ?? undefined;
+
+  // 1) Jupiter (fast, covers listed tokens).
   try {
     const res = await fetch(`https://tokens.jup.ag/token/${mint}`);
     if (res.ok) {
-      const j = (await res.json()) as {
-        symbol?: string;
-        name?: string;
-        logoURI?: string;
-      } | null;
+      const j = (await res.json()) as { symbol?: string; name?: string; logoURI?: string } | null;
       if (j && j.symbol) {
         const meta: TokenMeta = { symbol: j.symbol, name: j.name ?? j.symbol, logoURI: j.logoURI };
         cache.set(mint, meta);
@@ -61,10 +100,13 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
       }
     }
   } catch {
-    /* offline / not listed */
+    /* offline / not listed — fall through to on-chain */
   }
-  cache.set(mint, null);
-  return undefined;
+
+  // 2) On-chain Metaplex metadata (memecoins Jupiter hasn't indexed).
+  const onchain = await fetchOnChainMeta(mint);
+  cache.set(mint, onchain ?? null);
+  return onchain;
 }
 
 /** Resolve metadata for many mints at once. */

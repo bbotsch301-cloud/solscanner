@@ -17,11 +17,15 @@ export const nativeLogo: Record<string, string> = {
 export const evmLogo = (chain: "ethereum" | "smartchain", address: string): string =>
   `${TW}/${chain}/assets/${address}/logo.png`;
 
-/** Curated Solana token logos (the swap defaults) from stable sources. */
+/** Trust Wallet logo for a Solana token by its mint — same repo/host as the working
+ *  SOL native logo, so it loads wherever the natives do. */
+export const solAsset = (mint: string): string => `${TW}/solana/assets/${mint}/logo.png`;
+
+/** Curated Solana token logos (the swap defaults), all on the one working pattern. */
 export const solLogo: Record<string, string> = {
   So11111111111111111111111111111111111111112: nativeLogo.solana, // SOL
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: evmLogo("ethereum", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), // USDC (brand)
-  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: evmLogo("ethereum", "0xdAC17F958D2ee523a2206206994597C13D831ec7"), // USDT (brand)
-  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "https://static.jup.ag/jup/icon.png", // JUP
-  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I", // BONK
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: solAsset("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: solAsset("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"), // USDT
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: solAsset("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"), // JUP
+  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: solAsset("DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"), // BONK
 };
