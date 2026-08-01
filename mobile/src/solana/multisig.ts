@@ -52,6 +52,8 @@ export function isMember(info: MultisigInfo | null, address: string | null): boo
 
 export interface ProposalView {
   index: number;
+  /** "vault" = spend a token/SOL; "config" = change signers/threshold. */
+  kind: "vault" | "config";
   /** "Active" (open to vote), "Approved" (ready to execute), "Executed", "Rejected", … */
   status: string;
   approvals: number;
@@ -94,6 +96,24 @@ function decodeVaultTx(vt: multisig.accounts.VaultTransaction): string {
   return `Custom transaction · ${n} instruction${n === 1 ? "" : "s"} — review before approving`;
 }
 
+/** Decode a config transaction (signer/threshold changes) into one line. */
+function decodeConfigTx(ct: multisig.accounts.ConfigTransaction): string {
+  return ct.actions
+    .map((a) => {
+      switch (a.__kind) {
+        case "AddMember":
+          return `Add signer ${shortKey(a.newMember.key)}`;
+        case "RemoveMember":
+          return `Remove signer ${shortKey(a.oldMember)}`;
+        case "ChangeThreshold":
+          return `Change approvals to ${a.newThreshold}`;
+        default:
+          return a.__kind;
+      }
+    })
+    .join(" · ");
+}
+
 /** Fetch recent proposals (newest first). */
 export async function fetchProposals(info: MultisigInfo, limit = 15): Promise<ProposalView[]> {
   const ms = multisigPubkey();
@@ -106,14 +126,23 @@ export async function fetchProposals(info: MultisigInfo, limit = 15): Promise<Pr
       const status = (proposal.status as { __kind: string }).__kind;
       const [txPda] = multisig.getTransactionPda({ multisigPda: ms, index: BigInt(i) });
       let summary = "Transaction";
+      let kind: "vault" | "config" = "vault";
       try {
         const vt = await multisig.accounts.VaultTransaction.fromAccountAddress(connection, txPda);
         summary = decodeVaultTx(vt);
+        kind = "vault";
       } catch {
-        summary = "Config change — review before approving";
+        try {
+          const ct = await multisig.accounts.ConfigTransaction.fromAccountAddress(connection, txPda);
+          summary = decodeConfigTx(ct);
+          kind = "config";
+        } catch {
+          summary = "Transaction — review before approving";
+        }
       }
       out.push({
         index: i,
+        kind,
         status,
         approvals: proposal.approved.length,
         rejections: proposal.rejected.length,
@@ -198,10 +227,24 @@ export async function rejectProposal(member: Keypair, index: number): Promise<st
   });
 }
 
-/** Execute an approved proposal — runs the (already-approved) transaction from the vault. */
-export async function executeProposal(member: Keypair, index: number): Promise<string> {
+/** Execute an approved proposal — a vault spend or a config (signer/threshold) change. */
+export async function executeProposal(
+  member: Keypair,
+  index: number,
+  kind: "vault" | "config" = "vault"
+): Promise<string> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
+  if (kind === "config") {
+    return multisig.rpc.configTransactionExecute({
+      connection,
+      feePayer: member,
+      multisigPda: ms,
+      transactionIndex: BigInt(index),
+      member,
+      rentPayer: member,
+    });
+  }
   return multisig.rpc.vaultTransactionExecute({
     connection,
     feePayer: member,
@@ -209,4 +252,46 @@ export async function executeProposal(member: Keypair, index: number): Promise<s
     transactionIndex: BigInt(index),
     member: member.publicKey,
   });
+}
+
+// ---- config-change proposals (add/remove signer, change threshold) -----------
+
+type ConfigAction = Parameters<typeof multisig.rpc.configTransactionCreate>[0]["actions"][number];
+
+/** Propose a config change — creates a config transaction + proposal the current signers
+ *  must approve (then execute). Signed by the proposing member. */
+async function proposeConfigChange(creator: Keypair, actions: ConfigAction[]): Promise<string> {
+  const ms = multisigPubkey();
+  if (!ms) throw new Error("No multisig configured.");
+  const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+  const index = BigInt(acc.transactionIndex.toString()) + 1n;
+  await multisig.rpc.configTransactionCreate({
+    connection,
+    feePayer: creator,
+    multisigPda: ms,
+    transactionIndex: index,
+    creator: creator.publicKey,
+    actions,
+  });
+  return multisig.rpc.proposalCreate({
+    connection,
+    feePayer: creator,
+    creator,
+    multisigPda: ms,
+    transactionIndex: index,
+  });
+}
+
+export async function proposeAddSigner(creator: Keypair, address: string): Promise<string> {
+  return proposeConfigChange(creator, [
+    { __kind: "AddMember", newMember: { key: new PublicKey(address), permissions: multisig.types.Permissions.all() } },
+  ]);
+}
+
+export async function proposeRemoveSigner(creator: Keypair, address: string): Promise<string> {
+  return proposeConfigChange(creator, [{ __kind: "RemoveMember", oldMember: new PublicKey(address) }]);
+}
+
+export async function proposeChangeThreshold(creator: Keypair, newThreshold: number): Promise<string> {
+  return proposeConfigChange(creator, [{ __kind: "ChangeThreshold", newThreshold }]);
 }

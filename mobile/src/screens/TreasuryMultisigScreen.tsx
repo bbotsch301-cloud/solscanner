@@ -94,14 +94,26 @@ export function TreasuryMultisigScreen() {
         showsVerticalScrollIndicator={false}
       >
         {info && (
-          <View style={styles.header}>
-            <Text style={styles.headerThreshold}>
-              {info.threshold} of {info.members.length} signers
-            </Text>
-            <Text style={styles.headerSub}>
-              {member ? "You're a signer on this treasury." : "You're viewing only — not a signer."}
-            </Text>
-          </View>
+          <Pressable
+            style={styles.header}
+            onPress={() => member && nav.navigate("ManageSigners")}
+            disabled={!member}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerThreshold}>
+                {info.threshold} of {info.members.length} signers
+              </Text>
+              <Text style={styles.headerSub}>
+                {member ? "You're a signer on this treasury." : "You're viewing only — not a signer."}
+              </Text>
+            </View>
+            {member && (
+              <View style={styles.manageLink}>
+                <Text style={styles.manageText}>Manage</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+              </View>
+            )}
+          </Pressable>
         )}
 
         {!multisigConfigured() ? (
@@ -142,7 +154,10 @@ export function TreasuryMultisigScreen() {
                         </Pressable>
                       </>
                     ) : (
-                      <Pressable style={[styles.btn, styles.execute]} onPress={() => act(p, "Execute", executeProposal)}>
+                      <Pressable
+                        style={[styles.btn, styles.execute]}
+                        onPress={() => act(p, "Execute", (kp, i) => executeProposal(kp, i, p.kind))}
+                      >
                         <Text style={styles.approveText}>Execute</Text>
                       </Pressable>
                     )}
@@ -176,7 +191,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  header: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginBottom: spacing(3) },
+  header: { flexDirection: "row", alignItems: "center", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), marginBottom: spacing(3) },
+  manageLink: { flexDirection: "row", alignItems: "center", gap: 2 },
+  manageText: { color: colors.primary, fontSize: font.small, fontWeight: "800" },
   headerThreshold: { color: colors.accent, fontSize: font.h3, fontWeight: "900" },
   headerSub: { color: colors.textMuted, fontSize: font.small, marginTop: 2 },
   empty: { color: colors.textMuted, fontSize: font.body, textAlign: "center", paddingVertical: spacing(8) },
