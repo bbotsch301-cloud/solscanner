@@ -6,14 +6,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PieChart } from "../components/PieChart";
 import { Holding } from "../components/Holding";
+import { TokenAvatar } from "../components/TokenAvatar";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
+import { fetchDeposits, type Deposit } from "../solana/deposits";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { solscanAccount, IS_MAINNET } from "../solana/connection";
-import { colors, compact, font, radius, shortAddress, spacing, usd } from "../theme";
+import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
 
 function StatTile({ label, value, delta, deltaUp }: { label: string; value: string; delta?: string; deltaUp?: boolean }) {
   return (
@@ -33,6 +35,8 @@ export function EcosystemScreen() {
   const [supply, setSupply] = useState<number | null>(null);
   const [fee, setFee] = useState<TransferFee | null>(null);
   const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const TREASURY_ADDRESS = treasuryAddress();
@@ -49,14 +53,16 @@ export function EcosystemScreen() {
       setSupply(s);
       setFee(f);
       const mints = h.tokens.map((t) => t.mint);
-      const [p, m, oc] = await Promise.all([
+      const [p, m, oc, d] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
         fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
+        fetchDeposits(treasuryAddress(), 15).catch(() => [] as Deposit[]),
       ]);
       setPrices(p);
       setMetas(m);
       setOcPrices(oc);
+      setDeposits(d);
     } catch {
       /* keep last data */
     } finally {
@@ -71,6 +77,8 @@ export function EcosystemScreen() {
   // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar, with the
   // long tail of crypto lumped into one "Other holdings" row so the list stays short.
   const { slices, rows, total: treasuryValue } = buildAllocation(holdings, prices, metas, ocPrices, { topN: 5 });
+
+  const depositsTotal = deposits.reduce((s, d) => s + (d.usd ?? 0), 0);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -165,6 +173,49 @@ export function EcosystemScreen() {
         ))}
       </View>
 
+      {/* Recent deposits — inflows to the treasury, incl. swap fees */}
+      <Text style={styles.sectionTitle}>Recent deposits</Text>
+      <View style={styles.tiles}>
+        <StatTile label="Deposits" value={compact(deposits.length)} delta="recent" />
+        <StatTile label="Total in" value={usd(depositsTotal)} delta="recent" deltaUp={depositsTotal > 0} />
+      </View>
+      <View style={[styles.list, { marginTop: spacing(3) }]}>
+        {deposits.length === 0 ? (
+          <Text style={styles.empty}>No deposits yet. Fees and inflows show up here.</Text>
+        ) : (
+          (depositsExpanded ? deposits : deposits.slice(0, 4)).map((d, i) => (
+            <View key={`${d.signature}:${d.mint ?? "sol"}`}>
+              {i > 0 && <View style={styles.divider} />}
+              <Pressable
+                onPress={() => Linking.openURL(d.explorerUrl)}
+                style={({ pressed }) => [styles.depositRow, pressed && { opacity: 0.6 }]}
+              >
+                <View style={styles.inBadge}>
+                  <Ionicons name="arrow-down" size={14} color={colors.positive} />
+                </View>
+                <TokenAvatar symbol={d.symbol} color={colors.primary} size={32} logoURI={d.logoURI} />
+                <View style={styles.depMid}>
+                  <Text style={styles.depTitle}>
+                    +{fmtAmount(d.amountUi)} {d.symbol}
+                  </Text>
+                  <Text style={styles.depSub}>
+                    {d.usd != null ? `${usd(d.usd)} · ` : ""}
+                    {timeAgo(d.time) || "pending"}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={15} color={colors.textFaint} />
+              </Pressable>
+            </View>
+          ))
+        )}
+      </View>
+      {deposits.length > 4 && (
+        <Pressable onPress={() => setDepositsExpanded((v) => !v)} style={styles.moreToggle} hitSlop={8}>
+          <Ionicons name={depositsExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.primary} />
+          <Text style={styles.moreText}>{depositsExpanded ? "Show less" : `Show more (${deposits.length - 4})`}</Text>
+        </Pressable>
+      )}
+
       <Text style={styles.note}>
         On-chain holdings, XGO supply, and the transfer fee are read live from the chain.
         Off-chain assets (silver, dinar) are stated and live-priced where possible.
@@ -204,5 +255,13 @@ const styles = StyleSheet.create({
   },
   list: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(4) },
   divider: { height: 1, backgroundColor: colors.cardBorder },
+  empty: { color: colors.textMuted, fontSize: font.small, paddingVertical: spacing(4), textAlign: "center" },
+  depositRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
+  inBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.positive + "22", alignItems: "center", justifyContent: "center" },
+  depMid: { flex: 1, gap: 2 },
+  depTitle: { color: colors.text, fontSize: font.body, fontWeight: "700" },
+  depSub: { color: colors.textMuted, fontSize: font.small },
+  moreToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(1) },
+  moreText: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
   note: { color: colors.textFaint, fontSize: font.small, lineHeight: 18, marginTop: spacing(5) },
 });

@@ -72,3 +72,12 @@ export function compact(n: number): string {
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
+
+/** Relative time from a unix-seconds timestamp: "5m ago", "3h ago", "2d ago". */
+export function timeAgo(ts: number | null): string {
+  if (!ts) return "";
+  const s = Math.floor(Date.now() / 1000) - ts;
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86_400)}d ago`;
+}
