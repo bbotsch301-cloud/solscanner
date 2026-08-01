@@ -75,7 +75,9 @@ export function CreateSquadScreen() {
                 { text: "Done", onPress: () => nav.goBack() },
               ]);
             } catch (e) {
-              Alert.alert("Couldn't create", humanizeError(e, { action: "load" }));
+              // Surface the real error for this advanced action (generic fallback hides it).
+              const detail = e instanceof Error ? e.message : humanizeError(e, { action: "load" });
+              Alert.alert("Couldn't create", detail);
             } finally {
               setBusy(false);
             }
