@@ -39,6 +39,20 @@ export function isEvmAddress(address: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(address.trim());
 }
 
+/**
+ * Validate the EIP-55 checksum. An all-lowercase or all-uppercase address carries no
+ * checksum information, so it's accepted (true). A MIXED-case address encodes a checksum
+ * in its capitalization — if it doesn't match, a character was mistyped and the funds
+ * would go to the wrong (or a dead) address, so it's rejected (false).
+ */
+export function isChecksumValid(address: string): boolean {
+  const a = address.trim();
+  if (!isEvmAddress(a)) return false;
+  const body = a.replace(/^0x/, "");
+  if (body === body.toLowerCase() || body === body.toUpperCase()) return true; // no case info
+  return toChecksumAddress(a) === (a.startsWith("0x") ? a : "0x" + a);
+}
+
 export interface EvmAccount {
   /** EIP-55 checksummed address. */
   address: string;

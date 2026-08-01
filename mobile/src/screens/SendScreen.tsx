@@ -21,10 +21,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
-import { isEvmAddress } from "../wallet/evm";
+import { isEvmAddress, isChecksumValid } from "../wallet/evm";
 import { looksLikeName, resolveName } from "../naming/resolve";
 import { assessRecipient, type RiskReport } from "../safety/risk";
 import { assessEvmRecipient } from "../safety/evmRisk";
+import { findLookalike, recordRecipient } from "../safety/recipients";
 import { humanizeError } from "../solana/errors";
 import { computeFee, getTransferFee, type TransferFee } from "../solana/token2022";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing } from "../theme";
@@ -133,7 +134,9 @@ export function SendScreen() {
         return false;
       }
     }
-    return isEvmAddress(addr);
+    // Require a valid EIP-55 checksum too, so a single mistyped (miscased) character is
+    // caught before funds leave — not just a well-formed but wrong address.
+    return isEvmAddress(addr) && isChecksumValid(addr);
   };
 
   // Resolve .eth / .sol names to an address (debounced).
@@ -189,6 +192,12 @@ export function SendScreen() {
     };
   }, [effectiveTo, validAddress, activeAddress, isSolana, activeChain, selected.kind, selected.address]);
 
+  // Address-poisoning: does this recipient imitate one we've sent to before?
+  const lookalike = useMemo(
+    () => (validAddress && effectiveTo ? findLookalike(effectiveTo) : null),
+    [validAddress, effectiveTo]
+  );
+
   const amtNum = parseFloat(amt) || 0;
   const over = amtNum > selected.balance;
   const blockedByRisk = risk?.level === "danger" && !acknowledged;
@@ -204,6 +213,7 @@ export function SendScreen() {
     try {
       const sig = await sendAsset(selected, effectiveTo, amtNum);
       setSignature(sig);
+      recordRecipient(effectiveTo).catch(() => {}); // remember for future poisoning checks
     } catch (e) {
       setError(humanizeError(e, { action: "send", symbol: selected.symbol, native: native.symbol }));
     } finally {
@@ -230,9 +240,12 @@ export function SendScreen() {
       return;
     }
     setPreviewing(false);
+    const poisonLine = lookalike
+      ? `\n\n⚠ This closely resembles a different address you've used before (${shortAddress(lookalike, 6, 6)}). Address-poisoning scams rely on lookalikes — be certain this is the one you mean.`
+      : "";
     Alert.alert(
       "Confirm send",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}\n\nDouble-check every character — sends can’t be undone.`,
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}${poisonLine}\n\nDouble-check every character — sends can’t be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Send", style: "default", onPress: reallySend },
@@ -357,7 +370,20 @@ export function SendScreen() {
             <Text style={styles.warn}>Couldn’t resolve {trimmedTo}.</Text>
           )}
           {!nameKind && trimmedTo.length > 0 && !validAddress && (
-            <Text style={styles.warn}>That doesn’t look like a valid {activeChain.name} address.</Text>
+            <Text style={styles.warn}>
+              {!isSolana && isEvmAddress(trimmedTo) && !isChecksumValid(trimmedTo)
+                ? "This address’s checksum doesn’t match — a character looks mistyped. Re-check it."
+                : `That doesn’t look like a valid ${activeChain.name} address.`}
+            </Text>
+          )}
+          {lookalike && (
+            <View style={styles.poisonWarn}>
+              <Ionicons name="warning" size={16} color={colors.negative} />
+              <Text style={styles.poisonText}>
+                Resembles a different address you’ve used before ({shortAddress(lookalike, 6, 6)}). Address-poisoning
+                scams use lookalikes — verify every character.
+              </Text>
+            </View>
           )}
         </View>
 
@@ -451,6 +477,16 @@ const styles = StyleSheet.create({
     fontSize: font.body,
   },
   warn: { color: colors.warning, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
+  poisonWarn: {
+    flexDirection: "row",
+    gap: spacing(2),
+    alignItems: "flex-start",
+    backgroundColor: colors.negative + "18",
+    borderRadius: radius.md,
+    padding: spacing(3),
+    marginTop: spacing(3),
+  },
+  poisonText: { flex: 1, color: colors.negative, fontSize: font.small, lineHeight: 18 },
   hintMuted: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
   resolved: { color: colors.positive, fontSize: font.small, fontWeight: "700", marginTop: spacing(2), marginLeft: spacing(1) },
   amountHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

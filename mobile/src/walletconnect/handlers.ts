@@ -13,7 +13,8 @@ import type { EvmAccount } from "../wallet/evm";
 import { personalSign } from "../evm/message";
 import { signTypedData, type TypedData } from "../evm/eip712";
 import { signEip1559, type EvmTx } from "../evm/tx";
-import { estimateGas, getFees, getNonce, sendRawTransaction } from "../evm/rpc";
+import { estimateGas, getFees, sendRawTransaction } from "../evm/rpc";
+import { reserveNonce } from "../evm/nonce";
 import { summarizeEvmData, summarizeSolanaTx } from "./decode";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
@@ -152,7 +153,6 @@ export async function handleEvmRequest(
       const tx = params[0];
       const chain = evmChainOf(chainId);
       if (!chain?.evmChainId) throw new Error("Unsupported EVM chain.");
-      const [nonce, fees] = await Promise.all([getNonce(chain, acct.address), getFees(chain)]);
       let gas = hexToBig(tx.gas ?? tx.gasLimit);
       if (gas === 0n) {
         try {
@@ -161,18 +161,34 @@ export async function handleEvmRequest(
           gas = 250_000n;
         }
       }
-      const evmTx: EvmTx = {
-        chainId: chain.evmChainId,
-        nonce,
-        maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-        maxFeePerGas: fees.maxFeePerGas,
-        gasLimit: gas,
-        to: tx.to,
-        value: hexToBig(tx.value),
-        data: tx.data || "0x",
-      };
-      const raw = signEip1559(evmTx, acct.privateKey);
-      return method === "eth_signTransaction" ? raw : sendRawTransaction(chain, raw);
+      // Honor a dApp-supplied nonce; otherwise reserve one so this can't collide with an
+      // overlapping in-app send racing for the same pending nonce.
+      const suppliedNonce = tx.nonce != null ? hexToBig(tx.nonce) : null;
+      const res = suppliedNonce == null ? await reserveNonce(chain, acct.address) : null;
+      try {
+        const fees = await getFees(chain);
+        const evmTx: EvmTx = {
+          chainId: chain.evmChainId,
+          nonce: suppliedNonce ?? res!.nonce,
+          maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+          maxFeePerGas: fees.maxFeePerGas,
+          gasLimit: gas,
+          to: tx.to,
+          value: hexToBig(tx.value),
+          data: tx.data || "0x",
+        };
+        const raw = signEip1559(evmTx, acct.privateKey);
+        if (method === "eth_signTransaction") {
+          res?.commit(); // the dApp will broadcast; assume the nonce is used
+          return raw;
+        }
+        const hash = await sendRawTransaction(chain, raw);
+        res?.commit();
+        return hash;
+      } catch (e) {
+        res?.rollback();
+        throw e;
+      }
     }
     default:
       throw new Error(`Unsupported EVM method: ${method}`);

@@ -66,6 +66,9 @@ import { isPinPrompted, setPinPrompted, clearPinPrompted } from "../security/pre
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
+// Auto-lock the seeds after this long with no interaction, even while foregrounded, so an
+// unlocked wallet left open on an unattended phone re-locks itself.
+const INACTIVITY_MS = 5 * 60_000;
 
 export interface SplToken {
   mint: string;
@@ -147,6 +150,8 @@ interface WalletState {
   unlockWithPin: (pin: string) => Promise<boolean>;
   /** Milliseconds left on a brute-force lockout (0 when an attempt is allowed). */
   pinLockoutMs: () => number;
+  /** Reset the inactivity auto-lock clock (wired to root touches). */
+  bumpActivity: () => void;
   /** Turn on the PIN (encrypts all seeds). */
   enablePin: (pin: string) => Promise<void>;
   /** Turn off the PIN (needs the current PIN). False if it's wrong. */
@@ -211,9 +216,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const keypairRef = useRef<Keypair | null>(null);
   const evmAccountRef = useRef<EvmAccount | null>(null);
   const activeChainRef = useRef<ChainId>(DEFAULT_CHAIN);
+  const lastActivityRef = useRef(0); // stamped on mount in the inactivity effect below
   keypairRef.current = keypair;
   evmAccountRef.current = evmAccount;
   activeChainRef.current = activeChainId;
+
+  // Drop all in-memory key material and require the PIN again. Used by both the
+  // background lock and the inactivity timer.
+  const lockNow = useCallback(() => {
+    if (!pinIsEnabled()) return;
+    lockSeeds();
+    setLocked(true);
+    setKeypair(null);
+    keypairRef.current = null;
+    setEvmAccount(null);
+    evmAccountRef.current = null;
+  }, []);
+
+  // Any touch anywhere in the app resets the inactivity clock (wired at the root in App).
+  const bumpActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
 
   const fetchBalances = useCallback(async (pubkey: PublicKey) => {
     // Query BOTH token programs so Token-2022 assets (like XGO) show up too.
@@ -361,23 +384,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Auto-lock seed access whenever the app is backgrounded (only if a PIN is set).
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" && pinIsEnabled()) {
-        lockSeeds();
-        setLocked(true);
-        setKeypair(null);
-        keypairRef.current = null;
-        setEvmAccount(null);
-        evmAccountRef.current = null;
-      }
+      if (state === "background") lockNow();
+      else if (state === "active") lastActivityRef.current = Date.now(); // fresh clock on return
     });
     return () => sub.remove();
-  }, []);
+  }, [lockNow]);
+
+  // Inactivity auto-lock: while unlocked and foregrounded, re-lock after INACTIVITY_MS of
+  // no interaction (checked on a coarse interval; touches reset the clock via bumpActivity).
+  useEffect(() => {
+    lastActivityRef.current = Date.now(); // stamp once the app is mounted (impure off-render)
+    const id = setInterval(() => {
+      if (!pinIsEnabled() || !pinIsUnlocked()) return; // no PIN, or already locked
+      if (Date.now() - lastActivityRef.current > INACTIVITY_MS) lockNow();
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [lockNow]);
 
   const unlockWithPin = useCallback(
     async (pin: string): Promise<boolean> => {
       const ok = await vaultUnlockWithPin(pin);
       if (!ok) return false;
       setLocked(false);
+      lastActivityRef.current = Date.now(); // don't immediately re-lock after unlocking
       const v = (await loadVault()) ?? vault;
       if (v) {
         setVault(v);
@@ -736,6 +765,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       locked,
       unlockWithPin,
       pinLockoutMs: vaultPinLockoutMs,
+      bumpActivity,
       enablePin,
       disablePin,
       changePin,
@@ -767,6 +797,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     pinEnabled,
     locked,
     unlockWithPin,
+    bumpActivity,
     enablePin,
     disablePin,
     changePin,

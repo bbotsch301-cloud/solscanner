@@ -85,6 +85,18 @@ export async function assessRecipient(
     };
   }
 
+  // A normal wallet's public key is always on the ed25519 curve. An off-curve key is a
+  // program-derived address / token account, not a personal wallet — SOL sent there is
+  // usually unrecoverable.
+  if (!PublicKey.isOnCurve(pubkey.toBytes())) {
+    return {
+      ...base,
+      level: "caution",
+      headline: "Not a normal wallet",
+      reasons: ["This address is off-curve (a program or token account, not a personal wallet). Funds sent here are very likely unrecoverable."],
+    };
+  }
+
   if (!exists || txCount === 0) {
     return {
       ...base,

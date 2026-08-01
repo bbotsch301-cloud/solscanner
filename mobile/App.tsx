@@ -1,6 +1,6 @@
 import "@walletconnect/react-native-compat"; // MUST be first — installs RN polyfills
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -41,6 +41,7 @@ import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
 import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
+import { loadRecipients } from "./src/safety/recipients";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -100,6 +101,22 @@ function Splash() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
       <ActivityIndicator color={colors.primary} />
+    </View>
+  );
+}
+
+/** Wraps the app so any touch resets the inactivity auto-lock clock, without swallowing it. */
+function ActivityWrap({ children }: { children: ReactNode }) {
+  const { bumpActivity } = useWallet();
+  return (
+    <View
+      style={{ flex: 1 }}
+      onStartShouldSetResponderCapture={() => {
+        bumpActivity();
+        return false; // observe the touch; let children handle it
+      }}
+    >
+      {children}
     </View>
   );
 }
@@ -171,7 +188,9 @@ export default function App() {
     // The blocklist refresh is best-effort and must never delay startup on a slow network,
     // so it's fired alongside but the app doesn't block on its result (it fails open).
     loadBlocklist();
-    Promise.all([loadNetworkPref(), loadSecurityPref(), loadMultisigPref()]).finally(() => setReady(true));
+    Promise.all([loadNetworkPref(), loadSecurityPref(), loadMultisigPref(), loadRecipients()]).finally(() =>
+      setReady(true)
+    );
   }, []);
 
   return (
@@ -180,7 +199,9 @@ export default function App() {
         <WalletProvider>
           <WalletConnectProvider>
             <AuthProvider>
-              <Root />
+              <ActivityWrap>
+                <Root />
+              </ActivityWrap>
             </AuthProvider>
           </WalletConnectProvider>
         </WalletProvider>
