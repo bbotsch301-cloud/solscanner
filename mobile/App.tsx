@@ -21,6 +21,7 @@ import { TokenDetailScreen } from "./src/screens/TokenDetailScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
 import { WalletsScreen } from "./src/screens/WalletsScreen";
 import { TreasuryMultisigScreen } from "./src/screens/TreasuryMultisigScreen";
+import { CreateSquadScreen } from "./src/screens/CreateSquadScreen";
 import { CreateWallet } from "./src/screens/CreateWallet";
 import { ImportWallet } from "./src/screens/ImportWallet";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
@@ -34,6 +35,7 @@ import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext"
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
+import { loadMultisigPref } from "./src/config/multisig";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -139,6 +141,7 @@ function Root() {
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Wallets" component={WalletsScreen} />
           <Stack.Screen name="TreasuryMultisig" component={TreasuryMultisigScreen} />
+          <Stack.Screen name="CreateSquad" component={CreateSquadScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
@@ -153,7 +156,7 @@ export default function App() {
   // Apply the saved network choice before anything uses the connection.
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    Promise.all([loadNetworkPref(), loadSecurityPref()]).finally(() => setReady(true));
+    Promise.all([loadNetworkPref(), loadSecurityPref(), loadMultisigPref()]).finally(() => setReady(true));
   }, []);
 
   return (

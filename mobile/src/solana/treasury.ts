@@ -10,12 +10,16 @@ import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { connection } from "./connection";
 import { vaultPda } from "../config/multisig";
 
+const DEFAULT_TREASURY = "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
+
 /**
- * The treasury address the app displays. When a Squads multisig is configured, this is
- * its vault PDA (so the holdings/allocation reflect the multisig); otherwise the plain
- * treasury wallet.
+ * The treasury address the app displays — the Squads multisig vault when one is configured
+ * (so holdings/allocation reflect the multisig), else the plain treasury wallet. This is a
+ * function (not a const) so it reflects a multisig created/loaded at runtime.
  */
-export const TREASURY_ADDRESS = vaultPda()?.toBase58() ?? "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
+export function treasuryAddress(): string {
+  return vaultPda()?.toBase58() ?? DEFAULT_TREASURY;
+}
 
 export interface Holding {
   mint: string;

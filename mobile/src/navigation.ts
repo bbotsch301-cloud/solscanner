@@ -13,6 +13,7 @@ export type RootStackParamList = {
   CreateWallet: undefined;
   ImportWallet: undefined;
   TreasuryMultisig: undefined;
+  CreateSquad: undefined;
   Activity: undefined;
   Govern: undefined;
   Settings: undefined;

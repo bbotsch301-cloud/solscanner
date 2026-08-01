@@ -6,7 +6,7 @@
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import * as multisig from "@sqds/multisig";
 import { connection, solscanAccount } from "./connection";
-import { multisigPubkey, vaultPda } from "../config/multisig";
+import { multisigPubkey, vaultPda, setMultisigAddress } from "../config/multisig";
 
 export interface MultisigMember {
   key: string;
@@ -126,6 +126,51 @@ export async function fetchProposals(info: MultisigInfo, limit = 15): Promise<Pr
     }
   }
   return out;
+}
+
+/**
+ * Create a new Squads v4 multisig on-chain. The creator (active member) pays the Squads
+ * creation fee + rent and is always included as a full member. `memberAddresses` are the
+ * OTHER signers (base58). Persists the new multisig address on success and returns it.
+ * MAINNET = real fee — test on devnet first.
+ */
+export async function createMultisig(
+  creator: Keypair,
+  memberAddresses: string[],
+  threshold: number
+): Promise<string> {
+  const createKey = Keypair.generate(); // ephemeral seed for the multisig PDA (not a member)
+  const [multisigPda] = multisig.getMultisigPda({ createKey: createKey.publicKey });
+
+  // The Squads program treasury (where the one-time creation fee goes) lives in ProgramConfig.
+  const [programConfigPda] = multisig.getProgramConfigPda({});
+  const programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(connection, programConfigPda);
+
+  const keys = Array.from(new Set([creator.publicKey.toBase58(), ...memberAddresses.map((a) => a.trim())]));
+  const members = keys.map((k) => ({
+    key: new PublicKey(k),
+    permissions: multisig.types.Permissions.all(),
+  }));
+  if (threshold < 1 || threshold > members.length) {
+    throw new Error(`Threshold must be between 1 and ${members.length}.`);
+  }
+
+  await multisig.rpc.multisigCreateV2({
+    connection,
+    treasury: programConfig.treasury,
+    createKey,
+    creator,
+    multisigPda,
+    configAuthority: null, // autonomous — the members govern it, no admin key
+    threshold,
+    members,
+    timeLock: 0,
+    rentCollector: null,
+  });
+
+  const address = multisigPda.toBase58();
+  await setMultisigAddress(address);
+  return address;
 }
 
 /** Approve a proposal — signs & sends with the member's key (Squads enforces permissions). */

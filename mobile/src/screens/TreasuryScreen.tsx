@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { PieChart, PIE_COLORS, type PieSlice } from "../components/PieChart";
-import { fetchHoldings, TREASURY_ADDRESS, type Holdings } from "../solana/treasury";
+import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { solscanAccount, CLUSTER } from "../solana/connection";
@@ -43,11 +43,12 @@ export function TreasuryScreen() {
   const [copied, setCopied] = useState(false);
   const { solanaAddress } = useWallet();
   const nav = useNavigation<RootNav>();
+  const TREASURY_ADDRESS = treasuryAddress();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const h = await fetchHoldings(TREASURY_ADDRESS);
+      const h = await fetchHoldings(treasuryAddress());
       setHoldings(h);
       const mints = h.tokens.map((t) => t.mint);
       const [p, m, oc, ms] = await Promise.all([
@@ -145,6 +146,19 @@ export function TreasuryScreen() {
             {isMember(msInfo, solanaAddress)
               ? "You're a signer — tap to review & approve proposals."
               : "View only — tap to see pending proposals."}
+          </Text>
+        </Pressable>
+      )}
+
+      {!multisigConfigured() && (
+        <Pressable style={styles.msCard} onPress={() => nav.navigate("CreateSquad")}>
+          <View style={styles.msHead}>
+            <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
+            <Text style={styles.msTitle}>Set up a multisig treasury</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+          </View>
+          <Text style={styles.msSub}>
+            Require multiple signers to approve every spend — powered by Squads Protocol (audited).
           </Text>
         </Pressable>
       )}

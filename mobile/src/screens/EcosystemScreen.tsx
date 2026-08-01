@@ -5,7 +5,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { fetchHoldings, TREASURY_ADDRESS, type Holdings } from "../solana/treasury";
+import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
@@ -40,7 +40,7 @@ export function EcosystemScreen() {
     setLoading(true);
     try {
       const [h, s, f] = await Promise.all([
-        fetchHoldings(TREASURY_ADDRESS),
+        fetchHoldings(treasuryAddress()),
         getSupply(XGO_MINT),
         getTransferFee(XGO_MINT).catch(() => null),
       ]);
