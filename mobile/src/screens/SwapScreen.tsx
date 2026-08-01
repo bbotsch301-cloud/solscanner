@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
@@ -26,7 +27,7 @@ import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { haptics } from "../ui/haptics";
 import { useWallet } from "../wallet/WalletContext";
-import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
+import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { ChainDef } from "../chains/registry";
 import type { RootNav } from "../navigation";
 
@@ -167,6 +168,37 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
 
   const rate = quote && amtNum > 0 ? quote.outUi / amtNum : null;
 
+  // Per-unit USD for a token we hold (its priced balance). Used to show the dollar value on both
+  // sides of the swap. The output token may not be owned, so its side falls back to the input's
+  // dollar value adjusted for price impact (a swap ≈ preserves USD value minus impact/fees).
+  const perUnitUsd = (mint: string): number | null => {
+    const o = owned.find((x) => x.token.mint === mint);
+    return o && o.usd != null && o.balance > 0 ? o.usd / o.balance : null;
+  };
+  const fromPerUnit = perUnitUsd(from.mint);
+  const toPerUnit = perUnitUsd(to.mint);
+  const payUsd = amtNum > 0 && fromPerUnit != null ? amtNum * fromPerUnit : null;
+  const receiveUsd = quote
+    ? toPerUnit != null
+      ? quote.outUi * toPerUnit
+      : payUsd != null
+        ? payUsd * (1 - (quote.priceImpactPct || 0) / 100)
+        : null
+    : null;
+
+  // How much of `from` can actually be sold — for native, hold back the gas/rent reserve.
+  const sellable = (): number => {
+    const bal = balanceOf(from.mint);
+    if (from.mint !== nativeMint) return bal;
+    const reserve = isSolana ? SWAP_SOL_RESERVE : gasReserve(activeChain, false);
+    return Math.max(0, bal - reserve);
+  };
+  const trimAmt = (n: number): string => (n > 0 ? String(Number(n.toFixed(6))) : "");
+  // Set the pay amount to a percentage (0–100) of the sellable balance.
+  const setAmtToPct = (pct: number) => setAmt(trimAmt((sellable() * pct) / 100));
+  const maxSellable = sellable();
+  const sliderPct = maxSellable > 0 ? Math.min(100, (amtNum / maxSellable) * 100) : 0;
+
   const preflightError = (): string | null => {
     const bal = balanceOf(from.mint);
     const nativeBal = native.balance ?? 0;
@@ -264,17 +296,55 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         <View style={styles.panel}>
-          <Text style={styles.panelLabel}>You pay</Text>
+          <View style={styles.panelTop}>
+            <Text style={styles.panelLabel}>You pay</Text>
+            <Pressable onPress={() => { haptics.select(); setAmtToPct(100); }} hitSlop={8}>
+              <Text style={styles.balanceText}>
+                Balance {fmtAmount(balanceOf(from.mint))} {from.symbol}
+              </Text>
+            </Pressable>
+          </View>
           <View style={styles.panelRow}>
-            <TextInput
-              value={amt}
-              onChangeText={setAmt}
-              placeholder="0.0"
-              placeholderTextColor={colors.textFaint}
-              keyboardType="decimal-pad"
-              style={styles.amountInput}
-            />
+            <View style={styles.amountCol}>
+              <TextInput
+                value={amt}
+                onChangeText={setAmt}
+                placeholder="0.0"
+                placeholderTextColor={colors.textFaint}
+                keyboardType="decimal-pad"
+                style={styles.amountInput}
+              />
+              <Text style={styles.usdText}>{payUsd != null ? fmtUsd(payUsd) : "$0.00"}</Text>
+            </View>
             <TokenButton token={from} onPress={() => setPickerFor("from")} />
+          </View>
+
+          {/* Drag to sell a % of your balance — the amount + its dollar value update live. */}
+          <Slider
+            style={styles.slider}
+            minimumValue={0}
+            maximumValue={100}
+            step={1}
+            value={sliderPct}
+            onValueChange={setAmtToPct}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.cardBorder}
+            thumbTintColor={colors.primary}
+            disabled={maxSellable <= 0}
+          />
+          <View style={styles.pctRow}>
+            {[25, 50, 75, 100].map((p) => {
+              const on = Math.round(sliderPct) === p;
+              return (
+                <Pressable
+                  key={p}
+                  onPress={() => { haptics.select(); setAmtToPct(p); }}
+                  style={[styles.pctChip, on && styles.pctChipActive]}
+                >
+                  <Text style={[styles.pctChipText, on && { color: colors.bg }]}>{p === 100 ? "MAX" : `${p}%`}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -285,14 +355,17 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         <View style={styles.panel}>
           <Text style={styles.panelLabel}>You receive</Text>
           <View style={styles.panelRow}>
-            <View style={styles.receiveRow}>
-              {loading ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={styles.receiveAmount} numberOfLines={1} adjustsFontSizeToFit>
-                  {quote ? fmtAmount(quote.outUi) : "0.0"}
-                </Text>
-              )}
+            <View style={styles.amountCol}>
+              <View style={styles.receiveRow}>
+                {loading ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.receiveAmount} numberOfLines={1} adjustsFontSizeToFit>
+                    {quote ? fmtAmount(quote.outUi) : "0.0"}
+                  </Text>
+                )}
+              </View>
+              <Text style={styles.usdText}>{receiveUsd != null ? `≈ ${fmtUsd(receiveUsd)}` : "$0.00"}</Text>
             </View>
             <TokenButton token={to} onPress={() => setPickerFor("to")} />
           </View>
@@ -421,7 +494,24 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   panel: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(3) },
   panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  panelTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  balanceText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   panelRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
+  amountCol: { flex: 1, gap: 2 },
+  usdText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  slider: { width: "100%", height: 32 },
+  pctRow: { flexDirection: "row", gap: spacing(2) },
+  pctChip: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingVertical: spacing(1.5),
+    borderRadius: radius.pill,
+  },
+  pctChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pctChipText: { color: colors.text, fontSize: font.small, fontWeight: "800" },
   tokenBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -434,7 +524,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   tokenBtnText: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  amountInput: { flex: 1, color: colors.text, fontSize: font.h1, fontWeight: "800", padding: 0 },
+  amountInput: { width: "100%", color: colors.text, fontSize: font.h1, fontWeight: "800", padding: 0 },
   flipBtn: {
     alignSelf: "center",
     width: 40,
@@ -448,7 +538,7 @@ const styles = StyleSheet.create({
     marginVertical: -spacing(1),
     zIndex: 1,
   },
-  receiveRow: { flex: 1, flexDirection: "row", alignItems: "center", minHeight: 40 },
+  receiveRow: { flexDirection: "row", alignItems: "center", minHeight: 40 },
   receiveAmount: { flex: 1, color: colors.text, fontSize: font.h1, fontWeight: "800" },
   error: { color: colors.negative, fontSize: font.small, paddingHorizontal: spacing(1) },
   details: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(2) },

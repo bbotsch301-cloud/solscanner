@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { HelpTip } from "../components/HelpTip";
+import { Crown } from "../components/Crown";
 import { keypairFromMnemonic, validateMnemonic } from "../wallet/mnemonic";
 import { discoverAccounts } from "../wallet/discovery";
 import { humanizeError } from "../solana/errors";
@@ -167,7 +168,6 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
         {error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
 
-      {busy && scanMsg && <Text style={styles.scan}>{scanMsg}</Text>}
       <Pressable
         disabled={!validCount || busy}
         onPress={submit}
@@ -175,6 +175,20 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
       >
         {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Import</Text>}
       </Pressable>
+
+      {/* Full-screen loading cover while we scan the chain + save the wallet — the import can take
+          several seconds, so make it unmistakably "working" instead of a form that looks idle. */}
+      {busy && (
+        <View style={styles.overlay}>
+          <Crown size={92} />
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing(6) }} />
+          <Text style={styles.overlayTitle}>Importing your wallet</Text>
+          <Text style={styles.overlayMsg}>{scanMsg ?? "Working…"}</Text>
+          <Text style={styles.overlayHint}>
+            Scanning the blockchain for your accounts. This can take a few seconds — keep the app open.
+          </Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -245,7 +259,16 @@ const styles = StyleSheet.create({
   previewAddr: { color: colors.primary, fontSize: font.body, fontWeight: "700", marginTop: spacing(1) },
   previewHint: { color: colors.textMuted, fontSize: font.small, lineHeight: 18, marginTop: spacing(2) },
   error: { color: colors.negative, fontSize: font.small, marginTop: spacing(3) },
-  scan: { color: colors.textMuted, fontSize: font.small, textAlign: "center", marginBottom: spacing(2) },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing(8),
+  },
+  overlayTitle: { color: colors.text, fontSize: font.h2, fontWeight: "900", marginTop: spacing(5) },
+  overlayMsg: { color: colors.primary, fontSize: font.body, fontWeight: "700", marginTop: spacing(2), textAlign: "center" },
+  overlayHint: { color: colors.textMuted, fontSize: font.small, lineHeight: 20, marginTop: spacing(3), textAlign: "center" },
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
