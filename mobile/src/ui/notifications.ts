@@ -26,6 +26,16 @@ export function configureNotifications(): void {
   }
 }
 
+/** Register a callback for when the user taps a notification. Returns a cleanup fn. */
+export function onNotificationTap(handler: () => void): () => void {
+  try {
+    const sub = Notifications.addNotificationResponseReceivedListener(() => handler());
+    return () => sub.remove();
+  } catch {
+    return () => {};
+  }
+}
+
 /** Ask for notification permission. Returns whether it's granted. */
 export async function requestNotificationPermission(): Promise<boolean> {
   try {

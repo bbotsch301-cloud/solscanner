@@ -39,6 +39,7 @@ import { executeUnifiedSwap } from "../swap";
 import type { UnifiedQuote } from "../swap/types";
 import {
   loadVault,
+  deriveAccount,
   keypairFor,
   evmAccountFor,
   addNewSeed,
@@ -64,7 +65,7 @@ import {
 } from "./vault";
 import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
-import { notifyReceived } from "../ui/notifications";
+import { notifyReceived, registerForBackendPush } from "../ui/notifications";
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
@@ -188,6 +189,8 @@ interface WalletState {
   swapExecute: (quote: UnifiedQuote, onStatus?: (s: string) => void) => Promise<string>;
   /** Revoke an ERC-20 allowance (set to 0) on the active EVM chain. Returns the tx hash. */
   revokeApproval: (token: string, spender: string) => Promise<string>;
+  /** Re-register all addresses with the push backend (call after enabling notifications). */
+  syncPushRegistration: () => Promise<void>;
 }
 
 /** Volatile status kept in a SEPARATE context so a pull-to-refresh (which toggles `refreshing`)
@@ -462,6 +465,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }, 45_000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  // Phase-2 readiness: when notifications are on, register EVERY account's addresses (both chains)
+  // with the push backend so it can alert on any receipt even when the app is closed. No-op until
+  // EXPO_PUBLIC_NOTIFY_API is configured (registerForBackendPush guards on it).
+  const syncPushRegistration = useCallback(async () => {
+    if (!isNotificationsEnabled()) return;
+    const v = await loadVault();
+    if (!v) return;
+    const addrs: string[] = [];
+    for (const s of v.seeds) {
+      for (const i of s.accounts) {
+        const d = await deriveAccount(s.id, i);
+        if (d) {
+          addrs.push(d.solanaAddress);
+          if (d.evmAddress) addrs.push(d.evmAddress);
+        }
+      }
+    }
+    registerForBackendPush([...new Set(addrs)]);
+  }, []);
+  useEffect(() => {
+    void syncPushRegistration();
+  }, [vault, syncPushRegistration]);
 
   const unlockWithPin = useCallback(
     async (pin: string): Promise<boolean> => {
@@ -868,6 +894,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       previewSend,
       swapExecute,
       revokeApproval,
+      syncPushRegistration,
     };
   }, [
     initializing,
@@ -909,6 +936,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     previewSend,
     swapExecute,
     revokeApproval,
+    syncPushRegistration,
   ]);
 
   const status = useMemo<WalletStatus>(() => ({ refreshing, busy, error }), [refreshing, busy, error]);

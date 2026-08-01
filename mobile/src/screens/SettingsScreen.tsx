@@ -9,7 +9,7 @@ import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
 import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled } from "../security/prefs";
-import { requestNotificationPermission } from "../ui/notifications";
+import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
@@ -42,7 +42,7 @@ export function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
   const { lock } = useAuth();
-  const { address, reset, pinEnabled } = useWallet();
+  const { address, reset, pinEnabled, syncPushRegistration } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
   const [biometric, setBiometric] = useState(isBiometricEnabled());
   const [notifications, setNotifications] = useState(isNotificationsEnabled());
@@ -58,6 +58,7 @@ export function SettingsScreen() {
     }
     setNotifications(v);
     await setNotificationsEnabled(v);
+    if (v) syncPushRegistration(); // register this device's addresses for background push
   };
 
   const toggleBiometric = (v: boolean) => {
@@ -218,6 +219,12 @@ export function SettingsScreen() {
           />
         </View>
         <Text style={styles.hint}>Get a notification whenever funds arrive while the app is open.</Text>
+        {notifications && (
+          <>
+            <View style={styles.divider} />
+            <Row icon="paper-plane-outline" label="Send a test notification" onPress={() => notifyReceived({ symbol: "SOL", amount: 1, usd: null })} />
+          </>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>Connections</Text>

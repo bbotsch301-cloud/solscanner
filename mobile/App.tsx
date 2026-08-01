@@ -48,7 +48,8 @@ import { loadApprovals } from "./src/safety/approvals";
 import { loadContacts } from "./src/contacts/contacts";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { haptics } from "./src/ui/haptics";
-import { configureNotifications } from "./src/ui/notifications";
+import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
+import { navigationRef, navigate } from "./src/navigationRef";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -153,7 +154,7 @@ function Root() {
   if (shouldPromptPin) return <><StatusBar style="light" /><Fade><SetupPinPrompt /></Fade></>;
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       <StatusBar style="light" />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
         <Stack.Screen name="Tabs" component={Tabs} />
@@ -216,6 +217,9 @@ export default function App() {
       preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);
+
+  // Tapping a "Received" notification jumps to Activity.
+  useEffect(() => onNotificationTap(() => navigate("Activity")), []);
 
   return (
     <SafeAreaProvider>
