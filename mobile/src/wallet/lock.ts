@@ -13,7 +13,7 @@
  *
  * The DEK exists in memory only while unlocked and is cleared on lock/background.
  */
-import { scrypt } from "@noble/hashes/scrypt";
+import { scryptAsync } from "@noble/hashes/scrypt";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha";
 import * as SecureStore from "expo-secure-store";
 
@@ -23,8 +23,12 @@ const SECURE_OPTS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-// scrypt cost: memory-hard, strong against PIN brute force, ~0.5–0.8s on-device.
-const SCRYPT = { N: 2 ** 15, r: 8, p: 1, dkLen: 32 } as const;
+// scrypt cost for NEW locks. Tuned for mobile: React Native's Hermes engine has no JIT, so
+// pure-JS scrypt is far slower than on a desktop — N=2^15 could take tens of seconds and
+// freeze the UI. N=2^13 keeps it memory-hard (a meaningful second layer over the hardware
+// keychain + the brute-force lockout) while finishing quickly. Existing locks keep their own
+// stored params, so this only affects newly-created PINs.
+const SCRYPT = { N: 2 ** 13, r: 8, p: 1, dkLen: 32 } as const;
 
 // Brute-force throttle: the first few misses are free (fat-finger tolerance), then a
 // rising lockout defeats offline/on-device guessing of a short PIN even if the attacker
@@ -93,8 +97,11 @@ function rand(n: number): Uint8Array {
   (globalThis as unknown as { crypto: Crypto }).crypto.getRandomValues(a);
   return a;
 }
-function kdf(pin: string, salt: Uint8Array, N: number, r: number, p: number): Uint8Array {
-  return scrypt(new TextEncoder().encode(pin.normalize("NFKC")), salt, { N, r, p, dkLen: 32 });
+// Async scrypt yields to the event loop as it runs (asyncTick), so a slow KDF never blocks
+// the JS thread — the UI stays responsive and the spinner keeps animating instead of the
+// operation appearing to hang.
+function kdf(pin: string, salt: Uint8Array, N: number, r: number, p: number): Promise<Uint8Array> {
+  return scryptAsync(new TextEncoder().encode(pin.normalize("NFKC")), salt, { N, r, p, dkLen: 32 });
 }
 
 /** Load whether a PIN is configured (call once at startup). */
@@ -126,7 +133,7 @@ export function lockNow(): void {
 /** Turn a random DEK into a fresh lock wrapped under `pin`. Holds the DEK. */
 export async function createLock(pin: string): Promise<void> {
   const salt = rand(16);
-  const kek = kdf(pin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
+  const kek = await kdf(pin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
   const newDek = rand(32);
   const wrapNonce = rand(24);
   const wrappedDek = xchacha20poly1305(kek, wrapNonce).encrypt(newDek);
@@ -155,7 +162,7 @@ export async function unlock(pin: string): Promise<boolean> {
   const raw = await SecureStore.getItemAsync(LOCK_META);
   if (!raw) return false;
   const m = JSON.parse(raw) as LockMeta;
-  const kek = kdf(pin, unb64(m.salt), m.N, m.r, m.p);
+  const kek = await kdf(pin, unb64(m.salt), m.N, m.r, m.p);
   try {
     dek = xchacha20poly1305(kek, unb64(m.wrapNonce)).decrypt(unb64(m.wrappedDek));
     if (attempts.fails || attempts.until) await resetAttempts(); // clean slate on success
@@ -175,7 +182,7 @@ export async function rewrap(oldPin: string, newPin: string): Promise<boolean> {
   if (!(await unlock(oldPin))) return false;
   const current = dek!;
   const salt = rand(16);
-  const kek = kdf(newPin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
+  const kek = await kdf(newPin, salt, SCRYPT.N, SCRYPT.r, SCRYPT.p);
   const wrapNonce = rand(24);
   const wrappedDek = xchacha20poly1305(kek, wrapNonce).encrypt(current);
   const meta: LockMeta = {
