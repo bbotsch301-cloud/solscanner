@@ -1,5 +1,10 @@
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import * as SecureStore from "expo-secure-store";
+import { throttledFetch } from "./rpcThrottle";
+
+// Route every RPC request through the shared throttle so parallel bursts stay under the
+// public endpoint's rate limit (fewer 429s). "confirmed" commitment for all connections.
+const CONNECTION_CONFIG = { commitment: "confirmed", fetch: throttledFetch } as const;
 
 /**
  * Runtime-switchable network. The choice is persisted and applied at startup
@@ -29,13 +34,13 @@ function rpcFor(n: Network): string {
 export let NETWORK: Network = DEFAULT_NETWORK;
 export let IS_MAINNET = NETWORK === "mainnet-beta";
 export let CLUSTER: Network = NETWORK;
-export let connection = new Connection(rpcFor(NETWORK), "confirmed");
+export let connection = new Connection(rpcFor(NETWORK), CONNECTION_CONFIG);
 
 function apply(n: Network): void {
   NETWORK = n;
   IS_MAINNET = n === "mainnet-beta";
   CLUSTER = n;
-  connection = new Connection(rpcFor(n), "confirmed");
+  connection = new Connection(rpcFor(n), CONNECTION_CONFIG);
 }
 
 /** Load the saved network choice. Call once at startup, before rendering. */
