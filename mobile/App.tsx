@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { ActivityIndicator, LogBox, View } from "react-native";
+import { ActivityIndicator, LogBox, Platform, UIManager, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -45,6 +45,7 @@ import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
 import { loadApprovals } from "./src/safety/approvals";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
+import { haptics } from "./src/ui/haptics";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -52,6 +53,9 @@ import { colors } from "./src/theme";
 // Dev-only: our RPC layer already retries 429s quietly, but hide the LogBox bar in case any
 // other path logs one — it's transient and self-healing, not an actionable error.
 if (__DEV__) LogBox.ignoreLogs(["Server responded with"]);
+
+// Enable LayoutAnimation on Android (iOS has it on by default) so expand/collapse animates.
+if (Platform.OS === "android") UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -81,6 +85,7 @@ function Tabs() {
           <Ionicons name={TAB_ICON[route.name]} size={size} color={color} />
         ),
       })}
+      screenListeners={{ tabPress: () => haptics.select() }}
     >
       <Tab.Screen name="Home" component={EcosystemScreen} />
       <Tab.Screen name="Wallet" component={HomeScreen} />

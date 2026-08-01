@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { PressableScale } from "./PressableScale";
 import { colors, font, radius, spacing } from "../theme";
 
 export function ActionButton({
@@ -12,15 +13,12 @@ export function ActionButton({
   onPress?: () => void;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.wrap, pressed && { opacity: 0.6 }]}
-    >
+    <PressableScale onPress={onPress} style={styles.wrap}>
       <View style={styles.circle}>
         <Ionicons name={icon} size={22} color={colors.primary} />
       </View>
       <Text style={styles.label}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

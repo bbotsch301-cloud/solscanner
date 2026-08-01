@@ -24,6 +24,7 @@ import { quoteSwap } from "../swap";
 import { EVM_NATIVE, type UnifiedQuote } from "../swap/types";
 import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
+import { haptics } from "../ui/haptics";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, font, radius, spacing } from "../theme";
 import type { ChainDef } from "../chains/registry";
@@ -215,6 +216,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
             setStatus(null);
             try {
               const sig = await swapExecute(quote, (s) => setStatus(s));
+              haptics.success();
               Alert.alert("Swap submitted", "Your swap is confirmed.", [
                 { text: "View on explorer", onPress: () => Linking.openURL(activeChain.explorerTx(sig)) },
                 {
@@ -231,6 +233,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
                 },
               ]);
             } catch (e) {
+              haptics.error();
               Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol, native: native.symbol }));
             } finally {
               setSwapping(false);

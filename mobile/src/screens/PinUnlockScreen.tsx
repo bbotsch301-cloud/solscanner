@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWallet } from "../wallet/WalletContext";
 import { XGOLogo } from "../components/XGOLogo";
 import { Crown } from "../components/Crown";
+import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
 /** Full-screen gate shown at launch when an app PIN is set (seeds are encrypted). */
@@ -87,7 +88,10 @@ export function PinUnlockScreen() {
     setError(null);
     try {
       const ok = await unlockWithPin(value);
-      if (!ok) {
+      if (ok) {
+        haptics.success();
+      } else {
+        haptics.error();
         const wait = pinLockoutMs();
         setLockMs(wait);
         setError(

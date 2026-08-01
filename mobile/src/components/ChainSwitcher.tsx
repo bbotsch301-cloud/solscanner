@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useWallet } from "../wallet/WalletContext";
 import { TokenAvatar } from "./TokenAvatar";
+import { PressableScale } from "./PressableScale";
+import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
 /** Segmented pills to switch the active chain (Solana / Ethereum / BNB). */
@@ -11,9 +13,14 @@ export function ChainSwitcher() {
       {chains.map((c) => {
         const active = c.id === activeChain.id;
         return (
-          <Pressable
+          <PressableScale
             key={c.id}
-            onPress={() => !active && setActiveChain(c.id)}
+            haptic={null}
+            onPress={() => {
+              if (active) return;
+              haptics.select();
+              setActiveChain(c.id);
+            }}
             style={[
               styles.pill,
               active && { backgroundColor: c.color + "22", borderColor: c.color },
@@ -21,7 +28,7 @@ export function ChainSwitcher() {
           >
             <TokenAvatar symbol={c.symbol} color={c.color} logoURI={c.logoURI} size={18} />
             <Text style={[styles.label, active && { color: colors.text }]}>{c.symbol}</Text>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { deriveAccount } from "../wallet/vault";
+import { PressableScale } from "./PressableScale";
+import { haptics } from "../ui/haptics";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -53,6 +55,7 @@ export function WalletSwitcher() {
       return;
     }
     const key = `${seedId}:${index}`;
+    haptics.select();
     setBusy(key);
     try {
       await switchAccount(seedId, index);
@@ -73,12 +76,12 @@ export function WalletSwitcher() {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={styles.trigger} hitSlop={8}>
+      <PressableScale onPress={() => setOpen(true)} style={styles.trigger} hitSlop={8}>
         <Text style={styles.triggerText} numberOfLines={1}>
           {triggerText}
         </Text>
         <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
-      </Pressable>
+      </PressableScale>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={[styles.backdrop, { paddingTop: insets.top + spacing(11) }]} onPress={() => setOpen(false)}>
@@ -92,7 +95,7 @@ export function WalletSwitcher() {
                   const a = addrs[key];
                   const name = s.accounts.length > 1 ? `${s.label} · Account ${i + 1}` : s.label;
                   return (
-                    <Pressable key={key} onPress={() => select(s.id, i)} style={[styles.row, active && styles.rowActive]}>
+                    <PressableScale key={key} haptic={null} onPress={() => select(s.id, i)} style={[styles.row, active && styles.rowActive]}>
                       <View style={styles.rowMain}>
                         <Text style={styles.rowName} numberOfLines={1}>
                           {name}
@@ -113,21 +116,21 @@ export function WalletSwitcher() {
                           color={active ? colors.primary : colors.textFaint}
                         />
                       )}
-                    </Pressable>
+                    </PressableScale>
                   );
                 })
               )}
             </ScrollView>
 
             <View style={styles.divider} />
-            <Pressable onPress={goAdd} style={styles.footerRow}>
+            <PressableScale onPress={goAdd} style={styles.footerRow}>
               <Ionicons name="add-circle-outline" size={20} color={colors.text} />
               <Text style={styles.footerText}>Add wallet</Text>
-            </Pressable>
-            <Pressable onPress={goManage} style={styles.footerRow}>
+            </PressableScale>
+            <PressableScale onPress={goManage} style={styles.footerRow}>
               <Ionicons name="settings-outline" size={20} color={colors.text} />
               <Text style={styles.footerText}>Manage wallets & accounts</Text>
-            </Pressable>
+            </PressableScale>
           </Pressable>
         </Pressable>
       </Modal>

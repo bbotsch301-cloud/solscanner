@@ -20,6 +20,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
+import { PressableScale } from "../components/PressableScale";
+import { SuccessCheck } from "../components/SuccessCheck";
+import { haptics } from "../ui/haptics";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
 import { isEvmAddress, isChecksumValid } from "../wallet/evm";
 import { looksLikeName, resolveName } from "../naming/resolve";
@@ -75,6 +78,7 @@ export function SendScreen() {
   const [copied, setCopied] = useState<string | null>(null);
   const copyField = async (key: string, value: string) => {
     await Clipboard.setStringAsync(value);
+    haptics.tap();
     setCopied(key);
     setTimeout(() => setCopied(null), 1500);
   };
@@ -227,8 +231,10 @@ export function SendScreen() {
     try {
       const sig = await sendAsset(selected, effectiveTo, amtNum);
       setSignature(sig);
+      haptics.success();
       recordRecipient(effectiveTo).catch(() => {}); // remember for future poisoning checks
     } catch (e) {
+      haptics.error();
       setError(humanizeError(e, { action: "send", symbol: selected.symbol, native: native.symbol }));
     } finally {
       setSending(false);
@@ -273,11 +279,7 @@ export function SendScreen() {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <View style={styles.successBody}>
-          <View style={styles.successRing}>
-            <View style={styles.successCircle}>
-              <Ionicons name="checkmark" size={52} color={colors.bg} />
-            </View>
-          </View>
+          <SuccessCheck />
           <Text style={styles.successTitle}>Sent</Text>
           <Text style={styles.successAmount}>
             {fmtAmount(amtNum)} {selected.symbol}
@@ -303,13 +305,13 @@ export function SendScreen() {
         </View>
 
         <View style={[styles.successFooter, { paddingBottom: insets.bottom + spacing(3) }]}>
-          <Pressable onPress={() => Linking.openURL(activeChain.explorerTx(signature))} style={styles.secondaryBtn}>
+          <PressableScale onPress={() => Linking.openURL(activeChain.explorerTx(signature))} style={styles.secondaryBtn}>
             <Ionicons name="open-outline" size={18} color={colors.text} />
             <Text style={styles.secondaryText}>View on explorer</Text>
-          </Pressable>
-          <Pressable onPress={() => nav.goBack()} style={styles.primaryBtn}>
+          </PressableScale>
+          <PressableScale onPress={() => nav.goBack()} style={styles.primaryBtn}>
             <Text style={styles.primaryText}>Done</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
     );
@@ -454,7 +456,7 @@ export function SendScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
-        <Pressable
+        <PressableScale
           disabled={!valid || sending || previewing}
           onPress={doSend}
           style={[styles.primaryBtn, (!valid || sending || previewing) && styles.primaryDisabled]}
@@ -464,7 +466,7 @@ export function SendScreen() {
           ) : (
             <Text style={styles.primaryText}>Send</Text>
           )}
-        </Pressable>
+        </PressableScale>
       </View>
     </KeyboardAvoidingView>
   );

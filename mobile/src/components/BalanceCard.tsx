@@ -1,5 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Skeleton } from "./Skeleton";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 export function BalanceCard({
@@ -43,19 +44,26 @@ export function BalanceCard({
           </View>
         </View>
 
-        <View style={styles.amountRow}>
-          <Text style={styles.total}>
-            {solBalance == null ? "—" : solBalance.toLocaleString("en-US", { maximumFractionDigits: 5 })}
-          </Text>
-          <Text style={styles.unit}>{symbol}</Text>
-          {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
-        </View>
+        {solBalance == null ? (
+          <>
+            <Skeleton width={180} height={44} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
+            <Skeleton width={110} height={16} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
+          </>
+        ) : (
+          <>
+            <View style={styles.amountRow}>
+              <Text style={styles.total}>{solBalance.toLocaleString("en-US", { maximumFractionDigits: 5 })}</Text>
+              <Text style={styles.unit}>{symbol}</Text>
+              {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
+            </View>
 
-        {usd != null && (
-          <View style={styles.usdRow}>
-            <Text style={styles.usd}>≈ {usd}</Text>
-            {change != null && <Text style={styles.change}>{change} 24h</Text>}
-          </View>
+            {usd != null && (
+              <View style={styles.usdRow}>
+                <Text style={styles.usd}>≈ {usd}</Text>
+                {change != null && <Text style={styles.change}>{change} 24h</Text>}
+              </View>
+            )}
+          </>
         )}
 
         <Text style={styles.address}>{shortAddress(address, 4, 4)}</Text>

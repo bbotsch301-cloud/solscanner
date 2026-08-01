@@ -9,6 +9,8 @@ import { ActionButton } from "../components/ActionButton";
 import { ChainSwitcher } from "../components/ChainSwitcher";
 import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { PressableScale } from "../components/PressableScale";
+import { SkeletonRow } from "../components/Skeleton";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
 import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing } from "../theme";
@@ -125,9 +127,9 @@ export function HomeScreen() {
 
       <Text style={styles.sectionTitle}>Tokens</Text>
       <View style={styles.card}>
-        <Pressable
+        <PressableScale
           onPress={() => nav.navigate("TokenDetail", { asset: "native" })}
-          style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
+          style={styles.tokenRow}
         >
           <TokenAvatar symbol={native.symbol} color={activeChain.color} logoURI={activeChain.logoURI} />
           <View style={styles.mid}>
@@ -140,27 +142,34 @@ export function HomeScreen() {
             </Text>
             {native.usd != null && <Text style={styles.subUsd}>{usd(native.usd)}</Text>}
           </View>
-        </Pressable>
+        </PressableScale>
 
-        {assets.map((a) => (
-          <View key={a.key}>
-            <View style={styles.divider} />
-            <Pressable
-              onPress={() => nav.navigate("TokenDetail", { asset: a.key })}
-              style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
-            >
-              <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
-              <View style={styles.mid}>
-                <Text style={styles.symbol}>{a.name ?? a.symbol}</Text>
-                <Text style={styles.sub}>{compact(a.balance)} {a.symbol}</Text>
+        {native.balance == null && assets.length === 0
+          ? [0, 1, 2].map((k) => (
+              <View key={`sk${k}`}>
+                <View style={styles.divider} />
+                <SkeletonRow />
               </View>
-              <View style={styles.right}>
-                <Text style={styles.value}>{compact(a.balance)}</Text>
-                {a.usd != null && a.usd > 0 && <Text style={styles.subUsd}>{usd(a.usd)}</Text>}
+            ))
+          : assets.map((a) => (
+              <View key={a.key}>
+                <View style={styles.divider} />
+                <PressableScale
+                  onPress={() => nav.navigate("TokenDetail", { asset: a.key })}
+                  style={styles.tokenRow}
+                >
+                  <TokenAvatar symbol={a.symbol} color={colors.primary} logoURI={a.logoURI} />
+                  <View style={styles.mid}>
+                    <Text style={styles.symbol}>{a.name ?? a.symbol}</Text>
+                    <Text style={styles.sub}>{compact(a.balance)} {a.symbol}</Text>
+                  </View>
+                  <View style={styles.right}>
+                    <Text style={styles.value}>{compact(a.balance)}</Text>
+                    {a.usd != null && a.usd > 0 && <Text style={styles.subUsd}>{usd(a.usd)}</Text>}
+                  </View>
+                </PressableScale>
               </View>
-            </Pressable>
-          </View>
-        ))}
+            ))}
       </View>
 
       {recent.length > 0 && (

@@ -56,18 +56,27 @@ function Row({ item }: { item: HistoryItem }) {
   );
 }
 
+// Last-good history per (chain, address), kept in memory so re-opening Activity shows the
+// list instantly and refreshes behind it, instead of a blank list on every visit.
+const actCache = new Map<string, HistoryItem[]>();
+
 export function ActivityScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
   const { activeChain, activeAddress } = useWallet();
-  const [txs, setTxs] = useState<HistoryItem[]>([]);
+  const [txs, setTxs] = useState<HistoryItem[]>(() => actCache.get(`${activeChain.id}:${activeAddress ?? ""}`) ?? []);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!activeAddress) return;
+    const key = `${activeChain.id}:${activeAddress}`;
+    const cached = actCache.get(key);
+    if (cached) setTxs(cached); // show last-good immediately (also covers a chain/account switch)
     setLoading(true);
     try {
-      setTxs(await fetchActivity(activeChain, activeAddress, 25));
+      const result = await fetchActivity(activeChain, activeAddress, 25);
+      setTxs(result);
+      actCache.set(key, result);
     } catch {
       /* keep previous list on transient errors */
     } finally {

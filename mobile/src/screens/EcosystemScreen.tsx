@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { LayoutAnimation, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PieChart } from "../components/PieChart";
@@ -14,6 +14,8 @@ import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, cachedTokenMetas, type TokenMeta } from "../solana/tokens";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
+import { haptics } from "../ui/haptics";
+import { Skeleton } from "../components/Skeleton";
 import { solscanAccount, IS_MAINNET } from "../solana/connection";
 import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
 
@@ -27,20 +29,34 @@ function StatTile({ label, value, delta, deltaUp }: { label: string; value: stri
   );
 }
 
+// Last-good treasury data, kept in memory so returning to this tab shows instantly (then
+// refreshes behind it) instead of a cold blank reload. Survives navigation, not app restart.
+interface EcoSnapshot {
+  holdings: Holdings;
+  prices: Record<string, PriceInfo>;
+  metas: Record<string, TokenMeta>;
+  supply: number | null;
+  fee: TransferFee | null;
+  ocPrices: OffchainPrices;
+  deposits: Deposit[];
+}
+const ecoCache = new Map<string, EcoSnapshot>();
+
 export function EcosystemScreen() {
   const insets = useSafeAreaInsets();
-  const [holdings, setHoldings] = useState<Holdings | null>(null);
-  const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
-  const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
-  const [supply, setSupply] = useState<number | null>(null);
-  const [fee, setFee] = useState<TransferFee | null>(null);
-  const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
-  const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const TREASURY_ADDRESS = treasuryAddress();
+  const seed = ecoCache.get(TREASURY_ADDRESS);
+  const [holdings, setHoldings] = useState<Holdings | null>(seed?.holdings ?? null);
+  const [prices, setPrices] = useState<Record<string, PriceInfo>>(seed?.prices ?? {});
+  const [metas, setMetas] = useState<Record<string, TokenMeta>>(seed?.metas ?? {});
+  const [supply, setSupply] = useState<number | null>(seed?.supply ?? null);
+  const [fee, setFee] = useState<TransferFee | null>(seed?.fee ?? null);
+  const [ocPrices, setOcPrices] = useState<OffchainPrices>(seed?.ocPrices ?? {});
+  const [deposits, setDeposits] = useState<Deposit[]>(seed?.deposits ?? []);
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [otherExpanded, setOtherExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const TREASURY_ADDRESS = treasuryAddress();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +83,7 @@ export function EcosystemScreen() {
       setMetas((prev) => ({ ...prev, ...m }));
       setOcPrices(oc);
       setDeposits(d);
+      ecoCache.set(treasuryAddress(), { holdings: h, prices: p, metas: m, supply: s, fee: f, ocPrices: oc, deposits: d });
     } catch {
       /* keep last data */
     } finally {
@@ -111,9 +128,13 @@ export function EcosystemScreen() {
       <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
         <View style={styles.heroInner}>
           <Text style={styles.heroLabel}>XGO Treasury Value</Text>
-          <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
-            {holdings ? usd(treasuryValue) : "—"}
-          </Text>
+          {holdings ? (
+            <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+              {usd(treasuryValue)}
+            </Text>
+          ) : (
+            <Skeleton width={200} height={40} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
+          )}
           <View style={styles.addrRow}>
             <Text style={styles.addr}>{shortAddress(TREASURY_ADDRESS, 4, 4)}</Text>
             <Pressable
@@ -163,7 +184,14 @@ export function EcosystemScreen() {
             {i > 0 && <View style={styles.divider} />}
             {r.children && r.children.length > 0 ? (
               <>
-                <Pressable onPress={() => setOtherExpanded((o) => !o)} hitSlop={6}>
+                <Pressable
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    haptics.tap();
+                    setOtherExpanded((o) => !o);
+                  }}
+                  hitSlop={6}
+                >
                   <Holding
                     symbol={r.symbol}
                     name={r.name}
@@ -250,7 +278,15 @@ export function EcosystemScreen() {
         )}
       </View>
       {deposits.length > 4 && (
-        <Pressable onPress={() => setDepositsExpanded((v) => !v)} style={styles.moreToggle} hitSlop={8}>
+        <Pressable
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            haptics.tap();
+            setDepositsExpanded((v) => !v);
+          }}
+          style={styles.moreToggle}
+          hitSlop={8}
+        >
           <Ionicons name={depositsExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.primary} />
           <Text style={styles.moreText}>{depositsExpanded ? "Show less" : `Show more (${deposits.length - 4})`}</Text>
         </Pressable>
