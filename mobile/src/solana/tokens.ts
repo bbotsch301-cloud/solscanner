@@ -111,12 +111,19 @@ async function fromJupiter(mint: string): Promise<TokenMeta | undefined> {
     const res = await fetch(`https://tokens.jup.ag/token/${mint}`);
     if (res.ok) {
       const j = (await res.json()) as { symbol?: string; name?: string; logoURI?: string } | null;
-      if (j?.symbol) return { symbol: j.symbol, name: j.name ?? j.symbol, logoURI: j.logoURI };
+      // Normalize an IPFS logo to an HTTPS gateway so it can actually load on mobile.
+      if (j?.symbol) return { symbol: j.symbol, name: j.name ?? j.symbol, logoURI: j.logoURI ? toHttp(j.logoURI, mint) : undefined };
     }
   } catch {
     /* offline / not listed */
   }
   return undefined;
+}
+
+/** A logo we can trust to load on mobile: a plain HTTPS URL that isn't an IPFS/Arweave
+ *  gateway (those are slow/flaky on-device). Used to prefer a CDN image when several exist. */
+function isReliableLogo(u?: string): boolean {
+  return !!u && /^https?:\/\//i.test(u) && !/\/ipfs\/|ipfs\.io|arweave/i.test(u);
 }
 
 /** DexScreener — reliable HTTPS CDN logo (and name/symbol) for any pooled token. */
@@ -142,26 +149,23 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
   if (KNOWN[mint]) return KNOWN[mint];
   if (cache.has(mint)) return cache.get(mint) ?? undefined;
 
-  // Merge across sources: name/symbol from the first that has them, logo from the first
-  // that has one. Jupiter (fast) → DexScreener (reliable CDN logo) → on-chain (unlisted).
-  const merged: { symbol?: string; name?: string; logoURI?: string } = {};
-  const fill = (m?: TokenMeta) => {
-    if (!m) return;
-    merged.symbol ||= m.symbol || undefined;
-    merged.name ||= m.name || undefined;
-    merged.logoURI ||= m.logoURI || undefined;
-  };
+  // Jupiter (fast, name+symbol) and DexScreener (reliable CDN image) in parallel; on-chain
+  // Metaplex only if either name/symbol or a logo is still missing (keeps RPC load down).
+  const [jup, dex] = await Promise.all([fromJupiter(mint), fromDexScreener(mint)]);
+  const haveSymbol = !!(jup?.symbol || dex?.symbol);
+  const haveLogo = !!(jup?.logoURI || dex?.logoURI);
+  const onchain = haveSymbol && haveLogo ? undefined : await fetchOnChainMeta(mint);
 
-  fill(await fromJupiter(mint));
-  if (!merged.symbol || !merged.logoURI) fill(await fromDexScreener(mint));
-  if (!merged.symbol || !merged.logoURI) fill(await fetchOnChainMeta(mint));
+  const symbol = jup?.symbol || dex?.symbol || onchain?.symbol;
+  const name = jup?.name || dex?.name || onchain?.name || symbol;
 
-  // A manual override always wins for the logo.
-  if (LOGO_OVERRIDES[mint]) merged.logoURI = LOGO_OVERRIDES[mint];
+  // Prefer a CDN (non-IPFS) logo — DexScreener's is the most mobile-reliable — then fall back
+  // to any available one. A manual override always wins.
+  const candidates = [dex?.logoURI, jup?.logoURI, onchain?.logoURI].filter(Boolean) as string[];
+  let logoURI = candidates.find(isReliableLogo) ?? candidates[0];
+  if (LOGO_OVERRIDES[mint]) logoURI = LOGO_OVERRIDES[mint];
 
-  const result: TokenMeta | undefined = merged.symbol
-    ? { symbol: merged.symbol, name: merged.name ?? merged.symbol, logoURI: merged.logoURI }
-    : undefined;
+  const result: TokenMeta | undefined = symbol ? { symbol, name: name ?? symbol, logoURI } : undefined;
   cache.set(mint, result ?? null);
   return result;
 }
