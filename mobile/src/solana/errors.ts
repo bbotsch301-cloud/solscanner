@@ -58,6 +58,11 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   if (/slippage|0x1771|exceeds desired|price impact too high|price moved|exceeded slippage/.test(low))
     return "The price moved more than your slippage tolerance before the trade landed. Raise the slippage a little or try again.";
 
+  // Confirmation timeout — the tx was sent but the (slow/rate-limited) RPC didn't confirm it in
+  // time. It MAY still land, so tell the user to check before resending (avoids double-sends).
+  if (/not confirmed|unknown if it succeeded|node is behind|timed out waiting|confirmation tim|was not confirmed/.test(low))
+    return "The network is congested and your transaction didn't confirm in time — it may still go through. Check it on the explorer before sending again. A private RPC (set EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC) makes this reliable.";
+
   // Expired / stale blockhash ----------------------------------------------------
   if (/block height exceeded|blockhash not found|transaction expired|too old|expired/.test(low))
     return "The transaction took too long and expired before it landed. Just try again.";

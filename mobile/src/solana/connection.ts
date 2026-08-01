@@ -14,12 +14,14 @@ export type Network = "devnet" | "mainnet-beta";
 const PREF_KEY = "solwallet.network.v1";
 const DEFAULT_NETWORK: Network = "mainnet-beta";
 
-// 👉 Paste your Helius mainnet RPC URL here (recommended).
+// 👉 Paste your Helius RPC URLs here (recommended). The public endpoints are heavily
+// rate-limited, which makes sends (especially Token-2022 + account creation) time out.
 const MAINNET_RPC =
   process.env.EXPO_PUBLIC_MAINNET_RPC || "https://api.mainnet-beta.solana.com";
+const DEVNET_RPC = process.env.EXPO_PUBLIC_DEVNET_RPC || clusterApiUrl("devnet");
 
 function rpcFor(n: Network): string {
-  return n === "mainnet-beta" ? MAINNET_RPC : clusterApiUrl("devnet");
+  return n === "mainnet-beta" ? MAINNET_RPC : DEVNET_RPC;
 }
 
 // Mutable live-binding exports — reassigned by apply(); consumers read them at
