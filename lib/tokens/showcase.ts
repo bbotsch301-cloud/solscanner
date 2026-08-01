@@ -1,11 +1,17 @@
 /**
- * The curated token showcase — the "menagerie" gathered together. Names are as the
- * community chose them; chain is inferred from the address (0x… = EVM, else Solana)
- * and confirmed live by DexScreener. Deduped by address.
+ * The curated token showcase — the "menagerie" gathered together. Chain is inferred
+ * from the address (0x… = EVM, else Solana). Deduped by address.
+ *
+ * `name`/`symbol`/`logo` are optional manual OVERRIDES: when omitted they're resolved
+ * automatically (DexScreener → Jupiter → on-chain metadata; see lib/tokens/resolve.ts),
+ * so a token can be added with just its address. Set them to force a specific display —
+ * `logo` may be a URL or a local path like `/tokens/giraffe.png` (file in `public/`).
  */
 export interface ShowcaseToken {
-  name: string;
   address: string;
+  name?: string;
+  symbol?: string;
+  logo?: string;
 }
 
 export type ShowcaseChain = "solana" | "evm";

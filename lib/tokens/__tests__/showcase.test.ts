@@ -18,10 +18,10 @@ describe("showcase", () => {
     expect(findShowcase("not-a-real-address")).toBeUndefined();
   });
 
-  it("every entry has a non-empty name and address", () => {
+  it("every entry has an address, and a non-empty name when one is set", () => {
     for (const t of SHOWCASE) {
-      expect(t.name.length).toBeGreaterThan(0);
       expect(t.address.length).toBeGreaterThan(0);
+      if (t.name !== undefined) expect(t.name.length).toBeGreaterThan(0);
     }
   });
 });
