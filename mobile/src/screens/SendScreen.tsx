@@ -275,9 +275,10 @@ export function SendScreen() {
       ? `\n\n⚠ This closely resembles a different address you've used before (${shortAddress(lookalike, 6, 6)}). Address-poisoning scams rely on lookalikes — be certain this is the one you mean.`
       : "";
     const cautionLine = amountCaution ? `\n\n${amountCaution}` : "";
+    const toLine = matchedContact ? `${matchedContact.name}\n${effectiveTo}` : effectiveTo;
     Alert.alert(
       "Confirm send",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}${poisonLine}${cautionLine}\n\nDouble-check every character — sends can’t be undone.`,
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${toLine}${feeLine}${poisonLine}${cautionLine}\n\nDouble-check every character — sends can’t be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Send", style: "default", onPress: reallySend },

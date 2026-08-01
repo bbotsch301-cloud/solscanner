@@ -1,16 +1,20 @@
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { CandleChart } from "../components/CandleChart";
 import { PressableScale } from "../components/PressableScale";
+import { Skeleton } from "../components/Skeleton";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
 import { haptics } from "../ui/haptics";
 import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
+
+// Last-loaded candles per (chain, asset, range), so switching timeframes / revisiting is instant.
+const candleCache = new Map<string, Candle[]>();
 
 export function TokenDetailScreen() {
   const nav = useNavigation<RootNav>();
@@ -39,8 +43,9 @@ export function TokenDetailScreen() {
   }, [assetKey, native, assets, activeChain]);
 
   const [range, setRange] = useState<ChartRange>("1W");
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${activeChain.id}:${assetKey}:${range}`;
+  const [candles, setCandles] = useState<Candle[]>(() => candleCache.get(`${activeChain.id}:${assetKey}:1W`) ?? []);
+  const [loading, setLoading] = useState(() => !candleCache.has(`${activeChain.id}:${assetKey}:1W`));
   const [refreshing, setRefreshing] = useState(false);
   const [scrub, setScrub] = useState<Candle | null>(null); // candle under the crosshair, if any
 
@@ -52,20 +57,29 @@ export function TokenDetailScreen() {
     );
   }, [view, activeChain.id, range]);
 
+  // Show the cached candles for this (token, range) instantly, then refresh behind (stale-while-
+  // revalidate) — so switching timeframes is snappy and hits the free chart APIs less.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      setLoading(true);
+      const cached = candleCache.get(cacheKey);
+      if (cached) {
+        setCandles(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       const c = await loadCandles();
       if (!cancelled) {
         setCandles(c);
         setLoading(false);
+        if (c.length >= 2) candleCache.set(cacheKey, c);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadCandles]);
+  }, [cacheKey, loadCandles]);
 
   // Pull-to-refresh: re-price the wallet (updates this token's balance + USD value) and reload
   // the candles for the current range.
@@ -133,8 +147,8 @@ export function TokenDetailScreen() {
       )}
 
       <View style={styles.chartCard}>
-        {loading ? (
-          <ActivityIndicator color={colors.primary} />
+        {loading && candles.length < 2 ? (
+          <Skeleton width="100%" height={200} round={radius.md} />
         ) : candles.length >= 2 ? (
           <CandleChart candles={candles} height={220} onScrub={setScrub} />
         ) : (

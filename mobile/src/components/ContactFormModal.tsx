@@ -2,7 +2,7 @@
  *  "Save to contacts" action. The address is editable only when adding (edit changes name/note). */
 import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput } from "react-native";
-import { addContact, updateContact, type Contact } from "../contacts/contacts";
+import { addContact, detectKind, updateContact, type Contact } from "../contacts/contacts";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -27,6 +27,18 @@ export function ContactFormModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const isEdit = !!editing;
+
+  // Live-validate the address as it's typed (adding only — the address is locked when editing).
+  const trimmedAddr = address.trim();
+  const addrKind = trimmedAddr ? detectKind(trimmedAddr) : null;
+  const addrValid = isEdit || (!!trimmedAddr && addrKind != null);
+  const addrHint = isEdit || !trimmedAddr
+    ? null
+    : addrKind === "solana"
+      ? "✓ Solana address"
+      : addrKind === "evm"
+        ? "✓ Ethereum / BSC address"
+        : "Not a valid Solana or EVM address";
 
   // Reset the form as the modal appears (event, not an effect — avoids sync-setState-in-effect).
   const reset = () => {
@@ -84,6 +96,9 @@ export function ContactFormModal({
             multiline
             style={[styles.input, styles.addr, isEdit && { opacity: 0.6 }]}
           />
+          {addrHint && (
+            <Text style={[styles.hint, addrKind ? styles.hintOk : styles.hintBad]}>{addrHint}</Text>
+          )}
           <TextInput
             value={note}
             onChangeText={setNote}
@@ -92,7 +107,7 @@ export function ContactFormModal({
             style={styles.input}
           />
           {error && <Text style={styles.error}>{error}</Text>}
-          <Pressable onPress={save} disabled={busy} style={[styles.btn, busy && { opacity: 0.6 }]}>
+          <Pressable onPress={save} disabled={busy || !addrValid} style={[styles.btn, (busy || !addrValid) && { opacity: 0.6 }]}>
             <Text style={styles.btnText}>{isEdit ? "Save" : "Add contact"}</Text>
           </Pressable>
           <Pressable onPress={onClose} disabled={busy} style={styles.cancel}>
@@ -119,6 +134,9 @@ const styles = StyleSheet.create({
     fontSize: font.body,
   },
   addr: { fontSize: font.small, minHeight: 44 },
+  hint: { fontSize: font.small, fontWeight: "700", marginTop: -spacing(1) },
+  hintOk: { color: colors.positive },
+  hintBad: { color: colors.negative },
   error: { color: colors.negative, fontSize: font.small },
   btn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", marginTop: spacing(1) },
   btnText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },

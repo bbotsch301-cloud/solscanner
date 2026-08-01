@@ -5,9 +5,10 @@
  * reports the candle under their finger so the screen can show its price/time; releasing calls
  * `onScrub(null)`.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PanResponder, View, type LayoutChangeEvent } from "react-native";
 import Svg, { G, Line, Rect, Text as SvgText } from "react-native-svg";
+import { haptics } from "../ui/haptics";
 import { colors } from "../theme";
 import type { Candle } from "../prices/candles";
 
@@ -53,32 +54,33 @@ export function CandleChart({
   const step = candles.length ? plotW / candles.length : 0;
   const bodyW = Math.max(1, Math.min(10, step * 0.62));
 
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (e) => pick(e.nativeEvent.locationX),
-        onPanResponderMove: (e) => pick(e.nativeEvent.locationX),
-        onPanResponderRelease: () => {
-          setActive(null);
-          onScrub?.(null);
-        },
-        onPanResponderTerminate: () => {
-          setActive(null);
-          onScrub?.(null);
-        },
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [candles, step]
-  );
+  // A subtle tick as the crosshair moves between candles (fires on each active-index change).
+  useEffect(() => {
+    if (active != null) haptics.select();
+  }, [active]);
 
-  function pick(x: number) {
-    if (!candles.length || step <= 0) return;
-    const i = Math.max(0, Math.min(candles.length - 1, Math.floor(x / step)));
-    setActive(i);
-    onScrub?.(candles[i]);
-  }
+  const pan = useMemo(() => {
+    const pick = (x: number) => {
+      if (!candles.length || step <= 0) return;
+      const i = Math.max(0, Math.min(candles.length - 1, Math.floor(x / step)));
+      setActive(i);
+      onScrub?.(candles[i]);
+    };
+    const end = () => {
+      setActive(null);
+      onScrub?.(null);
+    };
+    return PanResponder.create({
+      // Don't grab on a plain touch — only claim the gesture once it's a HORIZONTAL drag, so
+      // vertical swipes still scroll the token screen instead of getting trapped by the chart.
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 4 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderGrant: (e) => pick(e.nativeEvent.locationX),
+      onPanResponderMove: (e) => pick(e.nativeEvent.locationX),
+      onPanResponderRelease: end,
+      onPanResponderTerminate: end,
+    });
+  }, [candles, step, onScrub]);
 
   if (candles.length < 2 || width === 0) {
     // Still measure width on first paint so the chart can render once laid out.
