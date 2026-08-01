@@ -24,6 +24,7 @@ import { BackupScreen } from "./src/screens/BackupScreen";
 import { WalletsScreen } from "./src/screens/WalletsScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
+import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
@@ -95,7 +96,8 @@ function Splash() {
 }
 
 function Root() {
-  const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp } = useWallet();
+  const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp, shouldPromptPin } =
+    useWallet();
   const { unlocked } = useAuth();
 
   if (initializing) return <><StatusBar style="light" /><Splash /></>;
@@ -106,6 +108,8 @@ function Root() {
   if (!pinEnabled && !unlocked) return <><StatusBar style="light" /><LockScreen /></>;
   // New wallets must be backed up before entering the app.
   if (needsBackup) return <><StatusBar style="light" /><BackupPrompt onDone={markBackedUp} /></>;
+  // Offer the PIN once, after setup (skippable). PIN is the primary lock.
+  if (shouldPromptPin) return <><StatusBar style="light" /><SetupPinPrompt /></>;
 
   return (
     <NavigationContainer theme={navTheme}>

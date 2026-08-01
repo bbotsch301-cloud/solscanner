@@ -60,6 +60,7 @@ import {
   type SeedMeta,
   type AccountRef,
 } from "./vault";
+import { isPinPrompted, setPinPrompted, clearPinPrompted } from "../security/prefs";
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
@@ -148,6 +149,10 @@ interface WalletState {
   disablePin: (pin: string) => Promise<boolean>;
   /** Change the PIN. False if the current PIN is wrong. */
   changePin: (oldPin: string, newPin: string) => Promise<boolean>;
+  /** True when we should offer (once) to set a PIN during setup. */
+  shouldPromptPin: boolean;
+  /** Dismiss the one-time PIN offer without setting one. */
+  skipPinPrompt: () => Promise<void>;
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
   send: (to: string, sol: number) => Promise<string>;
@@ -179,6 +184,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [vault, setVault] = useState<VaultIndex | null>(null);
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [pinPrompted, setPinPromptedState] = useState(isPinPrompted());
   const [locked, setLocked] = useState(false);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
@@ -380,6 +386,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     await enableAppPin(pin);
     setPinEnabled(true);
     setLocked(false);
+    await setPinPrompted(); // enabling counts as prompted (don't re-offer if turned off later)
+    setPinPromptedState(true);
+  }, []);
+
+  const skipPinPrompt = useCallback(async () => {
+    await setPinPrompted();
+    setPinPromptedState(true);
   }, []);
 
   const disablePin = useCallback(async (pin: string): Promise<boolean> => {
@@ -472,6 +485,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const reset = useCallback(async () => {
     await clearVault();
+    await clearPinPrompted();
+    setPinPromptedState(false);
+    setPinEnabled(false);
     setVault(null);
     setKeypair(null);
     keypairRef.current = null;
@@ -695,6 +711,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       enablePin,
       disablePin,
       changePin,
+      shouldPromptPin: vault != null && !pinEnabled && !pinPrompted,
+      skipPinPrompt,
       refresh,
       airdrop,
       send,
@@ -715,11 +733,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     initializing,
     vault,
     pinEnabled,
+    pinPrompted,
     locked,
     unlockWithPin,
     enablePin,
     disablePin,
     changePin,
+    skipPinPrompt,
     keypair,
     evmAccount,
     needsBackup,

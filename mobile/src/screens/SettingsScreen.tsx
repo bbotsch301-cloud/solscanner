@@ -152,23 +152,7 @@ export function SettingsScreen() {
           onPress={() => nav.navigate("Backup")}
         />
         <View style={styles.divider} />
-        <View style={styles.netRow}>
-          <Ionicons name="finger-print-outline" size={20} color={colors.primary} />
-          <Text style={styles.rowLabel}>Face ID / passcode</Text>
-          <Switch
-            value={biometric}
-            onValueChange={toggleBiometric}
-            trackColor={{ true: colors.primary, false: colors.cardBorder }}
-            thumbColor={colors.text}
-          />
-        </View>
-        {biometric && (
-          <>
-            <View style={styles.divider} />
-            <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
-          </>
-        )}
-        <View style={styles.divider} />
+        {/* App PIN is the primary lock — shown first. */}
         {pinEnabled ? (
           <>
             <Row icon="keypad-outline" label="Change PIN" onPress={() => setPinAction("change")} />
@@ -182,6 +166,26 @@ export function SettingsScreen() {
             value="Encrypts wallets"
             onPress={() => setPinAction("set")}
           />
+        )}
+        <View style={styles.divider} />
+        <View style={styles.netRow}>
+          <Ionicons name="finger-print-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Face ID / passcode</Text>
+          <Switch
+            value={biometric}
+            onValueChange={toggleBiometric}
+            trackColor={{ true: colors.primary, false: colors.cardBorder }}
+            thumbColor={colors.text}
+          />
+        </View>
+        {pinEnabled && (
+          <Text style={styles.hint}>Your PIN is the active lock. Face ID applies only when no PIN is set.</Text>
+        )}
+        {biometric && !pinEnabled && (
+          <>
+            <View style={styles.divider} />
+            <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
+          </>
         )}
       </View>
 
@@ -259,6 +263,7 @@ const styles = StyleSheet.create({
   netOptText: { color: colors.textMuted, fontSize: font.small, fontWeight: "800" },
   rowRight: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rowValue: { color: colors.textMuted, fontSize: font.body },
+  hint: { color: colors.textFaint, fontSize: font.small, lineHeight: 17, paddingBottom: spacing(3) },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   notice: {
     flexDirection: "row",

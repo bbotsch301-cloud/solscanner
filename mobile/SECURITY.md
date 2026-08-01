@@ -41,7 +41,9 @@
 
 ## Handling & UI
 - Recovery phrase: no clipboard copy, screenshot prevention + warning, mandatory backup.
-- App lock: biometric/passcode by default; auto-locks on background.
+- App lock: the app PIN is the primary lock, offered once (skippable) at setup and auto-locking
+  on background. Biometric (Face ID/passcode) is optional, OFF by default, and applies only when
+  no PIN is set.
 - Sends: recipient screening (Solana + EVM contract/burn/self checks) and a full-address
   confirmation before signing (anti address-poisoning).
 - Swaps: exact-amount ERC-20 approvals (no lingering infinite allowance).
