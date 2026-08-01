@@ -9,7 +9,6 @@ export type RootStackParamList = {
   TokenDetail: { asset: string };
   Receive: undefined;
   Swap: undefined;
-  Buy: undefined;
   Backup: undefined;
   Activity: undefined;
   Govern: undefined;

@@ -61,6 +61,14 @@ export interface SwapToken {
   verified?: boolean;
 }
 
+/**
+ * XGO — the treasury/community token, the default "receive" side of the swapper.
+ * NOTE: XGO isn't listed yet; `decimals` is normally read live on-chain. 6 is a
+ * placeholder that only affects the pre-quote receive display (there's no quote until
+ * XGO has liquidity) — confirm against the live mint before mainnet launch.
+ */
+export const XGO_TOKEN: SwapToken = { mint: XGO_MINT, symbol: "XGO", decimals: 6 };
+
 /** A small curated set of liquid mainnet tokens to swap between. */
 export const SWAP_TOKENS: SwapToken[] = [
   { mint: "So11111111111111111111111111111111111111112", symbol: "SOL", decimals: 9, logoURI: LOGO("So11111111111111111111111111111111111111112") },
@@ -68,6 +76,7 @@ export const SWAP_TOKENS: SwapToken[] = [
   { mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", decimals: 6, logoURI: LOGO("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB") },
   { mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", decimals: 6 },
   { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", decimals: 5 },
+  XGO_TOKEN,
 ];
 
 /** Where a quote ends up routing. */

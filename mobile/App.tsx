@@ -9,7 +9,6 @@ import { ActivityIndicator, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
-import { TradeScreen } from "./src/screens/TradeScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { TreasuryScreen } from "./src/screens/TreasuryScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
@@ -19,7 +18,6 @@ import { SendScreen } from "./src/screens/SendScreen";
 import { ReceiveScreen } from "./src/screens/ReceiveScreen";
 import { SwapScreen } from "./src/screens/SwapScreen";
 import { TokenDetailScreen } from "./src/screens/TokenDetailScreen";
-import { BuyScreen } from "./src/screens/BuyScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
 import { WalletsScreen } from "./src/screens/WalletsScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
@@ -68,7 +66,9 @@ function Tabs() {
     >
       <Tab.Screen name="Home" component={EcosystemScreen} />
       <Tab.Screen name="Wallet" component={HomeScreen} />
-      <Tab.Screen name="Buy/Swap" component={TradeScreen} />
+      <Tab.Screen name="Buy/Swap" options={{ tabBarLabel: "Swap" }}>
+        {() => <SwapScreen asTab />}
+      </Tab.Screen>
       <Tab.Screen name="Treasury" component={TreasuryScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
@@ -121,7 +121,6 @@ function Root() {
           <Stack.Screen name="Receive" component={ReceiveScreen} />
           <Stack.Screen name="Swap" component={SwapScreen} />
           <Stack.Screen name="TokenDetail" component={TokenDetailScreen} />
-          <Stack.Screen name="Buy" component={BuyScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Wallets" component={WalletsScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />

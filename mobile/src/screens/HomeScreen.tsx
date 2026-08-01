@@ -97,7 +97,6 @@ export function HomeScreen() {
       <View style={styles.actions}>
         <ActionButton icon="arrow-up" label="Send" onPress={() => nav.navigate("Send")} />
         <ActionButton icon="arrow-down" label="Receive" onPress={() => nav.navigate("Receive")} />
-        {isSolana && <ActionButton icon="card-outline" label="Buy" onPress={() => nav.navigate("Buy")} />}
         <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />
       </View>
 

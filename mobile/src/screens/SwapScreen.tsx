@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
-import { SWAP_TOKENS, type SwapToken } from "../solana/swap";
+import { SWAP_TOKENS, XGO_TOKEN, type SwapToken } from "../solana/swap";
 import { evmSwapTokens } from "../evm/tokenList";
 import { quoteSwap } from "../swap";
 import { EVM_NATIVE, type UnifiedQuote } from "../swap/types";
@@ -43,7 +43,8 @@ function gasReserve(chain: ChainDef, tokenIn: boolean): number {
 }
 
 function defaultsFor(chain: ChainDef): [SwapToken, SwapToken] {
-  if (chain.kind === "solana") return [SWAP_TOKENS[0], SWAP_TOKENS[1]];
+  // Solana defaults to SOL → XGO so the swapper opens ready to buy XGO.
+  if (chain.kind === "solana") return [SWAP_TOKENS[0], XGO_TOKEN];
   const list = evmSwapTokens(chain.id);
   const usdc = list.find((t) => t.symbol === "USDC") ?? list[1];
   return [list[0], usdc];
@@ -60,7 +61,7 @@ function TokenButton({ token, onPress }: { token: SwapToken; onPress: () => void
   );
 }
 
-export function SwapScreen() {
+export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
@@ -197,7 +198,18 @@ export function SwapScreen() {
               const sig = await swapExecute(quote, (s) => setStatus(s));
               Alert.alert("Swap submitted", "Your swap is confirmed.", [
                 { text: "View on explorer", onPress: () => Linking.openURL(activeChain.explorerTx(sig)) },
-                { text: "Done", onPress: () => nav.goBack() },
+                {
+                  text: "Done",
+                  onPress: () => {
+                    // As the tab root there's nothing to pop — just clear the form.
+                    if (asTab) {
+                      setAmt("");
+                      setQuote(null);
+                    } else {
+                      nav.goBack();
+                    }
+                  },
+                },
               ]);
             } catch (e) {
               Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol }));
@@ -217,9 +229,11 @@ export function SwapScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
         <Text style={styles.title}>Swap · {activeChain.name}</Text>
-        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
-          <Ionicons name="close" size={26} color={colors.textMuted} />
-        </Pressable>
+        {!asTab && (
+          <Pressable onPress={() => nav.goBack()} hitSlop={12}>
+            <Ionicons name="close" size={26} color={colors.textMuted} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }} keyboardShouldPersistTaps="handled">
