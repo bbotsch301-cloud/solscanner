@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,6 +7,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -65,7 +66,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
-  const { activeChain, activeAddress, native, assets, swapExecute } = useWallet();
+  const { activeChain, activeAddress, native, assets, swapExecute, refresh: refreshWallet } = useWallet();
   const isSolana = activeChain.kind === "solana";
 
   const [from, setFrom] = useState<SwapToken>(() => defaultsFor(activeChain)[0]);
@@ -74,6 +75,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const [slippageBps, setSlippageBps] = useState(100);
   const [quote, setQuote] = useState<UnifiedQuote | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [swapping, setSwapping] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -138,6 +140,23 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       clearTimeout(id);
     };
   }, [activeChain, from, to, amtNum, slippageBps, activeAddress]);
+
+  // Pull-to-refresh: re-price owned balances and pull a fresh quote (prices move).
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshWallet();
+      if (amtNum > 0) {
+        const q = await quoteSwap(activeChain, from, to, amtNum, slippageBps, activeAddress);
+        setQuote(q);
+        setError(null);
+      }
+    } catch (e) {
+      setError(humanizeError(e, { action: "swap", symbol: to.symbol }));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshWallet, activeChain, from, to, amtNum, slippageBps, activeAddress]);
 
   const flip = () => {
     setFrom(to);
@@ -236,7 +255,11 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
         <View style={styles.panel}>
           <Text style={styles.panelLabel}>You pay</Text>
           <View style={styles.panelRow}>

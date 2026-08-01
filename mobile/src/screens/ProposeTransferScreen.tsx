@@ -1,11 +1,12 @@
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -47,6 +48,7 @@ export function ProposeTransferScreen() {
   const vault = vaultPda()?.toBase58() ?? null;
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [assetList, setAssetList] = useState<VaultAsset[]>([]);
   const [assetKey, setAssetKey] = useState("sol");
   const [recipient, setRecipient] = useState("");
@@ -60,43 +62,51 @@ export function ProposeTransferScreen() {
   const [resolving, setResolving] = useState(false);
 
   // Load what the vault actually holds, with names/logos, for the asset picker.
-  useEffect(() => {
-    if (!vault) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot load guard
-      setLoading(false);
-      return;
+  const loadAssets = useCallback(async () => {
+    if (!vault) return;
+    const h = await fetchHoldings(vault);
+    const list: VaultAsset[] = [
+      { key: "sol", kind: "sol", symbol: "SOL", name: "Solana", decimals: 9, balance: h.sol },
+    ];
+    for (const t of h.tokens) {
+      const meta = await fetchTokenMeta(t.mint);
+      list.push({
+        key: t.mint,
+        kind: "spl",
+        mint: t.mint,
+        symbol: meta?.symbol || shortAddress(t.mint, 4, 4),
+        name: meta?.name || meta?.symbol || t.mint,
+        decimals: t.decimals,
+        balance: t.amount,
+        logoURI: meta?.logoURI,
+      });
     }
+    setAssetList(list);
+  }, [vault]);
+
+  useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const h = await fetchHoldings(vault);
-        const list: VaultAsset[] = [
-          { key: "sol", kind: "sol", symbol: "SOL", name: "Solana", decimals: 9, balance: h.sol },
-        ];
-        for (const t of h.tokens) {
-          const meta = await fetchTokenMeta(t.mint);
-          list.push({
-            key: t.mint,
-            kind: "spl",
-            mint: t.mint,
-            symbol: meta?.symbol || shortAddress(t.mint, 4, 4),
-            name: meta?.name || meta?.symbol || t.mint,
-            decimals: t.decimals,
-            balance: t.amount,
-            logoURI: meta?.logoURI,
-          });
-        }
-        if (!cancelled) setAssetList(list);
-      } catch {
-        /* keep whatever we have */
-      } finally {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch
+    loadAssets()
+      .catch(() => {})
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
-  }, [vault]);
+  }, [loadAssets]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadAssets();
+    } catch {
+      /* keep whatever we have */
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadAssets]);
 
   const selected = assetList.find((a) => a.key === assetKey) ?? assetList[0];
 
@@ -246,7 +256,11 @@ export function ProposeTransferScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
         <Text style={styles.sub}>
           Spend from the multisig treasury. This files a proposal your signers must approve — nothing
           moves until then.

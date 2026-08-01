@@ -8,6 +8,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -35,7 +36,8 @@ export function SendScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
-  const { activeChain, activeAddress, native, assets, sendAsset } = useWallet();
+  const { activeChain, activeAddress, native, assets, sendAsset, refresh: refreshWallet } = useWallet();
+  const [refreshing, setRefreshing] = useState(false);
   const isSolana = activeChain.kind === "solana";
 
   // Native asset + the chain's tokens, unified.
@@ -214,7 +216,24 @@ export function SendScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              try {
+                await refreshWallet();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <View>
           <Text style={styles.label}>Asset</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -spacing(1) }}>
