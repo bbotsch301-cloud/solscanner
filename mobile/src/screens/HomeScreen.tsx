@@ -7,6 +7,7 @@ import { fetchActivity, type HistoryItem } from "../activity";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { ChainSwitcher } from "../components/ChainSwitcher";
+import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
@@ -78,7 +79,7 @@ export function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Wallet</Text>
+        <WalletSwitcher />
         <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
           <Ionicons name="time-outline" size={22} color={colors.textMuted} />
         </Pressable>
@@ -220,7 +221,6 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
-  headerTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",

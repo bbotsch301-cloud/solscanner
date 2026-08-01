@@ -1,0 +1,174 @@
+/**
+ * The wallet/account switcher that lives in the Wallet-tab header. Shows the active wallet's
+ * name + a chevron; tapping opens a top-anchored dropdown to switch between wallets/accounts or
+ * jump to the full manager. Data + actions come straight from useWallet() — no new state layer.
+ */
+import { useNavigation } from "@react-navigation/native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useWallet } from "../wallet/WalletContext";
+import { deriveAccount } from "../wallet/vault";
+import { colors, font, radius, shortAddress, spacing } from "../theme";
+import type { RootNav } from "../navigation";
+
+export function WalletSwitcher() {
+  const insets = useSafeAreaInsets();
+  const nav = useNavigation<RootNav>();
+  const { seeds, activeSeedId, activeIndex, switchAccount } = useWallet();
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>({});
+
+  // Derive each account's public addresses for display — only while the menu is open.
+  const structureKey = seeds.map((s) => `${s.id}:${s.accounts.join(",")}`).join("|");
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const map: Record<string, { sol: string; evm: string | null }> = {};
+      for (const s of seeds) {
+        for (const i of s.accounts) {
+          const d = await deriveAccount(s.id, i);
+          if (d) map[`${s.id}:${i}`] = { sol: d.solanaAddress, evm: d.evmAddress };
+        }
+      }
+      if (!cancelled) setAddrs(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, structureKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeSeed = seeds.find((s) => s.id === activeSeedId);
+  const activeLabel = activeSeed?.label ?? "Wallet";
+  const triggerText =
+    (activeSeed?.accounts.length ?? 0) > 1 ? `${activeLabel} · Account ${activeIndex + 1}` : activeLabel;
+
+  const select = async (seedId: string, index: number) => {
+    if (seedId === activeSeedId && index === activeIndex) {
+      setOpen(false);
+      return;
+    }
+    const key = `${seedId}:${index}`;
+    setBusy(key);
+    try {
+      await switchAccount(seedId, index);
+      setOpen(false);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const goManage = () => {
+    setOpen(false);
+    nav.navigate("Wallets");
+  };
+  const goAdd = () => {
+    setOpen(false);
+    nav.navigate("CreateWallet");
+  };
+
+  return (
+    <>
+      <Pressable onPress={() => setOpen(true)} style={styles.trigger} hitSlop={8}>
+        <Text style={styles.triggerText} numberOfLines={1}>
+          {triggerText}
+        </Text>
+        <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={[styles.backdrop, { paddingTop: insets.top + spacing(11) }]} onPress={() => setOpen(false)}>
+          <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.cardTitle}>Wallets</Text>
+            <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+              {seeds.map((s) =>
+                s.accounts.map((i) => {
+                  const active = s.id === activeSeedId && i === activeIndex;
+                  const key = `${s.id}:${i}`;
+                  const a = addrs[key];
+                  const name = s.accounts.length > 1 ? `${s.label} · Account ${i + 1}` : s.label;
+                  return (
+                    <Pressable key={key} onPress={() => select(s.id, i)} style={[styles.row, active && styles.rowActive]}>
+                      <View style={styles.rowMain}>
+                        <Text style={styles.rowName} numberOfLines={1}>
+                          {name}
+                        </Text>
+                        {a && (
+                          <Text style={styles.rowAddr} numberOfLines={1}>
+                            SOL {shortAddress(a.sol, 5, 5)}
+                            {a.evm ? `  ·  EVM ${shortAddress(a.evm, 5, 4)}` : ""}
+                          </Text>
+                        )}
+                      </View>
+                      {busy === key ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons
+                          name={active ? "checkmark-circle" : "ellipse-outline"}
+                          size={22}
+                          color={active ? colors.primary : colors.textFaint}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <View style={styles.divider} />
+            <Pressable onPress={goAdd} style={styles.footerRow}>
+              <Ionicons name="add-circle-outline" size={20} color={colors.text} />
+              <Text style={styles.footerText}>Add wallet</Text>
+            </Pressable>
+            <Pressable onPress={goManage} style={styles.footerRow}>
+              <Ionicons name="settings-outline" size={20} color={colors.text} />
+              <Text style={styles.footerText}>Manage wallets & accounts</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  trigger: { flexDirection: "row", alignItems: "center", gap: spacing(1), flexShrink: 1 },
+  triggerText: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
+  backdrop: { flex: 1, backgroundColor: "#000000CC", paddingHorizontal: spacing(4), justifyContent: "flex-start" },
+  card: {
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.lg,
+    padding: spacing(3),
+  },
+  cardTitle: {
+    color: colors.textMuted,
+    fontSize: font.tiny,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    paddingHorizontal: spacing(2),
+    paddingVertical: spacing(2),
+  },
+  list: { maxHeight: 340 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing(3),
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(2),
+    borderRadius: radius.md,
+  },
+  rowActive: { backgroundColor: colors.primary + "18" },
+  rowMain: { flex: 1, gap: 2 },
+  rowName: { color: colors.text, fontSize: font.body, fontWeight: "700" },
+  rowAddr: { color: colors.textMuted, fontSize: font.tiny },
+  divider: { height: 1, backgroundColor: colors.cardBorder, marginVertical: spacing(2) },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3), paddingHorizontal: spacing(2) },
+  footerText: { color: colors.text, fontSize: font.body, fontWeight: "700" },
+});
