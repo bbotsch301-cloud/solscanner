@@ -212,6 +212,8 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
   const reqSummary = request ? describeRequest(reqMethod, request.params?.request?.params, request.params?.chainId) : null;
   const reqSession = request ? sessions.find((s: any) => s.topic === request.topic) : null;
   const reqAppName = reqSession?.peer?.metadata?.name;
+  const proposalVerify = verifyBanner(proposal?.verifyContext);
+  const requestVerify = verifyBanner(request?.verifyContext);
 
   return (
     <Ctx.Provider value={value}>
@@ -223,6 +225,7 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
           <View style={styles.sheet}>
             <Text style={styles.title}>Connect to {proposerMeta?.name ?? "a dApp"}?</Text>
             <Text style={styles.url}>{proposerMeta?.url ?? ""}</Text>
+            <VerifyBanner b={proposalVerify} />
             <Text style={styles.body}>
               This app will be able to request signatures and transactions from your wallet. It
               can’t move funds without your approval on each request.
@@ -252,12 +255,40 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
               ))}
             </View>
             {reqSummary?.danger && <Text style={styles.warn}>{reqSummary.danger}</Text>}
+            <VerifyBanner b={requestVerify} />
             <Text style={styles.subtle}>Only approve if you trust this app and understand this action.</Text>
             <Buttons busy={busy} onApprove={approveRequest} onReject={rejectRequest} approveLabel="Approve" />
           </View>
         </View>
       </Modal>
     </Ctx.Provider>
+  );
+}
+
+/**
+ * Turn WalletKit's `verifyContext` into a user-facing safety banner. WalletKit resolves the dApp's
+ * declared identity against the origin it actually connected from: `isScam` flags a domain on the
+ * known-scam registry, `validation: "INVALID"` means the origin doesn't match the claimed identity
+ * (classic phishing), and `"UNKNOWN"` means it couldn't be checked. `"VALID"` → no banner.
+ */
+function verifyBanner(vc: any): { text: string; scam: boolean } | null {
+  const v = vc?.verified;
+  if (!v) return null;
+  if (v.isScam)
+    return { text: "⚠ This app is flagged as a known scam. Do not connect or approve.", scam: true };
+  if (v.validation === "INVALID")
+    return { text: "⚠ This app's domain doesn't match its identity — likely phishing.", scam: true };
+  if (v.validation === "UNKNOWN")
+    return { text: "Couldn't verify this app's domain. Proceed only if you trust it.", scam: false };
+  return null;
+}
+
+function VerifyBanner({ b }: { b: { text: string; scam: boolean } | null }) {
+  if (!b) return null;
+  return (
+    <View style={[styles.verifyBanner, b.scam ? styles.verifyScam : styles.verifyUnknown]}>
+      <Text style={[styles.verifyText, { color: b.scam ? colors.negative : colors.warning }]}>{b.text}</Text>
+    </View>
   );
 }
 
@@ -302,6 +333,10 @@ const styles = StyleSheet.create({
   reqLabel: { color: colors.textFaint, fontSize: font.tiny, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 },
   reqValue: { color: colors.text, fontSize: font.small, fontFamily: undefined },
   warn: { color: colors.negative, fontSize: font.small, fontWeight: "700" },
+  verifyBanner: { borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing(2.5), paddingHorizontal: spacing(3) },
+  verifyScam: { backgroundColor: colors.negative + "1A", borderColor: colors.negative },
+  verifyUnknown: { backgroundColor: colors.warning + "1A", borderColor: colors.warning },
+  verifyText: { fontSize: font.small, fontWeight: "700", lineHeight: 18 },
   subtle: { color: colors.textMuted, fontSize: font.small },
   btnRow: { flexDirection: "row", gap: spacing(3), marginTop: spacing(2) },
   btn: { flex: 1, paddingVertical: spacing(3.5), borderRadius: radius.pill, alignItems: "center" },

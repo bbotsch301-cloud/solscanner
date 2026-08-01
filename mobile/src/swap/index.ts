@@ -38,6 +38,7 @@ export async function quoteSwap(
       isTreasuryPair: q.isTreasuryPair,
       fellBack: q.fellBack,
       gapBps: q.gapBps,
+      feeAccountSetup: q.feeAccountSetup,
     };
   }
 

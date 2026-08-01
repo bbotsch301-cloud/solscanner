@@ -328,6 +328,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
                     : "None"
               }
             />
+            {quote.feeAccountSetup && <Row label="Account setup (one-time)" value="~0.002 SOL" />}
           </View>
         )}
 

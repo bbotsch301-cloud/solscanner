@@ -16,7 +16,6 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -26,6 +25,7 @@ import {
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import { connection } from "../solana/connection";
+import { sendAndConfirmGuarded } from "../solana/tx";
 import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
@@ -530,7 +530,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           lamports: toBaseUnits(sol, 9), // exact base units — never float-multiply
         })
       );
-      const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
+      const sig = await sendAndConfirmGuarded(tx, [kp]);
       fetchBalances(kp.publicKey).catch(() => {});
       return sig;
     },
@@ -561,7 +561,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         createTransferCheckedInstruction(fromAta, mintPk, toAta, kp.publicKey, raw, decimals, [], programId)
       );
 
-      const sig = await sendAndConfirmTransaction(connection, tx, [kp]);
+      const sig = await sendAndConfirmGuarded(tx, [kp]);
       fetchBalances(kp.publicKey).catch(() => {});
       return sig;
     },

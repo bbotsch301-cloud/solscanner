@@ -51,6 +51,8 @@ export interface UnifiedQuote {
   isTreasuryPair?: boolean;
   fellBack?: boolean;
   gapBps?: number | null;
+  /** Solana only: executing also creates the treasury's fee account (one-time ~0.002 SOL rent). */
+  feeAccountSetup?: boolean;
 }
 
 export type { SwapToken };

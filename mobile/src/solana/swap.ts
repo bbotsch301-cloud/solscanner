@@ -16,6 +16,7 @@ import { XGO_MINT } from "./token2022";
 import { feeBpsFor, TREASURY_FEE_OWNER } from "../config/swapFee";
 import { solLogo } from "../config/logos";
 import { toBaseUnits } from "../units";
+import { confirmWithRecovery } from "./tx";
 
 /**
  * Jupiter's DEX label(s) for the AMMs the treasury owns liquidity on. The treasury
@@ -111,6 +112,9 @@ export interface Quote {
   gapBps: number | null;
   /** Community fee applied to this quote, in bps (0 for XGO trades / when uncollected). */
   feeBps: number;
+  /** True when executing will also create the treasury's fee token account for the output mint —
+   *  a one-time ~0.002 SOL rent the swapper pays. Disclosed in the UI. */
+  feeAccountSetup: boolean;
 }
 
 interface RawQuote {
@@ -152,6 +156,26 @@ async function requestQuote(
   }
 }
 
+// Whether the treasury already has a fee token account for `mint`. Cached per mint so the quote
+// debounce doesn't re-check on every keystroke (only the output token matters, not the amount).
+const feeAtaExistsCache = new Map<string, boolean>();
+async function treasuryFeeAtaExists(mint: string): Promise<boolean> {
+  if (!TREASURY_FEE_OWNER) return true;
+  const cached = feeAtaExistsCache.get(mint);
+  if (cached !== undefined) return cached;
+  try {
+    const mintPk = new PublicKey(mint);
+    const mintInfo = await connection.getAccountInfo(mintPk);
+    const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    const ata = getAssociatedTokenAddressSync(mintPk, new PublicKey(TREASURY_FEE_OWNER), true, programId);
+    const exists = !!(await connection.getAccountInfo(ata));
+    feeAtaExistsCache.set(mint, exists);
+    return exists;
+  } catch {
+    return true; // on RPC error, don't show a misleading setup cost
+  }
+}
+
 export async function fetchQuote(
   input: SwapToken,
   output: SwapToken,
@@ -170,6 +194,9 @@ export async function fetchQuote(
   // Community fee: 0.44% on non-XGO trades (0 for XGO, which its own transfer fee already taxes),
   // collected to the treasury. executeSwap deposits it into the treasury's output-token account.
   const feeBps = TREASURY_FEE_OWNER ? feeBpsFor(input.mint, output.mint) : 0;
+  // A one-time ~0.002 SOL rent applies when executing will create the treasury's fee account for
+  // this output mint (the first swapper into a token pays it). Disclose it in the quote.
+  const feeAccountSetup = feeBps > 0 && !(await treasuryFeeAtaExists(output.mint));
 
   const [market, pinned] = await Promise.all([
     requestQuote(input.mint, output.mint, rawAmount, slippageBps, false, feeBps),
@@ -219,6 +246,7 @@ export async function fetchQuote(
     fellBack,
     gapBps,
     feeBps,
+    feeAccountSetup,
   };
 }
 
@@ -277,6 +305,6 @@ export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<
     lastValidBlockHeight != null
       ? { signature: sig, blockhash: tx.message.recentBlockhash, lastValidBlockHeight }
       : { signature: sig, ...(await connection.getLatestBlockhash()) };
-  await connection.confirmTransaction(strategy, "confirmed");
+  await confirmWithRecovery(sig, strategy); // guard: a landed-but-slow confirm resolves as success
   return sig;
 }

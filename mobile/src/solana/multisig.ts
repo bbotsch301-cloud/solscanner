@@ -11,7 +11,6 @@ import {
   Transaction,
   TransactionInstruction,
   TransactionMessage,
-  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -22,6 +21,7 @@ import {
 } from "@solana/spl-token";
 import * as multisig from "@sqds/multisig";
 import { connection, solscanAccount } from "./connection";
+import { sendAndConfirmGuarded } from "./tx";
 import { multisigPubkey, vaultPda, addMultisig } from "../config/multisig";
 import { toBaseUnits } from "../units";
 
@@ -341,13 +341,9 @@ async function prepareTx(
     rent: !!opts.rent,
     warn,
     // Refetch the blockhash at send time — the confirm dialog can sit long enough for the
-    // prepared blockhash to expire; sendAndConfirmTransaction re-signs for the new one.
-    send: async () => {
-      const bh = await connection.getLatestBlockhash();
-      tx.recentBlockhash = bh.blockhash;
-      tx.lastValidBlockHeight = bh.lastValidBlockHeight;
-      return sendAndConfirmTransaction(connection, tx, [signer, ...extraSigners]);
-    },
+    // prepared blockhash to expire. sendAndConfirmGuarded refetches + re-signs and guards against
+    // a landed-but-timed-out confirm double-sending on retry.
+    send: () => sendAndConfirmGuarded(tx, [signer, ...extraSigners]),
   };
 }
 
