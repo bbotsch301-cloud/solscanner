@@ -53,11 +53,18 @@ async function fromJupiter(mint: string): Promise<TokenMeta | null> {
 
 // ---- on-chain Metaplex metadata ----------------------------------------------
 
-/** Read a borsh String (u32-LE length + bytes) at `offset`; NUL-trimmed. */
-function readBorshString(buf: Buffer, offset: number): { value: string; next: number } {
-  const len = buf.readUInt32LE(offset);
+const utf8 = new TextDecoder();
+
+function readU32LE(buf: Uint8Array, o: number): number {
+  return (buf[o] | (buf[o + 1] << 8) | (buf[o + 2] << 16) | (buf[o + 3] << 24)) >>> 0;
+}
+
+/** Read a borsh String (u32-LE length + bytes) at `offset`; UTF-8 decoded, NUL-trimmed.
+ *  Uses TextDecoder so it works whether account data is a Buffer or a Uint8Array. */
+function readBorshString(buf: Uint8Array, offset: number): { value: string; next: number } {
+  const len = readU32LE(buf, offset);
   const start = offset + 4;
-  const raw = buf.subarray(start, start + len).toString("utf8");
+  const raw = utf8.decode(buf.subarray(start, start + len));
   return { value: raw.replace(/\0/g, "").trim(), next: start + len };
 }
 
@@ -70,7 +77,7 @@ async function fromOnChain(mint: string): Promise<TokenMeta | null> {
     );
     const info = await new Connection(rpcUrl(), "confirmed").getAccountInfo(pda);
     if (!info?.data) return null;
-    const data = info.data as Buffer;
+    const data = info.data as Uint8Array;
 
     // key(1) + updateAuthority(32) + mint(32) → name starts at 65.
     const offset = 1 + 32 + 32;
