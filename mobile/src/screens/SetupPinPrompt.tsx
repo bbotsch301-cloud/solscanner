@@ -84,11 +84,11 @@ export function SetupPinPrompt() {
           <TextInput
             value={pin}
             onChangeText={(t) => setPin(digits(t))}
-            placeholder="PIN (min 6 digits)"
+            placeholder="PIN (6 digits)"
             placeholderTextColor={colors.textFaint}
             keyboardType="number-pad"
             secureTextEntry
-            maxLength={32}
+            maxLength={6}
             style={styles.input}
           />
           <TextInput
@@ -98,7 +98,7 @@ export function SetupPinPrompt() {
             placeholderTextColor={colors.textFaint}
             keyboardType="number-pad"
             secureTextEntry
-            maxLength={32}
+            maxLength={6}
             style={styles.input}
           />
           {error && <Text style={styles.error}>{error}</Text>}

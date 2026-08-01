@@ -81,7 +81,7 @@ export function PinActionModal({ action, onClose }: { action: PinAction; onClose
               placeholderTextColor={colors.textFaint}
               keyboardType="number-pad"
               secureTextEntry
-              maxLength={32}
+              maxLength={6}
               style={styles.input}
             />
           )}
@@ -90,11 +90,11 @@ export function PinActionModal({ action, onClose }: { action: PinAction; onClose
               <TextInput
                 value={pin}
                 onChangeText={(t) => setPin(digits(t))}
-                placeholder={action === "change" ? "New PIN" : "PIN (min 6 digits)"}
+                placeholder={action === "change" ? "New PIN" : "PIN (6 digits)"}
                 placeholderTextColor={colors.textFaint}
                 keyboardType="number-pad"
                 secureTextEntry
-                maxLength={32}
+                maxLength={6}
                 style={styles.input}
               />
               <TextInput
@@ -104,7 +104,7 @@ export function PinActionModal({ action, onClose }: { action: PinAction; onClose
                 placeholderTextColor={colors.textFaint}
                 keyboardType="number-pad"
                 secureTextEntry
-                maxLength={32}
+                maxLength={6}
                 style={styles.input}
               />
             </>

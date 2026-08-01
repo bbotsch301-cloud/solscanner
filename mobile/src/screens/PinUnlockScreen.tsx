@@ -13,7 +13,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { XGOLogo } from "../components/XGOLogo";
 import { Crown } from "../components/Crown";
@@ -82,12 +81,12 @@ export function PinUnlockScreen() {
 
   const lockedOut = lockMs > 0;
 
-  const submit = async () => {
-    if (pin.length < 6 || busy || lockedOut) return;
+  const submit = async (value: string) => {
+    if (value.length < 6 || busy || lockedOut) return;
     setBusy(true);
     setError(null);
     try {
-      const ok = await unlockWithPin(pin);
+      const ok = await unlockWithPin(value);
       if (!ok) {
         const wait = pinLockoutMs();
         setLockMs(wait);
@@ -133,16 +132,19 @@ export function PinUnlockScreen() {
 
       <TextInput
         value={pin}
-        onChangeText={(t) => setPin(t.replace(/[^0-9]/g, ""))}
+        onChangeText={(t) => {
+          const digits = t.replace(/[^0-9]/g, "").slice(0, 6);
+          setPin(digits);
+          if (digits.length === 6) submit(digits); // auto-unlock once all 6 are entered
+        }}
         placeholder="••••••"
         placeholderTextColor={colors.textFaint}
         keyboardType="number-pad"
         secureTextEntry
-        maxLength={32}
+        maxLength={6}
         autoFocus
         editable={!lockedOut}
         style={styles.input}
-        onSubmitEditing={submit}
       />
       {error && (
         <Text style={styles.error}>
@@ -151,15 +153,6 @@ export function PinUnlockScreen() {
       )}
 
       <View style={{ flex: 1 }} />
-
-      <Pressable
-        onPress={submit}
-        disabled={pin.length < 6 || lockedOut}
-        style={[styles.btn, (pin.length < 6 || lockedOut) && styles.btnDisabled]}
-      >
-        <Ionicons name="lock-open" size={18} color={colors.bg} />
-        <Text style={styles.btnText}>Unlock</Text>
-      </Pressable>
 
       <Pressable onPress={forgotPin} style={styles.forgot} hitSlop={8}>
         <Text style={styles.forgotText}>Forgot PIN?</Text>
@@ -186,18 +179,6 @@ const styles = StyleSheet.create({
     marginTop: spacing(8),
   },
   error: { color: colors.negative, fontSize: font.small, textAlign: "center", marginTop: spacing(3) },
-  btn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing(2),
-    backgroundColor: colors.primary,
-    paddingVertical: spacing(4),
-    borderRadius: radius.pill,
-    minHeight: 52,
-  },
-  btnDisabled: { backgroundColor: colors.card },
-  btnText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
   forgot: { alignItems: "center", paddingVertical: spacing(4) },
   forgotText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   splash: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing(8) },
