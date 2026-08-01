@@ -8,22 +8,29 @@
  * it is a manual snapshot, not a live feed.
  */
 export interface OffchainAsset {
-  /** Display name, e.g. "Physical Gold". */
+  /** Display name, e.g. "Physical Silver". */
   label: string;
-  /** Asset class, e.g. "Gold", "Currency", "Real estate". */
+  /** Asset class, e.g. "Silver", "Currency", "Real estate". */
   category: string;
   /** Quantity held (e.g. 10). */
   amount?: number;
   /** Unit for the quantity (e.g. "oz", "IQD"). */
   unit?: string;
-  /** Stated USD value — a manual estimate; update to current prices. */
+  /** Fallback USD value if live pricing is unavailable or not configured. */
   valueUsd: number;
+  /**
+   * Optional live price source (see prices/offchain.ts):
+   *   "silver" → value = amount(oz) × live silver spot
+   *   "iqd"    → value = amount(IQD) ÷ live USD→IQD rate
+   * When omitted, `valueUsd` is used as-is.
+   */
+  live?: "silver" | "iqd";
   /** Optional context, e.g. the rate/date the estimate is based on. */
   note?: string;
 }
 
 export const OFFCHAIN_ASSETS: OffchainAsset[] = [
-  // USD figures are manual estimates — update them as prices move.
-  { label: "Physical Gold", category: "Gold", amount: 10, unit: "oz", valueUsd: 27000, note: "≈ $2,700/oz" },
-  { label: "Iraqi Dinar", category: "Currency", amount: 500000, unit: "IQD", valueUsd: 380, note: "≈ 1,320 IQD/USD" },
+  // Values are priced live where possible; `valueUsd` is the fallback estimate.
+  { label: "Physical Silver", category: "Silver", amount: 10, unit: "oz", valueUsd: 310, live: "silver", note: "live spot" },
+  { label: "Iraqi Dinar", category: "Currency", amount: 500000, unit: "IQD", valueUsd: 380, live: "iqd", note: "live rate" },
 ];

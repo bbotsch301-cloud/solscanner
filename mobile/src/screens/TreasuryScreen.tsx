@@ -11,7 +11,8 @@ import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { solscanAccount, CLUSTER } from "../solana/connection";
 import { nativeLogo } from "../config/logos";
-import { OFFCHAIN_ASSETS } from "../config/treasuryAssets";
+import { OFFCHAIN_ASSETS, type OffchainAsset } from "../config/treasuryAssets";
+import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
 
 const SOL_LOGO = nativeLogo.solana;
@@ -19,11 +20,19 @@ const SOL_LOGO = nativeLogo.solana;
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
 
+/** USD value of an off-chain asset — live-priced when possible, else its estimate. */
+function offchainValue(a: OffchainAsset, p: OffchainPrices): number {
+  if (a.live === "silver" && p.silverPerOz && a.amount) return a.amount * p.silverPerOz;
+  if (a.live === "iqd" && p.iqdPerUsd && a.amount) return a.amount / p.iqdPerUsd;
+  return a.valueUsd;
+}
+
 export function TreasuryScreen() {
   const insets = useSafeAreaInsets();
   const [holdings, setHoldings] = useState<Holdings | null>(null);
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [metas, setMetas] = useState<Record<string, TokenMeta>>({});
+  const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -33,12 +42,14 @@ export function TreasuryScreen() {
       const h = await fetchHoldings(TREASURY_ADDRESS);
       setHoldings(h);
       const mints = h.tokens.map((t) => t.mint);
-      const [p, m] = await Promise.all([
+      const [p, m, oc] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
+        fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
       ]);
       setPrices(p);
       setMetas(m);
+      setOcPrices(oc);
     } catch {
       /* keep last data on transient errors */
     } finally {
@@ -55,7 +66,7 @@ export function TreasuryScreen() {
     .map((t) => ({ t, value: t.amount * (prices[t.mint]?.usdPrice ?? 0) }))
     .sort((a, b) => b.value - a.value);
   const tokensUsd = sortedTokens.reduce((s, x) => s + x.value, 0);
-  const offchainUsd = OFFCHAIN_ASSETS.reduce((s, a) => s + a.valueUsd, 0);
+  const offchainUsd = OFFCHAIN_ASSETS.reduce((s, a) => s + offchainValue(a, ocPrices), 0);
   const total = solUsd + tokensUsd + offchainUsd;
 
   // Allocation slices: SOL, each token, each off-chain asset — colored from the palette.
@@ -68,7 +79,7 @@ export function TreasuryScreen() {
     })),
     ...OFFCHAIN_ASSETS.map((a, i) => ({
       label: a.label,
-      value: a.valueUsd,
+      value: offchainValue(a, ocPrices),
       color: PIE_COLORS[(sortedTokens.length + 1 + i) % PIE_COLORS.length],
     })),
   ].filter((s) => s.value > 0);
@@ -148,21 +159,24 @@ export function TreasuryScreen() {
             </View>
           );
         })}
-        {OFFCHAIN_ASSETS.map((a) => (
-          <View key={a.label}>
-            <View style={styles.divider} />
-            <Holding
-              symbol={a.category}
-              name={a.label}
-              usdValue={a.valueUsd}
-              pct={pctOf(a.valueUsd, total)}
-              color={colors.accent}
-              offchainDetail={
-                a.amount != null ? `${a.amount.toLocaleString("en-US")} ${a.unit ?? ""}`.trim() : a.category
-              }
-            />
-          </View>
-        ))}
+        {OFFCHAIN_ASSETS.map((a) => {
+          const value = offchainValue(a, ocPrices);
+          return (
+            <View key={a.label}>
+              <View style={styles.divider} />
+              <Holding
+                symbol={a.category}
+                name={a.label}
+                usdValue={value}
+                pct={pctOf(value, total)}
+                color={colors.accent}
+                offchainDetail={
+                  a.amount != null ? `${a.amount.toLocaleString("en-US")} ${a.unit ?? ""}`.trim() : a.category
+                }
+              />
+            </View>
+          );
+        })}
       </View>
 
       <Text style={styles.note}>
