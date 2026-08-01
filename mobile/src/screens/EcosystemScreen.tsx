@@ -37,6 +37,7 @@ export function EcosystemScreen() {
   const [ocPrices, setOcPrices] = useState<OffchainPrices>({});
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [depositsExpanded, setDepositsExpanded] = useState(false);
+  const [otherExpanded, setOtherExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const TREASURY_ADDRESS = treasuryAddress();
@@ -157,18 +158,54 @@ export function EcosystemScreen() {
         {rows.map((r, i) => (
           <View key={r.key}>
             {i > 0 && <View style={styles.divider} />}
-            <Holding
-              symbol={r.symbol}
-              name={r.name}
-              amount={r.amount}
-              usdValue={r.usdValue}
-              pct={r.pct}
-              logoURI={r.logoURI}
-              color={r.color}
-              icon={r.icon}
-              offchainDetail={r.offchainDetail}
-              subtitle={r.subtitle}
-            />
+            {r.children && r.children.length > 0 ? (
+              <>
+                <Pressable onPress={() => setOtherExpanded((o) => !o)} hitSlop={6}>
+                  <Holding
+                    symbol={r.symbol}
+                    name={r.name}
+                    usdValue={r.usdValue}
+                    pct={r.pct}
+                    color={r.color}
+                    subtitle={r.subtitle}
+                    expandable
+                    expanded={otherExpanded}
+                  />
+                </Pressable>
+                {otherExpanded && (
+                  <View style={styles.nested}>
+                    {r.children.map((c, j) => (
+                      <View key={c.key}>
+                        {j > 0 && <View style={styles.divider} />}
+                        <Holding
+                          symbol={c.symbol}
+                          name={c.name}
+                          amount={c.amount}
+                          usdValue={c.usdValue}
+                          pct={c.pct}
+                          logoURI={c.logoURI}
+                          color={c.color}
+                          size={32}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : (
+              <Holding
+                symbol={r.symbol}
+                name={r.name}
+                amount={r.amount}
+                usdValue={r.usdValue}
+                pct={r.pct}
+                logoURI={r.logoURI}
+                color={r.color}
+                icon={r.icon}
+                offchainDetail={r.offchainDetail}
+                subtitle={r.subtitle}
+              />
+            )}
           </View>
         ))}
       </View>
@@ -255,6 +292,7 @@ const styles = StyleSheet.create({
   },
   list: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(4) },
   divider: { height: 1, backgroundColor: colors.cardBorder },
+  nested: { marginLeft: spacing(3), paddingLeft: spacing(3), borderLeftWidth: 2, borderLeftColor: colors.cardBorder, marginBottom: spacing(2) },
   empty: { color: colors.textMuted, fontSize: font.small, paddingVertical: spacing(4), textAlign: "center" },
   depositRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
   inBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.positive + "22", alignItems: "center", justifyContent: "center" },

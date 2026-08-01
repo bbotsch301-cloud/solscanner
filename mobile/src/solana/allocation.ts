@@ -29,6 +29,8 @@ export interface AllocRow {
   offchainDetail?: string;
   /** Plain subtitle override (e.g. "12 smaller assets" for the Other row). */
   subtitle?: string;
+  /** For the grouped "Other holdings" row: the individual lumped assets (for tap-to-expand). */
+  children?: AllocRow[];
 }
 
 export interface Allocation {
@@ -50,6 +52,7 @@ interface CryptoItem {
   logoURI?: string;
   color: string;
   subtitle?: string;
+  children?: AllocRow[];
 }
 
 export function buildAllocation(
@@ -107,7 +110,17 @@ export function buildAllocation(
         value: restVal,
         usdValue: restVal > 0 ? restVal : undefined,
         color: colors.textMuted,
-        subtitle: `${rest.length} smaller ${rest.length === 1 ? "asset" : "assets"}`,
+        subtitle: `${rest.length} smaller ${rest.length === 1 ? "asset" : "assets"} · tap to expand`,
+        children: rest.map((x) => ({
+          key: x.key,
+          name: x.name,
+          symbol: x.symbol,
+          amount: x.amount,
+          usdValue: x.usdValue,
+          pct: pct(x.value),
+          color: x.color,
+          logoURI: x.logoURI,
+        })),
       },
     ];
   }
@@ -123,6 +136,7 @@ export function buildAllocation(
       color: x.color,
       logoURI: x.logoURI,
       subtitle: x.subtitle,
+      children: x.children,
     })),
     ...offchain.map((a) => {
       const v = offchainValue(a, ocPrices);

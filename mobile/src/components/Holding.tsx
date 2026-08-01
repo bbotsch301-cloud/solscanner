@@ -1,5 +1,6 @@
 /** A single treasury holding row — on-chain token (TokenAvatar) or off-chain asset (AssetLogo). */
 import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "./TokenAvatar";
 import { AssetLogo, type AssetIcon } from "./AssetLogo";
 import { compact, colors, font, spacing, usd } from "../theme";
@@ -15,6 +16,9 @@ export function Holding({
   offchainDetail,
   subtitle,
   icon,
+  size,
+  expandable,
+  expanded,
 }: {
   symbol: string;
   name: string;
@@ -29,10 +33,15 @@ export function Holding({
   subtitle?: string;
   /** Built-in SVG coin logo for off-chain assets (silver / dinar). */
   icon?: AssetIcon;
+  /** Avatar size override (nested "Other" children render slightly smaller). */
+  size?: number;
+  /** Show a chevron affordance (this row toggles a nested list). */
+  expandable?: boolean;
+  expanded?: boolean;
 }) {
   return (
     <View style={styles.row}>
-      {icon ? <AssetLogo icon={icon} /> : <TokenAvatar symbol={symbol} color={color} logoURI={logoURI} />}
+      {icon ? <AssetLogo icon={icon} size={size} /> : <TokenAvatar symbol={symbol} color={color} logoURI={logoURI} size={size} />}
       <View style={styles.mid}>
         <Text style={styles.symbol}>{name}</Text>
         <Text style={styles.sub}>
@@ -47,6 +56,9 @@ export function Holding({
         {usdValue != null && <Text style={styles.value}>{usd(usdValue)}</Text>}
         {pct != null && <Text style={styles.pct}>{pct.toFixed(1)}%</Text>}
       </View>
+      {expandable && (
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} style={styles.chev} />
+      )}
     </View>
   );
 }
@@ -59,4 +71,5 @@ const styles = StyleSheet.create({
   rightCol: { alignItems: "flex-end" },
   value: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   pct: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginTop: 2 },
+  chev: { marginLeft: spacing(1) },
 });
