@@ -25,6 +25,7 @@ import {
   type MultisigInfo,
   type PreparedTx,
 } from "../solana/multisig";
+import { humanizeError } from "../solana/errors";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -90,7 +91,7 @@ export function ManageSignersScreen() {
               ]);
               setAddr("");
             } catch (e) {
-              Alert.alert("Couldn't propose", e instanceof Error ? e.message : "Please try again.");
+              Alert.alert("Couldn't propose", humanizeError(e, { action: "send" }));
             } finally {
               setBusy(false);
             }

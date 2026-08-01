@@ -84,20 +84,36 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
     if (ctx.action === "swap")
       return "Not enough SOL to complete the swap. You need the amount you're swapping plus a little extra SOL (about 0.005) for the network fee and token-account rent. Add SOL or lower the amount.";
     if (ctx.action === "send")
-      return `Not enough balance to send this. Make sure you have enough ${asset}, plus a little SOL (about 0.001) for the network fee.`;
+      return `Not enough to send this. You need enough ${asset}, plus a little SOL (about 0.002) for the network fee — and if the recipient is a brand-new wallet, a bit more to create their token account. Add SOL and try again.`;
     return "Not enough SOL to cover this. Add a little SOL and try again.";
   }
+
+  // Missing token account --------------------------------------------------------
+  if (/could not find account|account does not exist|tokenaccountnotfound|invalid account owner|account not found|incorrect program id/.test(low))
+    return ctx.action === "send"
+      ? "Couldn't set up the recipient's token account. This happens sending to a brand-new wallet — make sure you have a little extra SOL (about 0.002) to create it, then try again."
+      : "That account doesn't exist on-chain yet — it may need to be funded or created first.";
 
   // Simulation failed with no useful logs — almost always the fee payer can't pay -
   if (/simulation failed|transaction simulation/.test(low))
     return ctx.action === "swap"
       ? "The network rejected the swap before running it — this is almost always too little SOL for fees. Make sure you have some SOL beyond the amount you're swapping, then try again."
-      : "The network rejected the transaction before running it — usually too little SOL for fees. Add a little SOL and try again.";
+      : "The network rejected the transaction before running it — usually too little SOL for the network fee (and, for a new recipient, their token-account rent). Add a little SOL and try again.";
+
+  // User cancelled (biometrics / a wallet or dApp prompt) ------------------------
+  if (/user rejected|user cancell?ed|user denied|request rejected|cancell?ed by user|declined/.test(low))
+    return "You cancelled the request — nothing was sent.";
 
   // Bad address ------------------------------------------------------------------
   if (/invalid public key|non-base58|base58|invalid address/.test(low))
     return "That doesn't look like a valid Solana address. Double-check it and paste it again.";
 
-  // Fallback — still readable, no code dump. Raw detail is in the logs above. -----
-  return "Something went wrong and it didn't go through. Please try again in a moment. If it keeps happening, the details are in the app logs.";
+  // Fallback — every path leaves the user with a next step (never a dead end). ----
+  if (ctx.action === "load")
+    return "Couldn't load the latest data — likely a busy or unreachable network. Pull down to refresh or check your connection. A private RPC (EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC) makes this rare.";
+  if (ctx.action === "send" || ctx.action === "swap")
+    return "It didn't go through — usually a momentarily busy network. Wait a few seconds and try again. Check the explorer first to be sure it didn't already land before resending.";
+  if (ctx.action === "airdrop")
+    return "The faucet didn't respond. Wait a minute and try again, or use a web faucet (faucet.solana.com).";
+  return "Something went wrong. Wait a moment and try again — if it keeps happening, check your connection or switch to a private RPC.";
 }

@@ -16,6 +16,7 @@ import {
   type ProposalView,
 } from "../solana/multisig";
 import { multisigConfigured } from "../config/multisig";
+import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -82,7 +83,7 @@ export function TreasuryMultisigScreen() {
               await prepared.send();
               await load();
             } catch (e) {
-              Alert.alert(`${verb} failed`, e instanceof Error ? e.message : "Please try again.");
+              Alert.alert(`${verb} failed`, humanizeError(e, { action: "send" }));
             } finally {
               setBusy(null);
             }

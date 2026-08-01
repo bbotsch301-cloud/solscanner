@@ -20,6 +20,7 @@ import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
 import { useWallet } from "../wallet/WalletContext";
 import { prepareTransfer, type TransferAsset } from "../solana/multisig";
+import { humanizeError } from "../solana/errors";
 import { fetchHoldings } from "../solana/treasury";
 import { fetchTokenMeta } from "../solana/tokens";
 import { vaultPda } from "../config/multisig";
@@ -216,7 +217,7 @@ export function ProposeTransferScreen() {
               await prepared.send();
               setProposed(true);
             } catch (e) {
-              Alert.alert("Couldn't propose", e instanceof Error ? e.message : "Please try again.");
+              Alert.alert("Couldn't propose", humanizeError(e, { action: "send" }));
             } finally {
               setBusy(false);
             }
