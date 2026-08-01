@@ -17,13 +17,14 @@ import { colors, font, radius, spacing } from "../theme";
 const MIN = 6;
 
 /**
- * One-time, skippable offer shown after wallet setup to add an app PIN — the primary
- * lock, which also encrypts every seed on this device. "Not now" leaves it off (and it
- * can still be enabled later in Settings).
+ * Mandatory PIN setup, shown after wallet setup (and to any older wallet that has no
+ * PIN yet). The PIN is the primary lock AND the only thing that encrypts every seed at
+ * rest on this device, so it can't be skipped — a wallet is never left with its recovery
+ * phrase unencrypted. It can still be changed later in Settings.
  */
 export function SetupPinPrompt() {
   const insets = useSafeAreaInsets();
-  const { enablePin, skipPinPrompt } = useWallet();
+  const { enablePin } = useWallet();
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,11 +45,6 @@ export function SetupPinPrompt() {
     }
   };
 
-  const skip = async () => {
-    setBusy(true);
-    await skipPinPrompt();
-  };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -58,10 +54,10 @@ export function SetupPinPrompt() {
         <View style={styles.iconWrap}>
           <Ionicons name="keypad" size={30} color={colors.primary} />
         </View>
-        <Text style={styles.title}>Add a PIN</Text>
+        <Text style={styles.title}>Set your PIN</Text>
         <Text style={styles.sub}>
-          A PIN is your wallet lock and adds a second layer of encryption over your recovery
-          phrase on this device. Recommended. You can change or remove it later in Settings.
+          Your PIN is your wallet lock and encrypts your recovery phrase on this device. It’s
+          required — without it your seed would sit unencrypted. You can change it later in Settings.
         </Text>
       </View>
 
@@ -100,9 +96,6 @@ export function SetupPinPrompt() {
 
       <Pressable onPress={setIt} disabled={busy} style={[styles.primaryBtn, busy && { opacity: 0.7 }]}>
         {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Set PIN</Text>}
-      </Pressable>
-      <Pressable onPress={skip} disabled={busy} style={styles.skipBtn}>
-        <Text style={styles.skipText}>Not now</Text>
       </Pressable>
     </KeyboardAvoidingView>
   );
@@ -153,6 +146,4 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
-  skipBtn: { alignItems: "center", paddingVertical: spacing(3), marginTop: spacing(1) },
-  skipText: { color: colors.textMuted, fontSize: font.body, fontWeight: "700" },
 });

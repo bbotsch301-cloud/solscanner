@@ -67,8 +67,9 @@ export function SendScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
-  const { activeChain, activeAddress, native, assets, sendAsset, refresh: refreshWallet } = useWallet();
+  const { activeChain, activeAddress, native, assets, sendAsset, previewSend, refresh: refreshWallet } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const copyField = async (key: string, value: string) => {
     await Clipboard.setStringAsync(value);
@@ -210,12 +211,28 @@ export function SendScreen() {
     }
   };
 
-  // Confirm with the FULL address shown, so a look-alike / poisoned address is caught.
-  const doSend = () => {
+  // Simulate first (catches a tx that would fail and prices the network fee), then confirm
+  // with the FULL address shown, so a look-alike / poisoned address is caught.
+  const doSend = async () => {
     if (!effectiveTo) return;
+    setPreviewing(true);
+    setError(null);
+    let feeLine = "";
+    try {
+      const p = await previewSend(selected, effectiveTo, amtNum);
+      const perUnit = native.usd != null && native.balance ? native.usd / native.balance : null;
+      const usd = perUnit != null ? ` (~$${(p.feeNative * perUnit).toFixed(2)})` : "";
+      const feeStr = p.feeNative < 0.000001 ? "<0.000001" : p.feeNative.toLocaleString("en-US", { maximumFractionDigits: 6 });
+      feeLine = `\n\nEstimated network fee: ${feeStr} ${p.symbol}${usd}`;
+    } catch (e) {
+      setPreviewing(false);
+      setError(e instanceof Error ? e.message : humanizeError(e, { action: "send", symbol: selected.symbol, native: native.symbol }));
+      return;
+    }
+    setPreviewing(false);
     Alert.alert(
       "Confirm send",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}\n\nDouble-check every character — sends can’t be undone.`,
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}\n\nDouble-check every character — sends can’t be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Send", style: "default", onPress: reallySend },
@@ -390,11 +407,15 @@ export function SendScreen() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
         <Pressable
-          disabled={!valid || sending}
+          disabled={!valid || sending || previewing}
           onPress={doSend}
-          style={[styles.primaryBtn, (!valid || sending) && styles.primaryDisabled]}
+          style={[styles.primaryBtn, (!valid || sending || previewing) && styles.primaryDisabled]}
         >
-          {sending ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryText}>Send</Text>}
+          {sending || previewing ? (
+            <ActivityIndicator color={colors.bg} />
+          ) : (
+            <Text style={styles.primaryText}>Send</Text>
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>

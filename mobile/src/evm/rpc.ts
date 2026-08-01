@@ -66,7 +66,15 @@ export async function waitForTx(chain: ChainDef, hash: string, tries = 40): Prom
   throw new Error("Timed out waiting for the transaction to confirm.");
 }
 
-/** EIP-1559 fee suggestion: 2×baseFee headroom + a priority tip, with fallbacks. */
+const GWEI = 1_000_000_000n;
+// Sanity ceilings: the fee numbers come straight from the RPC, and a malicious or
+// compromised endpoint could return an absurd base/priority to trick the wallet into
+// signing a transaction willing to overpay enormously. These caps are far above any real
+// mainnet gas spike, so honest fees pass untouched while a hostile value is clamped.
+const MAX_PRIORITY = 100n * GWEI; // 100 gwei tip
+const MAX_BASE = 2_000n * GWEI; // 2000 gwei base fee
+
+/** EIP-1559 fee suggestion: 2×baseFee headroom + a priority tip, capped, with fallbacks. */
 export async function getFees(
   chain: ChainDef
 ): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
@@ -90,6 +98,9 @@ export async function getFees(
       base = priority;
     }
   }
+  // Clamp to the ceilings before anyone signs against these numbers.
+  if (priority > MAX_PRIORITY) priority = MAX_PRIORITY;
+  if (base > MAX_BASE) base = MAX_BASE;
   const maxFeePerGas = base * 2n + priority;
   return { maxFeePerGas, maxPriorityFeePerGas: priority };
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,21 +16,44 @@ import { XGOLogo } from "../components/XGOLogo";
 import { colors, font, radius, spacing } from "../theme";
 
 /** Full-screen gate shown at launch when an app PIN is set (seeds are encrypted). */
+function formatWait(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.ceil(s / 60);
+  return m < 60 ? `${m} min` : `${Math.ceil(m / 60)} hr`;
+}
+
 export function PinUnlockScreen() {
   const insets = useSafeAreaInsets();
-  const { unlockWithPin } = useWallet();
+  const { unlockWithPin, pinLockoutMs } = useWallet();
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lockMs, setLockMs] = useState(pinLockoutMs());
+
+  // While locked out, tick down the remaining time so the button re-enables on its own.
+  useEffect(() => {
+    if (lockMs <= 0) return;
+    const id = setInterval(() => setLockMs(pinLockoutMs()), 500);
+    return () => clearInterval(id);
+  }, [lockMs, pinLockoutMs]);
+
+  const lockedOut = lockMs > 0;
 
   const submit = async () => {
-    if (pin.length < 6 || busy) return;
+    if (pin.length < 6 || busy || lockedOut) return;
     setBusy(true);
     setError(null);
     try {
       const ok = await unlockWithPin(pin);
       if (!ok) {
-        setError("Wrong PIN. Try again.");
+        const wait = pinLockoutMs();
+        setLockMs(wait);
+        setError(
+          wait > 0
+            ? `Too many attempts. Try again in ${formatWait(wait)}.`
+            : "Wrong PIN. Try again."
+        );
         setPin("");
       }
     } catch {
@@ -60,17 +83,22 @@ export function PinUnlockScreen() {
         secureTextEntry
         maxLength={32}
         autoFocus
+        editable={!lockedOut}
         style={styles.input}
         onSubmitEditing={submit}
       />
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && (
+        <Text style={styles.error}>
+          {lockedOut ? `Too many attempts. Try again in ${formatWait(lockMs)}.` : error}
+        </Text>
+      )}
 
       <View style={{ flex: 1 }} />
 
       <Pressable
         onPress={submit}
-        disabled={pin.length < 6 || busy}
-        style={[styles.btn, (pin.length < 6 || busy) && styles.btnDisabled]}
+        disabled={pin.length < 6 || busy || lockedOut}
+        style={[styles.btn, (pin.length < 6 || busy || lockedOut) && styles.btnDisabled]}
       >
         {busy ? (
           <ActivityIndicator color={colors.bg} />

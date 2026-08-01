@@ -6,6 +6,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { connection } from "../solana/connection";
 import { getLabel, type Label } from "./labels";
+import { isBlockedSolana } from "./blocklist";
 
 const FRESH_WALLET_DAYS = 7;
 
@@ -28,12 +29,13 @@ export async function assessRecipient(
 ): Promise<RiskReport> {
   const label = getLabel(address);
 
-  // Known blocklist — hard stop, no network needed.
-  if (label?.type === "scam") {
+  // Known blocklist — hard stop, no network needed. Covers both the built-in labels and
+  // the remotely-updatable scam/drainer list.
+  if (label?.type === "scam" || isBlockedSolana(address)) {
     return {
       level: "danger",
       headline: "Flagged address",
-      reasons: ["This address is on a known scam/drainer blocklist."],
+      reasons: ["This address is on a known scam/drainer blocklist — do not send."],
       label,
       exists: true,
     };

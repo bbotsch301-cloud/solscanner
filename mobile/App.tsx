@@ -40,6 +40,7 @@ import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
 import { loadMultisigPref } from "./src/config/multisig";
+import { loadBlocklist } from "./src/safety/blocklist";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -167,6 +168,9 @@ export default function App() {
   // Apply the saved network choice before anything uses the connection.
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    // The blocklist refresh is best-effort and must never delay startup on a slow network,
+    // so it's fired alongside but the app doesn't block on its result (it fails open).
+    loadBlocklist();
     Promise.all([loadNetworkPref(), loadSecurityPref(), loadMultisigPref()]).finally(() => setReady(true));
   }, []);
 

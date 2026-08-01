@@ -428,6 +428,10 @@ export function pinIsUnlocked(): boolean {
 export async function unlockWithPin(pin: string): Promise<boolean> {
   return lock.unlock(pin);
 }
+/** Milliseconds left on a brute-force lockout (0 when a PIN attempt is allowed). */
+export function pinLockoutMs(): number {
+  return lock.lockoutRemainingMs();
+}
 /** Drop the in-memory key (on background / auto-lock). */
 export function lockSeeds(): void {
   lock.lockNow();

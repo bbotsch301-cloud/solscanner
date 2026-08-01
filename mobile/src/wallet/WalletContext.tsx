@@ -34,7 +34,7 @@ import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "..
 import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
 import { fetchEvmNativePrices, stableUsd } from "../evm/prices";
-import { sendNativeEvm, sendTokenEvm } from "../evm/send";
+import { sendNativeEvm, sendTokenEvm, previewEvmSend } from "../evm/send";
 import { executeUnifiedSwap } from "../swap";
 import type { UnifiedQuote } from "../swap/types";
 import {
@@ -53,6 +53,7 @@ import {
   pinIsEnabled,
   pinIsUnlocked,
   unlockWithPin as vaultUnlockWithPin,
+  pinLockoutMs as vaultPinLockoutMs,
   lockSeeds,
   enableAppPin,
   disableAppPin,
@@ -144,6 +145,8 @@ interface WalletState {
   locked: boolean;
   /** Unlock seed access with the PIN. False on a wrong PIN. */
   unlockWithPin: (pin: string) => Promise<boolean>;
+  /** Milliseconds left on a brute-force lockout (0 when an attempt is allowed). */
+  pinLockoutMs: () => number;
   /** Turn on the PIN (encrypts all seeds). */
   enablePin: (pin: string) => Promise<void>;
   /** Turn off the PIN (needs the current PIN). False if it's wrong. */
@@ -175,6 +178,8 @@ interface WalletState {
   sendNative: (to: string, uiAmount: number) => Promise<string>;
   /** Send any asset (native or token) on its chain. */
   sendAsset: (asset: UnifiedAsset, to: string, uiAmount: number) => Promise<string>;
+  /** Simulate a send and return the network fee, before the confirm dialog. */
+  previewSend: (asset: UnifiedAsset, to: string, uiAmount: number) => Promise<{ feeNative: number; symbol: string }>;
   /** Execute a swap on the active chain (signs with the right key), returns tx id/sig. */
   swapExecute: (quote: UnifiedQuote, onStatus?: (s: string) => void) => Promise<string>;
 }
@@ -185,7 +190,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [vault, setVault] = useState<VaultIndex | null>(null);
   const [pinEnabled, setPinEnabled] = useState(false);
-  const [pinPrompted, setPinPromptedState] = useState(isPinPrompted());
+  // PIN is mandatory now, so nothing gates on "was the user prompted?" — we still record it
+  // (harmless) but the value is never read, hence only the setter is bound.
+  const [, setPinPromptedState] = useState(isPinPrompted());
   const [locked, setLocked] = useState(false);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
@@ -604,6 +611,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [sendNative, sendToken, loadChain]
   );
 
+  /**
+   * Dry-run a send before the confirm dialog: on EVM this simulates the transaction
+   * (catching one that would revert) and returns the network fee to display; on Solana
+   * the fee is a fixed ~5000 lamports and the node's preflight simulation at send time
+   * already blocks a doomed transfer before any funds move.
+   */
+  const previewSend = useCallback(
+    async (asset: UnifiedAsset, to: string, uiAmount: number): Promise<{ feeNative: number; symbol: string }> => {
+      const chain = getChain(activeChainRef.current);
+      if (chain.kind === "solana") return { feeNative: 0.000005, symbol: chain.symbol };
+      const acct = evmAccountRef.current;
+      if (!acct) throw new Error("No EVM wallet on this device.");
+      const token =
+        asset.kind === "erc20" && asset.address ? { address: asset.address, decimals: asset.decimals } : undefined;
+      const { feeWei } = await previewEvmSend(chain, acct.address, to, uiAmount, token);
+      return { feeNative: Number(feeWei) / 10 ** chain.decimals, symbol: chain.symbol };
+    },
+    []
+  );
+
   const swapExecute = useCallback(
     async (quote: UnifiedQuote, onStatus?: (s: string) => void): Promise<string> => {
       const chain = getChain(activeChainRef.current);
@@ -708,10 +735,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       pinEnabled,
       locked,
       unlockWithPin,
+      pinLockoutMs: vaultPinLockoutMs,
       enablePin,
       disablePin,
       changePin,
-      shouldPromptPin: vault != null && !pinEnabled && !pinPrompted,
+      // A PIN is mandatory: it's the only thing that encrypts the seed at rest, so every
+      // wallet without one (new OR an older plaintext wallet) is required to set one. This
+      // is a hard gate — there is no "skip" — so a seed is never left unencrypted on disk.
+      shouldPromptPin: vault != null && !pinEnabled,
       skipPinPrompt,
       refresh,
       airdrop,
@@ -727,13 +758,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       assets,
       sendNative,
       sendAsset,
+      previewSend,
       swapExecute,
     };
   }, [
     initializing,
     vault,
     pinEnabled,
-    pinPrompted,
     locked,
     unlockWithPin,
     enablePin,
@@ -768,6 +799,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setActiveChain,
     sendNative,
     sendAsset,
+    previewSend,
     swapExecute,
   ]);
 

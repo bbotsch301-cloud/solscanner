@@ -6,6 +6,7 @@
  */
 import type { ChainDef } from "../chains/registry";
 import { getCode } from "../evm/rpc";
+import { isBlockedEvm } from "./blocklist";
 import type { RiskReport } from "./risk";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -17,6 +18,14 @@ export async function assessEvmRecipient(
   self?: string | null,
   tokenAddress?: string | null
 ): Promise<RiskReport> {
+  if (isBlockedEvm(to)) {
+    return {
+      level: "danger",
+      headline: "Flagged address",
+      reasons: ["This address is on a known scam/drainer blocklist — do not send."],
+      exists: true,
+    };
+  }
   if (eq(to, ZERO)) {
     return { level: "danger", headline: "Burn address", reasons: ["This is the zero address — anything sent here is destroyed forever."], exists: false };
   }

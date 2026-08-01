@@ -18,12 +18,23 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha";
 import * as SecureStore from "expo-secure-store";
 
 const LOCK_META = "solwallet.lock.v1";
+const ATTEMPTS_KEY = "solwallet.lock.attempts.v1";
 const SECURE_OPTS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
 // scrypt cost: memory-hard, strong against PIN brute force, ~0.5–0.8s on-device.
 const SCRYPT = { N: 2 ** 15, r: 8, p: 1, dkLen: 32 } as const;
+
+// Brute-force throttle: the first few misses are free (fat-finger tolerance), then a
+// rising lockout defeats offline/on-device guessing of a short PIN even if the attacker
+// can restart the app (the counter is persisted, not just in memory).
+const FREE_ATTEMPTS = 5;
+const BACKOFF_MS = [30_000, 60_000, 300_000, 900_000, 3_600_000]; // 30s→1m→5m→15m→1h
+function backoffFor(fails: number): number {
+  if (fails <= FREE_ATTEMPTS) return 0;
+  return BACKOFF_MS[Math.min(fails - FREE_ATTEMPTS - 1, BACKOFF_MS.length - 1)];
+}
 
 interface LockMeta {
   v: 1;
@@ -39,6 +50,37 @@ interface LockMeta {
 let dek: Uint8Array | null = null;
 // Cached "is a PIN configured?" so hot paths don't hit SecureStore on every read.
 let enabledCache = false;
+// Failed-attempt state, mirrored from SecureStore so a lockout survives an app restart.
+let attempts: { fails: number; until: number } = { fails: 0, until: 0 };
+
+async function loadAttempts(): Promise<void> {
+  try {
+    const raw = await SecureStore.getItemAsync(ATTEMPTS_KEY);
+    attempts = raw ? (JSON.parse(raw) as { fails: number; until: number }) : { fails: 0, until: 0 };
+  } catch {
+    attempts = { fails: 0, until: 0 };
+  }
+}
+async function saveAttempts(): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(ATTEMPTS_KEY, JSON.stringify(attempts), SECURE_OPTS);
+  } catch {
+    /* best-effort — the in-memory copy still throttles this session */
+  }
+}
+async function resetAttempts(): Promise<void> {
+  attempts = { fails: 0, until: 0 };
+  try {
+    await SecureStore.deleteItemAsync(ATTEMPTS_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Milliseconds remaining on a brute-force lockout (0 when the user may try now). */
+export function lockoutRemainingMs(): number {
+  return Math.max(0, attempts.until - Date.now());
+}
 
 function b64(u: Uint8Array): string {
   return Buffer.from(u).toString("base64");
@@ -62,6 +104,7 @@ export async function loadLockState(): Promise<boolean> {
   } catch {
     enabledCache = false;
   }
+  await loadAttempts(); // restore any in-progress lockout from a previous run
   return enabledCache;
 }
 
@@ -97,21 +140,32 @@ export async function createLock(pin: string): Promise<void> {
     wrappedDek: b64(wrappedDek),
   };
   await SecureStore.setItemAsync(LOCK_META, JSON.stringify(meta), SECURE_OPTS);
+  await resetAttempts();
   dek = newDek;
   enabledCache = true;
 }
 
-/** Derive the KEK from the PIN and unwrap the DEK. False on a wrong PIN. */
+/**
+ * Derive the KEK from the PIN and unwrap the DEK. False on a wrong PIN OR while a
+ * brute-force lockout is active — callers show the remaining time via `lockoutRemainingMs`.
+ * A correct PIN clears the counter; a wrong one advances the escalating lockout.
+ */
 export async function unlock(pin: string): Promise<boolean> {
+  if (lockoutRemainingMs() > 0) return false; // throttled — don't even attempt
   const raw = await SecureStore.getItemAsync(LOCK_META);
   if (!raw) return false;
   const m = JSON.parse(raw) as LockMeta;
   const kek = kdf(pin, unb64(m.salt), m.N, m.r, m.p);
   try {
     dek = xchacha20poly1305(kek, unb64(m.wrapNonce)).decrypt(unb64(m.wrappedDek));
+    if (attempts.fails || attempts.until) await resetAttempts(); // clean slate on success
     return true;
   } catch {
     dek = null; // wrong PIN — AEAD tag rejected
+    attempts.fails += 1;
+    const wait = backoffFor(attempts.fails);
+    attempts.until = wait > 0 ? Date.now() + wait : 0;
+    await saveAttempts();
     return false;
   }
 }
@@ -140,6 +194,7 @@ export async function rewrap(oldPin: string, newPin: string): Promise<boolean> {
 /** Remove the lock metadata (the vault decrypts its seeds to plaintext first). */
 export async function destroyLock(): Promise<void> {
   await SecureStore.deleteItemAsync(LOCK_META);
+  await resetAttempts();
   enabledCache = false;
   dek = null;
 }
