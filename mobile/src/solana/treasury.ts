@@ -9,8 +9,12 @@ import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { connection } from "./connection";
 
-/** The main Global Goshens communal treasury — swap for the dedicated wallet when ready. */
-const GOSHENS_TREASURY = "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
+/**
+ * The main Global Goshens communal treasury. Set `EXPO_PUBLIC_GOSHENS_TREASURY` to the real
+ * treasury address; the fallback is the current placeholder used while testing.
+ */
+const GOSHENS_TREASURY =
+  process.env.EXPO_PUBLIC_GOSHENS_TREASURY || "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
 
 /**
  * The treasury address the app displays on Home + the Treasury tab: always the main Global
