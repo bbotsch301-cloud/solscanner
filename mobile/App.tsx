@@ -25,6 +25,7 @@ import { ManageSignersScreen } from "./src/screens/ManageSignersScreen";
 import { ProposeTransferScreen } from "./src/screens/ProposeTransferScreen";
 import { ConnectMultisigScreen } from "./src/screens/ConnectMultisigScreen";
 import { MultisigScreen } from "./src/screens/MultisigScreen";
+import { MultisigWalletScreen } from "./src/screens/MultisigWalletScreen";
 import { CreateWallet } from "./src/screens/CreateWallet";
 import { ImportWallet } from "./src/screens/ImportWallet";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
@@ -146,6 +147,7 @@ function Root() {
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Wallets" component={WalletsScreen} />
           <Stack.Screen name="Multisig" component={MultisigScreen} />
+          <Stack.Screen name="MultisigWallet" component={MultisigWalletScreen} />
           <Stack.Screen name="TreasuryMultisig" component={TreasuryMultisigScreen} />
           <Stack.Screen name="CreateSquad" component={CreateSquadScreen} />
           <Stack.Screen name="ConnectMultisig" component={ConnectMultisigScreen} />

@@ -22,7 +22,7 @@ import {
 } from "@solana/spl-token";
 import * as multisig from "@sqds/multisig";
 import { connection, solscanAccount } from "./connection";
-import { multisigPubkey, vaultPda, setMultisigAddress } from "../config/multisig";
+import { multisigPubkey, vaultPda, addMultisig } from "../config/multisig";
 
 export interface MultisigMember {
   key: string;
@@ -248,7 +248,7 @@ export async function createMultisig(
   );
 
   const address = multisigPda.toBase58();
-  await setMultisigAddress(address);
+  await addMultisig(address);
   return address;
 }
 

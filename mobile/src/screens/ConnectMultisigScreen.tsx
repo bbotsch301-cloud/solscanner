@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
 import { inspectMultisig, isMember, type MultisigInfo } from "../solana/multisig";
-import { setMultisigAddress } from "../config/multisig";
+import { addMultisig } from "../config/multisig";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -49,13 +49,13 @@ export function ConnectMultisigScreen() {
     if (!found || busy) return;
     setBusy(true);
     try {
-      await setMultisigAddress(found.address);
+      await addMultisig(found.address);
       Alert.alert(
         "Multisig connected",
         isMember(found, solanaAddress)
           ? "You're a signer — you can review and approve its proposals here."
           : "You can view this treasury and its proposals. This account isn't a signer, so approvals happen from a signer's wallet.",
-        [{ text: "View treasury", onPress: () => nav.navigate("TreasuryMultisig") }]
+        [{ text: "View treasury", onPress: () => nav.navigate("MultisigWallet") }]
       );
     } catch (e) {
       Alert.alert("Couldn't connect", e instanceof Error ? e.message : "Please try again.");

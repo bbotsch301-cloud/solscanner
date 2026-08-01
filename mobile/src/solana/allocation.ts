@@ -25,14 +25,17 @@ export function buildAllocation(
   holdings: Holdings | null,
   prices: Record<string, PriceInfo>,
   metas: Record<string, TokenMeta>,
-  ocPrices: OffchainPrices
+  ocPrices: OffchainPrices,
+  /** Include the off-chain silver/dinar (the main treasury). A multisig vault sets this false. */
+  includeOffchain = true
 ): Allocation {
   const solUsd = (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0);
   const sortedTokens = (holdings?.tokens ?? [])
     .map((t) => ({ t, value: t.amount * (prices[t.mint]?.usdPrice ?? 0) }))
     .sort((a, b) => b.value - a.value);
   const tokensUsd = sortedTokens.reduce((s, x) => s + x.value, 0);
-  const offchainUsd = OFFCHAIN_ASSETS.reduce((s, a) => s + offchainValue(a, ocPrices), 0);
+  const offchain = includeOffchain ? OFFCHAIN_ASSETS : [];
+  const offchainUsd = offchain.reduce((s, a) => s + offchainValue(a, ocPrices), 0);
   const total = solUsd + tokensUsd + offchainUsd;
 
   const slices: PieSlice[] = [
@@ -42,7 +45,7 @@ export function buildAllocation(
       value: x.value,
       color: PIE_COLORS[(i + 1) % PIE_COLORS.length],
     })),
-    ...OFFCHAIN_ASSETS.map((a, i) => ({
+    ...offchain.map((a, i) => ({
       label: a.label,
       value: offchainValue(a, ocPrices),
       color: PIE_COLORS[(sortedTokens.length + 1 + i) % PIE_COLORS.length],
