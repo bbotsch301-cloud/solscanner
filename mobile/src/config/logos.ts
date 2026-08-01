@@ -26,9 +26,8 @@ export const solAsset = (mint: string): string => `${TW}/solana/assets/${mint}/l
  * (unpooled pump.fun tokens whose on-chain image is IPFS-only). Add `mint: url` here.
  */
 export const LOGO_OVERRIDES: Record<string, string> = {
-  // Giraffe Coin — best-effort DexScreener CDN; replace with an exact URL if it 404s.
-  "4r4Z6oodFM5VnVgdC8bfVj75UrrFv2vb2ShcuPjRpump":
-    "https://dd.dexscreener.com/ds-data/tokens/solana/4r4Z6oodFM5VnVgdC8bfVj75UrrFv2vb2ShcuPjRpump.png",
+  // Add `mint: "https://…"` here to force a specific logo. (Giraffe's dead DexScreener CDN
+  // override was removed — its real image now resolves on-chain via the pump.fun IPFS gateway.)
 };
 
 /** Curated Solana token logos (the swap defaults), all on the one working pattern. */
