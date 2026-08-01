@@ -8,7 +8,8 @@ import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
-import { isBiometricEnabled, setBiometricEnabled } from "../security/prefs";
+import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled } from "../security/prefs";
+import { requestNotificationPermission } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
@@ -44,7 +45,20 @@ export function SettingsScreen() {
   const { address, reset, pinEnabled } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
   const [biometric, setBiometric] = useState(isBiometricEnabled());
+  const [notifications, setNotifications] = useState(isNotificationsEnabled());
   const [pinAction, setPinAction] = useState<PinAction>(null);
+
+  const toggleNotifications = async (v: boolean) => {
+    if (v) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert("Notifications blocked", "Allow notifications for XGO in your phone's Settings to get receive alerts.");
+        return; // leave the toggle off
+      }
+    }
+    setNotifications(v);
+    await setNotificationsEnabled(v);
+  };
 
   const toggleBiometric = (v: boolean) => {
     setBiometric(v);
@@ -190,6 +204,21 @@ export function SettingsScreen() {
       </View>
 
       <PinActionModal action={pinAction} onClose={() => setPinAction(null)} />
+
+      <Text style={styles.sectionTitle}>Notifications</Text>
+      <View style={styles.group}>
+        <View style={styles.netRow}>
+          <Ionicons name="notifications-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Receive alerts</Text>
+          <Switch
+            value={notifications}
+            onValueChange={toggleNotifications}
+            trackColor={{ true: colors.primary, false: colors.cardBorder }}
+            thumbColor={colors.text}
+          />
+        </View>
+        <Text style={styles.hint}>Get a notification whenever funds arrive while the app is open.</Text>
+      </View>
 
       <Text style={styles.sectionTitle}>Connections</Text>
       <View style={styles.group}>

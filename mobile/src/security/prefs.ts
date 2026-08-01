@@ -9,12 +9,19 @@ import * as SecureStore from "expo-secure-store";
  */
 const BIOMETRIC_KEY = "solwallet.biometric.v1";
 const PIN_PROMPTED_KEY = "solwallet.pinPrompted.v1";
+const NOTIFICATIONS_KEY = "solwallet.notifications.v1";
 
 let biometricEnabled = false;
 let pinPrompted = false;
+let notificationsEnabled = false;
 
 export function isBiometricEnabled(): boolean {
   return biometricEnabled;
+}
+
+/** True if the user turned on "notify me when funds arrive" (off by default). */
+export function isNotificationsEnabled(): boolean {
+  return notificationsEnabled;
 }
 
 /** True once the user has been offered to set a PIN (so we only offer once). */
@@ -24,14 +31,25 @@ export function isPinPrompted(): boolean {
 
 export async function loadSecurityPref(): Promise<void> {
   try {
-    const [bio, prompted] = await Promise.all([
+    const [bio, prompted, notif] = await Promise.all([
       SecureStore.getItemAsync(BIOMETRIC_KEY),
       SecureStore.getItemAsync(PIN_PROMPTED_KEY),
+      SecureStore.getItemAsync(NOTIFICATIONS_KEY),
     ]);
     biometricEnabled = bio === "on"; // default off unless explicitly enabled
     pinPrompted = prompted === "1";
+    notificationsEnabled = notif === "on";
   } catch {
     /* keep defaults (biometric off, not prompted) */
+  }
+}
+
+export async function setNotificationsEnabled(v: boolean): Promise<void> {
+  notificationsEnabled = v;
+  try {
+    await SecureStore.setItemAsync(NOTIFICATIONS_KEY, v ? "on" : "off");
+  } catch {
+    /* best-effort */
   }
 }
 

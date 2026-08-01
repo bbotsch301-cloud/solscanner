@@ -48,6 +48,7 @@ import { loadApprovals } from "./src/safety/approvals";
 import { loadContacts } from "./src/contacts/contacts";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { haptics } from "./src/ui/haptics";
+import { configureNotifications } from "./src/ui/notifications";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -204,6 +205,7 @@ export default function App() {
     // The blocklist refresh is best-effort and must never delay startup on a slow network,
     // so it's fired alongside but the app doesn't block on its result (it fails open).
     loadBlocklist();
+    configureNotifications();
     Promise.all([
       loadNetworkPref(),
       loadSecurityPref(),

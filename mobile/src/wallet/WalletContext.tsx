@@ -62,8 +62,9 @@ import {
   type SeedMeta,
   type AccountRef,
 } from "./vault";
-import { isPinPrompted, setPinPrompted, clearPinPrompted } from "../security/prefs";
+import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
+import { notifyReceived } from "../ui/notifications";
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
@@ -226,9 +227,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const evmAccountRef = useRef<EvmAccount | null>(null);
   const activeChainRef = useRef<ChainId>(DEFAULT_CHAIN);
   const lastActivityRef = useRef(0); // stamped on mount in the inactivity effect below
+  // Receive-notification state: last-known per-asset balances for the active address, and the
+  // time of the user's last send/swap (to suppress "received" for their own outgoing/swap moves).
+  const balanceBaselineRef = useRef<{ addr: string; amounts: Record<string, number> } | null>(null);
+  const lastActionRef = useRef(0);
   keypairRef.current = keypair;
   evmAccountRef.current = evmAccount;
   activeChainRef.current = activeChainId;
+
+  // Compare the freshly-loaded balances for `addr` against the last snapshot; any positive delta
+  // fires a local "Received X" notification (only when enabled, not right after the user's own
+  // action, and never on the first load of an address). Then re-snapshots.
+  const detectReceipts = useCallback(
+    (addr: string, entries: { key: string; symbol: string; amount: number; priceUsd?: number | null }[]) => {
+      const prev = balanceBaselineRef.current;
+      const amounts: Record<string, number> = {};
+      for (const e of entries) amounts[e.key] = e.amount;
+      const quiet = Date.now() - lastActionRef.current < 12_000;
+      if (prev?.addr === addr && isNotificationsEnabled() && !quiet) {
+        for (const e of entries) {
+          const delta = e.amount - (prev.amounts[e.key] ?? 0);
+          if (delta > 1e-9) {
+            notifyReceived({ symbol: e.symbol, amount: delta, usd: e.priceUsd != null ? e.priceUsd * delta : null });
+          }
+        }
+      }
+      balanceBaselineRef.current = { addr, amounts };
+    },
+    []
+  );
 
   // Drop all in-memory key material and require the PIN again. Used by both the
   // background lock and the inactivity timer.
@@ -277,16 +304,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setTokens(spl);
 
     const mints = spl.map((t) => t.mint);
-    const [, metas] = await Promise.all([
-      fetchPrices([WSOL_MINT, ...mints])
-        .then(setPrices)
-        .catch(() => {}),
+    const [priceRes, metas] = await Promise.all([
+      fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
       fetchTokenMetas(mints).catch(() => ({}) as Record<string, never>),
     ]);
+    setPrices(priceRes);
     if (metas && Object.keys(metas).length) {
       setTokens(spl.map((t) => ({ ...t, ...metas[t.mint] })));
     }
-  }, []);
+
+    detectReceipts(pubkey.toBase58(), [
+      { key: "native:SOL", symbol: "SOL", amount: lamports / LAMPORTS_PER_SOL, priceUsd: priceRes[WSOL_MINT]?.usdPrice ?? null },
+      ...spl.map((t) => ({
+        key: t.mint,
+        symbol: metas[t.mint]?.symbol ?? t.mint.slice(0, 4),
+        amount: t.amount,
+        priceUsd: priceRes[t.mint]?.usdPrice ?? null,
+      })),
+    ]);
+  }, [detectReceipts]);
 
   const fetchEvm = useCallback(async (chain: ChainDef, acct: EvmAccount) => {
     const [nativeWei, toks, evPrices] = await Promise.all([
@@ -294,10 +330,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       fetchEvmTokenBalances(chain, acct.address),
       fetchEvmNativePrices(),
     ]);
-    setEvmNative(Number(nativeWei) / 10 ** chain.decimals);
+    const nativeAmt = Number(nativeWei) / 10 ** chain.decimals;
+    setEvmNative(nativeAmt);
     setEvmTokens(toks);
     setEvmPrices(evPrices);
-  }, []);
+
+    detectReceipts(acct.address, [
+      { key: "native", symbol: chain.symbol, amount: nativeAmt, priceUsd: evPrices[chain.symbol] ?? null },
+      ...toks
+        .filter((tb) => tb.balance > 0)
+        .map((tb) => ({ key: tb.token.address, symbol: tb.token.symbol, amount: tb.balance, priceUsd: stableUsd(tb.token.symbol) })),
+    ]);
+  }, [detectReceipts]);
 
   /** Load balances for a specific chain (used by refresh + chain switch). */
   const loadChain = useCallback(
@@ -409,6 +453,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }, 30_000);
     return () => clearInterval(id);
   }, [lockNow]);
+
+  // Receive notifications: while enabled and foregrounded, refresh balances on a slow cadence so
+  // incoming funds are caught "live" (the balance-diff in fetchBalances/fetchEvm fires the alert).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (isNotificationsEnabled() && AppState.currentState === "active") refresh();
+    }, 45_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   const unlockWithPin = useCallback(
     async (pin: string): Promise<boolean> => {
@@ -628,6 +681,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const sendAsset = useCallback(
     async (asset: UnifiedAsset, to: string, uiAmount: number): Promise<string> => {
+      lastActionRef.current = Date.now(); // suppress a "received" from our own balance change
       const chain = getChain(activeChainRef.current);
       if (asset.kind === "native") return sendNative(to, uiAmount);
       if (asset.kind === "spl") return sendToken(asset.mint!, to, uiAmount, asset.decimals);
@@ -682,6 +736,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const swapExecute = useCallback(
     async (quote: UnifiedQuote, onStatus?: (s: string) => void): Promise<string> => {
+      lastActionRef.current = Date.now(); // a swap's output isn't a "received" — suppress it
       const chain = getChain(activeChainRef.current);
       const signer = chain.kind === "solana" ? keypairRef.current : evmAccountRef.current;
       if (!signer) throw new Error("No wallet for this chain.");
