@@ -87,12 +87,22 @@ export function ImportWallet({ onDone, onCancel }: { onDone: () => void; onCance
         contentContainerStyle={{ paddingBottom: spacing(4) }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.subRow}>
-          <Text style={styles.sub}>
-            Enter your 12- or 24-word recovery phrase, with a space between each word.
+        <View style={styles.hero}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="download" size={28} color={colors.primary} />
+          </View>
+          <Text style={styles.heroTitle}>Import a wallet</Text>
+          <Text style={styles.heroSub}>
+            Restore an existing wallet from its recovery phrase. We&apos;ll scan for your accounts
+            automatically.
           </Text>
-          <HelpTip topic="seedPhrase" size={20} />
         </View>
+
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Recovery phrase</Text>
+          <HelpTip topic="seedPhrase" size={18} />
+        </View>
+        <Text style={styles.labelHint}>12 or 24 words, a space between each.</Text>
 
         <TextInput
           value={phrase}
@@ -173,8 +183,22 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(5) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  subRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing(2), marginTop: spacing(6) },
-  sub: { flex: 1, color: colors.textMuted, fontSize: font.body, lineHeight: 22 },
+  hero: { alignItems: "center", gap: spacing(2), marginTop: spacing(6) },
+  iconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary + "22",
+    borderWidth: 1,
+    borderColor: colors.primary + "44",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTitle: { color: colors.text, fontSize: font.h2, fontWeight: "900", marginTop: spacing(2) },
+  heroSub: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 22, paddingHorizontal: spacing(2) },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), marginTop: spacing(8) },
+  label: { color: colors.text, fontSize: font.body, fontWeight: "800" },
+  labelHint: { color: colors.textFaint, fontSize: font.small, marginTop: spacing(1) },
   advancedRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   input: {
     backgroundColor: colors.card,
@@ -186,7 +210,7 @@ const styles = StyleSheet.create({
     fontSize: font.h3,
     minHeight: 120,
     textAlignVertical: "top",
-    marginTop: spacing(4),
+    marginTop: spacing(3),
   },
   count: { color: colors.textFaint, fontSize: font.small, marginTop: spacing(2), textAlign: "right" },
   advancedToggle: {

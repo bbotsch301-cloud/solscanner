@@ -183,6 +183,7 @@ export function WalletsScreen() {
         <Pressable style={styles.backdrop} onPress={() => setRenaming(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Rename wallet</Text>
+            <Text style={styles.modalSub}>Give this wallet a name you&apos;ll recognize.</Text>
             <TextInput
               value={renaming?.label ?? ""}
               onChangeText={(label) => setRenaming((r) => (r ? { ...r, label } : r))}
@@ -190,6 +191,11 @@ export function WalletsScreen() {
               placeholderTextColor={colors.textFaint}
               style={styles.modalInput}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (renaming) renameWallet(renaming.id, renaming.label);
+                setRenaming(null);
+              }}
             />
             <Pressable
               onPress={() => {
@@ -199,6 +205,9 @@ export function WalletsScreen() {
               style={styles.primaryBtn}
             >
               <Text style={styles.primaryText}>Save</Text>
+            </Pressable>
+            <Pressable onPress={() => setRenaming(null)} style={styles.modalCancel}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -281,7 +290,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing(5),
   },
-  modalTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800", marginBottom: spacing(3) },
+  modalTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
+  modalSub: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(1), marginBottom: spacing(4) },
+  modalCancel: { alignItems: "center", paddingVertical: spacing(3), marginTop: spacing(1) },
+  modalCancelText: { color: colors.textMuted, fontSize: font.body, fontWeight: "700" },
   modalInput: {
     backgroundColor: colors.card,
     borderWidth: 1,
