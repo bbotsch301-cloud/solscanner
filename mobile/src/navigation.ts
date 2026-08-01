@@ -10,6 +10,7 @@ export type RootStackParamList = {
   Receive: undefined;
   Swap: undefined;
   Backup: undefined;
+  TreasuryMultisig: undefined;
   Activity: undefined;
   Govern: undefined;
   Settings: undefined;

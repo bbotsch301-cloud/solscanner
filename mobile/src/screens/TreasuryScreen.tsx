@@ -1,4 +1,5 @@
 import * as Clipboard from "expo-clipboard";
+import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -17,6 +18,7 @@ import { multisigConfigured } from "../config/multisig";
 import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
 import { useWallet } from "../wallet/WalletContext";
 import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
+import type { RootNav } from "../navigation";
 
 const SOL_LOGO = nativeLogo.solana;
 
@@ -40,6 +42,7 @@ export function TreasuryScreen() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const { solanaAddress } = useWallet();
+  const nav = useNavigation<RootNav>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,20 +132,21 @@ export function TreasuryScreen() {
       </Pressable>
 
       {msInfo && (
-        <View style={styles.msCard}>
+        <Pressable style={styles.msCard} onPress={() => nav.navigate("TreasuryMultisig")}>
           <View style={styles.msHead}>
             <Ionicons name="people-circle-outline" size={18} color={colors.accent} />
             <Text style={styles.msTitle}>Squads multisig</Text>
             <Text style={styles.msThreshold}>
               {msInfo.threshold} of {msInfo.members.length}
             </Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
           </View>
           <Text style={styles.msSub}>
             {isMember(msInfo, solanaAddress)
-              ? "You're a signer — proposals need this many approvals to spend."
-              : "View only — you're not a signer on this treasury."}
+              ? "You're a signer — tap to review & approve proposals."
+              : "View only — tap to see pending proposals."}
           </Text>
-        </View>
+        </Pressable>
       )}
 
       {holdings && slices.length > 0 && (

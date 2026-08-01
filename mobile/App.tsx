@@ -20,6 +20,7 @@ import { SwapScreen } from "./src/screens/SwapScreen";
 import { TokenDetailScreen } from "./src/screens/TokenDetailScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
 import { WalletsScreen } from "./src/screens/WalletsScreen";
+import { TreasuryMultisigScreen } from "./src/screens/TreasuryMultisigScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
 import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
@@ -123,6 +124,7 @@ function Root() {
           <Stack.Screen name="TokenDetail" component={TokenDetailScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
           <Stack.Screen name="Wallets" component={WalletsScreen} />
+          <Stack.Screen name="TreasuryMultisig" component={TreasuryMultisigScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
