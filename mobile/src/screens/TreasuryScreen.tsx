@@ -5,16 +5,19 @@ import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { PieChart, PIE_COLORS, type PieSlice } from "../components/PieChart";
 import { fetchHoldings, TREASURY_ADDRESS, type Holdings } from "../solana/treasury";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
 import { solscanAccount, CLUSTER } from "../solana/connection";
+import { nativeLogo } from "../config/logos";
+import { OFFCHAIN_ASSETS } from "../config/treasuryAssets";
 import { compact, colors, font, radius, shortAddress, spacing } from "../theme";
 
-const SOL_LOGO =
-  "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
+const SOL_LOGO = nativeLogo.solana;
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
 
 export function TreasuryScreen() {
   const insets = useSafeAreaInsets();
@@ -48,11 +51,27 @@ export function TreasuryScreen() {
   }, [load]);
 
   const solUsd = (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0);
-  const tokensUsd = (holdings?.tokens ?? []).reduce(
-    (s, t) => s + t.amount * (prices[t.mint]?.usdPrice ?? 0),
-    0
-  );
-  const total = solUsd + tokensUsd;
+  const sortedTokens = (holdings?.tokens ?? [])
+    .map((t) => ({ t, value: t.amount * (prices[t.mint]?.usdPrice ?? 0) }))
+    .sort((a, b) => b.value - a.value);
+  const tokensUsd = sortedTokens.reduce((s, x) => s + x.value, 0);
+  const offchainUsd = OFFCHAIN_ASSETS.reduce((s, a) => s + a.valueUsd, 0);
+  const total = solUsd + tokensUsd + offchainUsd;
+
+  // Allocation slices: SOL, each token, each off-chain asset — colored from the palette.
+  const slices: PieSlice[] = [
+    { label: "SOL", value: solUsd, color: PIE_COLORS[0] },
+    ...sortedTokens.map((x, i) => ({
+      label: metas[x.t.mint]?.symbol ?? shortAddress(x.t.mint, 3, 3),
+      value: x.value,
+      color: PIE_COLORS[(i + 1) % PIE_COLORS.length],
+    })),
+    ...OFFCHAIN_ASSETS.map((a, i) => ({
+      label: a.label,
+      value: a.valueUsd,
+      color: PIE_COLORS[(sortedTokens.length + 1 + i) % PIE_COLORS.length],
+    })),
+  ].filter((s) => s.value > 0);
 
   return (
     <ScrollView
@@ -91,6 +110,15 @@ export function TreasuryScreen() {
         <Text style={styles.verifyText}>Public & verifiable on-chain — view on Solscan ↗</Text>
       </Pressable>
 
+      {holdings && slices.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Allocation</Text>
+          <View style={styles.chartCard}>
+            <PieChart data={slices} centerValue={usd(total)} centerLabel="Total" />
+          </View>
+        </>
+      )}
+
       <Text style={styles.sectionTitle}>Holdings</Text>
       <View style={styles.list}>
         <Holding
@@ -98,29 +126,41 @@ export function TreasuryScreen() {
           name="Solana"
           amount={holdings?.sol ?? 0}
           usdValue={solUsd}
+          pct={pctOf(solUsd, total)}
           logoURI={SOL_LOGO}
           color={colors.accent}
         />
-        {(holdings?.tokens ?? [])
-          .slice()
-          .sort((a, b) => b.amount * (prices[b.mint]?.usdPrice ?? 0) - a.amount * (prices[a.mint]?.usdPrice ?? 0))
-          .map((t) => {
-            const meta = metas[t.mint];
-            const price = prices[t.mint]?.usdPrice;
-            return (
-              <View key={t.mint}>
-                <View style={styles.divider} />
-                <Holding
-                  symbol={meta?.symbol ?? t.mint.slice(0, 3)}
-                  name={meta?.name ?? shortAddress(t.mint, 4, 4)}
-                  amount={t.amount}
-                  usdValue={price != null ? t.amount * price : undefined}
-                  logoURI={meta?.logoURI}
-                  color={colors.primary}
-                />
-              </View>
-            );
-          })}
+        {sortedTokens.map(({ t, value }) => {
+          const meta = metas[t.mint];
+          const price = prices[t.mint]?.usdPrice;
+          return (
+            <View key={t.mint}>
+              <View style={styles.divider} />
+              <Holding
+                symbol={meta?.symbol ?? t.mint.slice(0, 3)}
+                name={meta?.name ?? shortAddress(t.mint, 4, 4)}
+                amount={t.amount}
+                usdValue={price != null ? value : undefined}
+                pct={pctOf(value, total)}
+                logoURI={meta?.logoURI}
+                color={colors.primary}
+              />
+            </View>
+          );
+        })}
+        {OFFCHAIN_ASSETS.map((a) => (
+          <View key={a.label}>
+            <View style={styles.divider} />
+            <Holding
+              symbol={a.category}
+              name={a.label}
+              usdValue={a.valueUsd}
+              pct={pctOf(a.valueUsd, total)}
+              color={colors.accent}
+              offchain
+            />
+          </View>
+        ))}
       </View>
 
       <Text style={styles.note}>
@@ -136,24 +176,33 @@ function Holding({
   name,
   amount,
   usdValue,
+  pct,
   logoURI,
   color,
+  offchain,
 }: {
   symbol: string;
   name: string;
-  amount: number;
+  amount?: number;
   usdValue?: number;
+  pct?: number;
   logoURI?: string;
   color: string;
+  offchain?: boolean;
 }) {
   return (
     <View style={styles.row}>
       <TokenAvatar symbol={symbol} color={color} logoURI={logoURI} />
       <View style={styles.mid}>
         <Text style={styles.symbol}>{name}</Text>
-        <Text style={styles.sub}>{compact(amount)} {symbol}</Text>
+        <Text style={styles.sub}>
+          {offchain ? `${symbol} · off-chain` : `${compact(amount ?? 0)} ${symbol}`}
+        </Text>
       </View>
-      {usdValue != null && <Text style={styles.value}>{usd(usdValue)}</Text>}
+      <View style={styles.rightCol}>
+        {usdValue != null && <Text style={styles.value}>{usd(usdValue)}</Text>}
+        {pct != null && <Text style={styles.pct}>{pct.toFixed(1)}%</Text>}
+      </View>
     </View>
   );
 }
@@ -178,12 +227,15 @@ const styles = StyleSheet.create({
     marginTop: spacing(4),
     marginBottom: spacing(3),
   },
+  chartCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4) },
   list: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(4) },
   row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
   mid: { flex: 1, gap: 2 },
   symbol: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
   sub: { color: colors.textMuted, fontSize: font.small },
+  rightCol: { alignItems: "flex-end" },
   value: { color: colors.text, fontSize: font.h3, fontWeight: "700" },
+  pct: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginTop: 2 },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   note: { color: colors.textFaint, fontSize: font.small, lineHeight: 18, marginTop: spacing(5) },
 });
