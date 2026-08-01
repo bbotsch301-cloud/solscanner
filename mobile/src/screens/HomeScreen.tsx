@@ -86,15 +86,6 @@ export function HomeScreen() {
 
       <ChainSwitcher />
 
-      {(IS_MAINNET || !isSolana) && (
-        <View style={styles.mainnetBanner}>
-          <Ionicons name="warning" size={15} color={colors.negative} />
-          <Text style={styles.mainnetText}>
-            {isSolana ? "Solana Mainnet" : activeChain.name} — real funds. Double-check every transaction.
-          </Text>
-        </View>
-      )}
-
       <BalanceCard
         solBalance={native.balance}
         symbol={native.symbol}
@@ -230,8 +221,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   headerTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
-  mainnetBanner: { flexDirection: "row", alignItems: "center", gap: spacing(2), backgroundColor: colors.negative + "1A", borderWidth: 1, borderColor: colors.negative + "44", borderRadius: radius.md, padding: spacing(3), marginBottom: spacing(4) },
-  mainnetText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "700" },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",
