@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import {
   Keypair,
@@ -47,6 +48,14 @@ import {
   renameSeed,
   markSeedBackedUp,
   clearVault,
+  loadLockState,
+  pinIsEnabled,
+  pinIsUnlocked,
+  unlockWithPin as vaultUnlockWithPin,
+  lockSeeds,
+  enableAppPin,
+  disableAppPin,
+  changeAppPin,
   type VaultIndex,
   type SeedMeta,
   type AccountRef,
@@ -123,6 +132,22 @@ interface WalletState {
   /** Remove a whole wallet (seed) and all its accounts. */
   removeWallet: (seedId: string) => Promise<void>;
   renameWallet: (seedId: string, label: string) => Promise<void>;
+
+  // ---- App PIN (optional second encryption layer over every seed) ----
+  /** True when a wallet exists (even if currently locked). */
+  hasWallet: boolean;
+  /** True when an app PIN is configured. */
+  pinEnabled: boolean;
+  /** True when a PIN is set but seeds aren't unlocked yet this session. */
+  locked: boolean;
+  /** Unlock seed access with the PIN. False on a wrong PIN. */
+  unlockWithPin: (pin: string) => Promise<boolean>;
+  /** Turn on the PIN (encrypts all seeds). */
+  enablePin: (pin: string) => Promise<void>;
+  /** Turn off the PIN (needs the current PIN). False if it's wrong. */
+  disablePin: (pin: string) => Promise<boolean>;
+  /** Change the PIN. False if the current PIN is wrong. */
+  changePin: (oldPin: string, newPin: string) => Promise<boolean>;
   refresh: () => Promise<void>;
   airdrop: () => Promise<void>;
   send: (to: string, sol: number) => Promise<string>;
@@ -153,6 +178,8 @@ const WalletContext = createContext<WalletState | null>(null);
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [vault, setVault] = useState<VaultIndex | null>(null);
+  const [pinEnabled, setPinEnabled] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [keypair, setKeypair] = useState<Keypair | null>(null);
   const [evmAccount, setEvmAccount] = useState<EvmAccount | null>(null);
   const [needsBackup, setNeedsBackupState] = useState(false);
@@ -287,6 +314,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
+        // Learn whether a PIN is set BEFORE touching seeds (they may be encrypted).
+        const hasPin = await loadLockState();
+        setPinEnabled(hasPin);
         const [v, savedChain] = await Promise.all([
           loadVault(),
           SecureStore.getItemAsync(ACTIVE_CHAIN_KEY).catch(() => null),
@@ -296,9 +326,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         activeChainRef.current = startChain;
         if (v) {
           setVault(v);
-          const meta = v.seeds.find((s) => s.id === v.active.seedId);
-          setNeedsBackupState(meta?.needsBackup ?? false);
-          await applyActive(v.active);
+          if (hasPin && !pinIsUnlocked()) {
+            // A wallet exists but its seeds are encrypted — wait for the PIN before
+            // deriving anything. Root shows the PIN unlock screen (not onboarding).
+            setLocked(true);
+          } else {
+            const meta = v.seeds.find((s) => s.id === v.active.seedId);
+            setNeedsBackupState(meta?.needsBackup ?? false);
+            await applyActive(v.active);
+          }
         }
       } catch {
         /* leave keypair null → onboarding; never hang on the splash screen */
@@ -307,6 +343,54 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     })();
   }, [applyActive]);
+
+  // Auto-lock seed access whenever the app is backgrounded (only if a PIN is set).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" && pinIsEnabled()) {
+        lockSeeds();
+        setLocked(true);
+        setKeypair(null);
+        keypairRef.current = null;
+        setEvmAccount(null);
+        evmAccountRef.current = null;
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const unlockWithPin = useCallback(
+    async (pin: string): Promise<boolean> => {
+      const ok = await vaultUnlockWithPin(pin);
+      if (!ok) return false;
+      setLocked(false);
+      const v = (await loadVault()) ?? vault;
+      if (v) {
+        setVault(v);
+        const meta = v.seeds.find((s) => s.id === v.active.seedId);
+        setNeedsBackupState(meta?.needsBackup ?? false);
+        await applyActive(v.active);
+      }
+      return true;
+    },
+    [applyActive, vault]
+  );
+
+  const enablePin = useCallback(async (pin: string) => {
+    await enableAppPin(pin);
+    setPinEnabled(true);
+    setLocked(false);
+  }, []);
+
+  const disablePin = useCallback(async (pin: string): Promise<boolean> => {
+    const ok = await disableAppPin(pin);
+    if (ok) setPinEnabled(false);
+    return ok;
+  }, []);
+
+  const changePin = useCallback(async (oldPin: string, newPin: string): Promise<boolean> => {
+    return changeAppPin(oldPin, newPin);
+  }, []);
 
   const syncBackupFlag = useCallback((v: VaultIndex) => {
     const meta = v.seeds.find((s) => s.id === v.active.seedId);
@@ -604,6 +688,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       addAccount,
       removeWallet,
       renameWallet,
+      hasWallet: vault != null,
+      pinEnabled,
+      locked,
+      unlockWithPin,
+      enablePin,
+      disablePin,
+      changePin,
       refresh,
       airdrop,
       send,
@@ -623,6 +714,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [
     initializing,
     vault,
+    pinEnabled,
+    locked,
+    unlockWithPin,
+    enablePin,
+    disablePin,
+    changePin,
     keypair,
     evmAccount,
     needsBackup,

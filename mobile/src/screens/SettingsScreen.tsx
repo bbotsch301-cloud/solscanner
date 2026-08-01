@@ -9,6 +9,7 @@ import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
 import { isBiometricEnabled, setBiometricEnabled } from "../security/prefs";
+import { PinActionModal, type PinAction } from "../components/PinActionModal";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 function Row({
@@ -40,9 +41,10 @@ export function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
   const { lock } = useAuth();
-  const { address, reset } = useWallet();
+  const { address, reset, pinEnabled } = useWallet();
   const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
   const [biometric, setBiometric] = useState(isBiometricEnabled());
+  const [pinAction, setPinAction] = useState<PinAction>(null);
 
   const toggleBiometric = (v: boolean) => {
     setBiometric(v);
@@ -166,7 +168,24 @@ export function SettingsScreen() {
             <Row icon="lock-closed" label="Lock wallet now" onPress={lock} />
           </>
         )}
+        <View style={styles.divider} />
+        {pinEnabled ? (
+          <>
+            <Row icon="keypad-outline" label="Change PIN" onPress={() => setPinAction("change")} />
+            <View style={styles.divider} />
+            <Row icon="keypad-outline" label="Turn off app PIN" danger onPress={() => setPinAction("disable")} />
+          </>
+        ) : (
+          <Row
+            icon="keypad-outline"
+            label="Set up app PIN"
+            value="Encrypts wallets"
+            onPress={() => setPinAction("set")}
+          />
+        )}
       </View>
+
+      <PinActionModal action={pinAction} onClose={() => setPinAction(null)} />
 
       <Text style={styles.sectionTitle}>Connections</Text>
       <View style={styles.group}>

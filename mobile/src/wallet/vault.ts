@@ -23,6 +23,7 @@ import {
   validateMnemonic,
 } from "./mnemonic";
 import { deriveEvmAccount, type EvmAccount } from "./evm";
+import * as lock from "./lock";
 
 const INDEX_KEY = "solwallet.vault.v2";
 const HARDENED = "solwallet.hardened.v1";
@@ -63,6 +64,21 @@ export interface VaultIndex {
 const seedKey = (id: string, part: "mnemonic" | "passphrase" | "secretKey") =>
   `solwallet.seed.${id}.${part}`;
 
+type SecretPart = "mnemonic" | "passphrase" | "secretKey";
+
+/** Store a seed secret — encrypted under the app PIN when one is set, else plaintext. */
+async function putSecret(id: string, part: SecretPart, value: string): Promise<void> {
+  const stored = lock.pinEnabled() ? lock.encryptSecret(value) : value;
+  await SecureStore.setItemAsync(seedKey(id, part), stored, SECURE_OPTS);
+}
+
+/** Read a seed secret — decrypting under the app PIN when one is set. Null if absent. */
+async function getSecret(id: string, part: SecretPart): Promise<string | null> {
+  const raw = await SecureStore.getItemAsync(seedKey(id, part));
+  if (raw == null) return null;
+  return lock.pinEnabled() ? lock.decryptSecret(raw) : raw;
+}
+
 /** Random, non-secret id using the OS CSPRNG (never Math.random). */
 function newSeedId(): string {
   const b = new Uint8Array(8);
@@ -99,11 +115,11 @@ async function migrateV1(): Promise<VaultIndex | null> {
 
   if (mnemonic) {
     const passphrase = await SecureStore.getItemAsync(V1_PASSPHRASE);
-    await SecureStore.setItemAsync(seedKey(id, "mnemonic"), mnemonic, SECURE_OPTS);
-    if (passphrase) await SecureStore.setItemAsync(seedKey(id, "passphrase"), passphrase, SECURE_OPTS);
+    await putSecret(id, "mnemonic", mnemonic);
+    if (passphrase) await putSecret(id, "passphrase", passphrase);
     meta = { id, label: "Wallet 1", kind: "mnemonic", hasPassphrase: !!passphrase, accounts: [0], needsBackup };
   } else {
-    await SecureStore.setItemAsync(seedKey(id, "secretKey"), legacy!, SECURE_OPTS);
+    await putSecret(id, "secretKey", legacy!);
     meta = { id, label: "Wallet 1", kind: "legacyKey", hasPassphrase: false, accounts: [0], needsBackup: false };
   }
 
@@ -136,9 +152,9 @@ export async function loadVault(): Promise<VaultIndex | null> {
 
 async function seedSecret(id: string) {
   const [mnemonic, passphrase, secretKey] = await Promise.all([
-    SecureStore.getItemAsync(seedKey(id, "mnemonic")),
-    SecureStore.getItemAsync(seedKey(id, "passphrase")),
-    SecureStore.getItemAsync(seedKey(id, "secretKey")),
+    getSecret(id, "mnemonic"),
+    getSecret(id, "passphrase"),
+    getSecret(id, "secretKey"),
   ]);
   return { mnemonic, passphrase: passphrase ?? "", secretKey };
 }
@@ -215,7 +231,7 @@ export async function activeSeedMeta(): Promise<SeedMeta | null> {
 export async function activeMnemonic(): Promise<string | null> {
   const v = await readIndex();
   if (!v) return null;
-  return getSeedMnemonic(v.active.seedId);
+  return getSecret(v.active.seedId, "mnemonic");
 }
 
 /** True if the active seed has a passphrase. */
@@ -245,8 +261,8 @@ export async function setActive(ref: AccountRef): Promise<VaultIndex> {
 export async function addNewSeed(passphrase = ""): Promise<{ vault: VaultIndex; seedId: string }> {
   const mnemonic = generateMnemonic(); // entropy-guarded inside
   const id = newSeedId();
-  await SecureStore.setItemAsync(seedKey(id, "mnemonic"), mnemonic, SECURE_OPTS);
-  if (passphrase) await SecureStore.setItemAsync(seedKey(id, "passphrase"), passphrase, SECURE_OPTS);
+  await putSecret(id, "mnemonic", mnemonic);
+  if (passphrase) await putSecret(id, "passphrase", passphrase);
 
   const expected = keypairFromMnemonic(mnemonic, passphrase, 0).publicKey.toBase58();
   const check = await deriveAccount(id, 0);
@@ -282,8 +298,8 @@ export async function importSeed(
     throw new Error("That recovery phrase isn't valid. Check for typos and that it's 12 or 24 words in order.");
   }
   const id = newSeedId();
-  await SecureStore.setItemAsync(seedKey(id, "mnemonic"), phrase, SECURE_OPTS);
-  if (passphrase) await SecureStore.setItemAsync(seedKey(id, "passphrase"), passphrase, SECURE_OPTS);
+  await putSecret(id, "mnemonic", phrase);
+  if (passphrase) await putSecret(id, "passphrase", passphrase);
 
   const expected = keypairFromMnemonic(phrase, passphrase, 0).publicKey.toBase58();
   const check = await deriveAccount(id, 0);
@@ -366,9 +382,9 @@ export async function removeSeed(seedId: string): Promise<VaultIndex | null> {
   return vault;
 }
 
-/** The stored recovery phrase for a seed (for the Backup screen). */
+/** The stored recovery phrase for a seed (decrypted if a PIN is set). */
 export async function getSeedMnemonic(seedId: string): Promise<string | null> {
-  return SecureStore.getItemAsync(seedKey(seedId, "mnemonic"));
+  return getSecret(seedId, "mnemonic");
 }
 
 export async function seedHasPassphrase(seedId: string): Promise<boolean> {
@@ -385,12 +401,105 @@ export async function clearVault(): Promise<void> {
   await SecureStore.deleteItemAsync(V1_PASSPHRASE);
   await SecureStore.deleteItemAsync(V1_NEEDS_BACKUP);
   await SecureStore.deleteItemAsync(HARDENED);
+  await lock.destroyLock();
 }
 
 async function deleteSeedKeys(id: string): Promise<void> {
   await SecureStore.deleteItemAsync(seedKey(id, "mnemonic"));
   await SecureStore.deleteItemAsync(seedKey(id, "passphrase"));
   await SecureStore.deleteItemAsync(seedKey(id, "secretKey"));
+}
+
+// ---- app PIN (second encryption layer over every seed) -----------------------
+
+const SECRET_PARTS: SecretPart[] = ["mnemonic", "passphrase", "secretKey"];
+
+/** Load whether an app PIN is configured (call once at startup). */
+export async function loadLockState(): Promise<boolean> {
+  return lock.loadLockState();
+}
+export function pinIsEnabled(): boolean {
+  return lock.pinEnabled();
+}
+export function pinIsUnlocked(): boolean {
+  return lock.isUnlocked();
+}
+/** Unlock seed access for the session with the PIN. False on a wrong PIN. */
+export async function unlockWithPin(pin: string): Promise<boolean> {
+  return lock.unlock(pin);
+}
+/** Drop the in-memory key (on background / auto-lock). */
+export function lockSeeds(): void {
+  lock.lockNow();
+}
+
+/**
+ * Turn ON the app PIN: encrypt every existing seed under a new PIN-wrapped key.
+ * Verifies each seed round-trips and rolls back to plaintext on any failure, so a
+ * failed enable never leaves seeds unreadable.
+ */
+export async function enableAppPin(pin: string): Promise<void> {
+  if (lock.pinEnabled()) throw new Error("A PIN is already set.");
+  const v = await readIndex();
+
+  // Snapshot all plaintext BEFORE enabling (reads are still plaintext).
+  const plain: Record<string, Partial<Record<SecretPart, string>>> = {};
+  if (v)
+    for (const s of v.seeds) {
+      const e: Partial<Record<SecretPart, string>> = {};
+      for (const part of SECRET_PARTS) {
+        const raw = await SecureStore.getItemAsync(seedKey(s.id, part));
+        if (raw != null) e[part] = raw;
+      }
+      plain[s.id] = e;
+    }
+
+  await lock.createLock(pin); // DEK created + held in memory; pin now "enabled"
+  try {
+    if (v)
+      for (const s of v.seeds)
+        for (const part of SECRET_PARTS) {
+          const val = plain[s.id][part];
+          if (val != null) await putSecret(s.id, part, val); // encrypts under the DEK
+        }
+    // Verify each seed re-decrypts to exactly what we stored.
+    if (v)
+      for (const s of v.seeds)
+        for (const part of SECRET_PARTS) {
+          const val = plain[s.id][part];
+          if (val != null && (await getSecret(s.id, part)) !== val) throw new Error("verify-failed");
+        }
+  } catch {
+    // Roll back to plaintext and remove the lock so access is never bricked.
+    await lock.destroyLock();
+    if (v)
+      for (const s of v.seeds)
+        for (const part of SECRET_PARTS) {
+          const val = plain[s.id][part];
+          if (val != null) await SecureStore.setItemAsync(seedKey(s.id, part), val, SECURE_OPTS);
+        }
+    throw new Error("We couldn't turn on the PIN safely, so nothing was changed. Please try again.");
+  }
+}
+
+/** Turn OFF the app PIN (verify it first): decrypt every seed back to plaintext. */
+export async function disableAppPin(pin: string): Promise<boolean> {
+  if (!lock.pinEnabled()) return true;
+  if (!(await lock.unlock(pin))) return false; // wrong PIN
+  const v = await readIndex();
+  if (v)
+    for (const s of v.seeds)
+      for (const part of SECRET_PARTS) {
+        const raw = await SecureStore.getItemAsync(seedKey(s.id, part));
+        if (raw != null) await SecureStore.setItemAsync(seedKey(s.id, part), lock.decryptSecret(raw), SECURE_OPTS);
+      }
+  await lock.destroyLock();
+  return true;
+}
+
+/** Change the PIN: re-wrap the data key under a new PIN (seeds untouched). */
+export async function changeAppPin(oldPin: string, newPin: string): Promise<boolean> {
+  return lock.rewrap(oldPin, newPin);
 }
 
 function emptyVault(seedId: string): VaultIndex {

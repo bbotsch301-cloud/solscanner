@@ -23,6 +23,7 @@ import { BuyScreen } from "./src/screens/BuyScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
 import { WalletsScreen } from "./src/screens/WalletsScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
+import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
 import { LockScreen } from "./src/screens/LockScreen";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
@@ -94,12 +95,15 @@ function Splash() {
 }
 
 function Root() {
-  const { initializing, keypair, needsBackup, markBackedUp } = useWallet();
+  const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp } = useWallet();
   const { unlocked } = useAuth();
 
   if (initializing) return <><StatusBar style="light" /><Splash /></>;
-  if (!keypair) return <><StatusBar style="light" /><OnboardingScreen /></>;
-  if (!unlocked) return <><StatusBar style="light" /><LockScreen /></>;
+  if (!hasWallet) return <><StatusBar style="light" /><OnboardingScreen /></>;
+  // A PIN (which encrypts the seeds) gates ahead of the biometric lock; when set, it
+  // replaces the biometric lock so the user isn't gated twice.
+  if (locked) return <><StatusBar style="light" /><PinUnlockScreen /></>;
+  if (!pinEnabled && !unlocked) return <><StatusBar style="light" /><LockScreen /></>;
   // New wallets must be backed up before entering the app.
   if (needsBackup) return <><StatusBar style="light" /><BackupPrompt onDone={markBackedUp} /></>;
 

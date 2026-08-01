@@ -26,7 +26,18 @@
   EIP-1559 verified against published spec vectors. We do **not** use `elliptic` for any
   key or signing operation.
 - **Key storage**: `expo-secure-store` with `WHEN_UNLOCKED_THIS_DEVICE_ONLY` — OS-encrypted,
-  unlock-gated, excluded from iCloud/iTunes backups, never synced.
+  unlock-gated, excluded from iCloud/iTunes backups, never synced. Multiple independent
+  seeds, each secret in its own slot; the vault index holds only non-secret metadata.
+- **Optional app PIN (2nd encryption layer)** (`wallet/lock.ts`): when enabled, every seed
+  secret is additionally encrypted with XChaCha20-Poly1305 under a random data key (DEK).
+  The DEK is wrapped by a key derived from the PIN via **scrypt** (N=2^15, r=8, p=1, 16-byte
+  salt); only the wrapped DEK + salt are stored — the PIN itself is never persisted. Unlock
+  = scrypt(PIN,salt) → unwrap DEK (AEAD tag rejects a wrong PIN) → hold the DEK in memory for
+  the session; it's cleared on background/auto-lock. Changing the PIN re-wraps the same DEK
+  (seeds untouched); turning it off decrypts back to plaintext. Enabling verifies every seed
+  round-trips and rolls back on failure, so it can never brick access. This raises the bar
+  against an attacker who can read the keychain (unlocked/rooted device, storage dump): they
+  still need the PIN, which lives only in the user's head.
 
 ## Handling & UI
 - Recovery phrase: no clipboard copy, screenshot prevention + warning, mandatory backup.
