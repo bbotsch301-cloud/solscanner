@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useWalletConnect } from "../walletconnect/WalletConnectContext";
+import { humanizeWcError } from "../walletconnect/errors";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -29,7 +30,7 @@ export function WalletConnectScreen() {
       await pair(v);
       setUri("");
     } catch (e) {
-      Alert.alert("Couldn’t connect", (e as Error).message);
+      Alert.alert("Couldn’t connect", humanizeWcError(e));
     } finally {
       setBusy(false);
     }

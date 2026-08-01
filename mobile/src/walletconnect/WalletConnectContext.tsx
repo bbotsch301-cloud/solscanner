@@ -9,8 +9,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { getSdkError } from "@walletconnect/utils";
+import { humanizeError } from "../solana/errors";
 import { activeEvmAccount as getEvmAccount } from "../wallet/vault";
 import type { EvmAccount } from "../wallet/evm";
 import { useWallet } from "../wallet/WalletContext";
@@ -104,6 +105,10 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
       await kit.approveSession({ id: proposal.id, namespaces });
       refreshSessions();
     } catch {
+      Alert.alert(
+        "Couldn't connect",
+        "This dApp asked for a network or permission this wallet can't provide, so the connection was declined. Make sure the dApp is on a supported chain (Solana, Ethereum, or BSC)."
+      );
       await kit.rejectSession({ id: proposal.id, reason: getSdkError("USER_REJECTED") }).catch(() => {});
     } finally {
       setBusy(false);
@@ -137,6 +142,12 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
       }
       await kit.respondSessionRequest({ topic, response: { id, jsonrpc: "2.0", result } });
     } catch (e) {
+      // Tell the USER, not just the dApp — otherwise the sheet silently closes as if it worked.
+      const nativeSym = String(chainId).startsWith("solana:") ? "SOL" : String(chainId).includes(":56") ? "BNB" : "ETH";
+      Alert.alert(
+        "Request failed",
+        humanizeError(e, { action: /send/i.test(rpc.method) ? "send" : undefined, native: nativeSym })
+      );
       await kit
         .respondSessionRequest({
           topic,

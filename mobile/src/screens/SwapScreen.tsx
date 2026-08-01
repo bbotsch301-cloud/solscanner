@@ -130,7 +130,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         const q = await quoteSwap(activeChain, from, to, amtNum, slippageBps, activeAddress);
         if (!cancelled) setQuote(q);
       } catch (e) {
-        if (!cancelled) setError(humanizeError(e, { action: "swap", symbol: to.symbol }));
+        if (!cancelled) setError(humanizeError(e, { action: "swap", symbol: to.symbol, native: native.symbol }));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -139,7 +139,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [activeChain, from, to, amtNum, slippageBps, activeAddress]);
+  }, [activeChain, from, to, amtNum, slippageBps, activeAddress, native.symbol]);
 
   // Pull-to-refresh: re-price owned balances and pull a fresh quote (prices move).
   const onRefresh = useCallback(async () => {
@@ -152,11 +152,11 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         setError(null);
       }
     } catch (e) {
-      setError(humanizeError(e, { action: "swap", symbol: to.symbol }));
+      setError(humanizeError(e, { action: "swap", symbol: to.symbol, native: native.symbol }));
     } finally {
       setRefreshing(false);
     }
-  }, [refreshWallet, activeChain, from, to, amtNum, slippageBps, activeAddress]);
+  }, [refreshWallet, activeChain, from, to, amtNum, slippageBps, activeAddress, native.symbol]);
 
   const flip = () => {
     setFrom(to);
@@ -231,7 +231,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
                 },
               ]);
             } catch (e) {
-              Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol }));
+              Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol, native: native.symbol }));
             } finally {
               setSwapping(false);
               setStatus(null);

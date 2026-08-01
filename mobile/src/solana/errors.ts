@@ -11,6 +11,8 @@ interface HumanizeContext {
   action?: ErrorAction;
   /** Symbol of the asset involved, used to make messages specific. */
   symbol?: string;
+  /** The chain's native gas token (SOL / ETH / BNB) so fee messages name the right coin. */
+  native?: string;
 }
 
 /** Pull every bit of text out of whatever was thrown (Error, SendTransactionError, string, …). */
@@ -39,10 +41,17 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   console.warn(`[${ctx.action ?? "error"}] ${raw || String(e)}`);
 
   const asset = ctx.symbol ?? "the token";
+  const native = ctx.native ?? "SOL"; // gas token — SOL, ETH, or BNB
 
   // Messages we authored are already friendly and specific — pass them through.
   if (/recovery phrase|already have a wallet|secure randomness|wallet already exists|secure storage/.test(low))
     return raw;
+
+  // Confirmation timeout — the tx was sent but the (slow/rate-limited) RPC didn't confirm it in
+  // time. It MAY still land, so tell the user to check before resending (avoids double-sends).
+  // Checked BEFORE generic connectivity so "timed out waiting…" doesn't read as "no internet".
+  if (/not confirmed|unknown if it succeeded|node is behind|timed out waiting|confirmation tim|was not confirmed/.test(low))
+    return "The network is congested and your transaction didn't confirm in time — it may still go through. Check it on the explorer before sending again. A private RPC (EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC, or your own EVM RPC) makes this reliable.";
 
   // Connectivity ----------------------------------------------------------------
   if (/network request failed|failed to fetch|networkerror|timeout|timed out|econnreset|network error/.test(low))
@@ -50,18 +59,13 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   if (/\b429\b|rate.?limit|too many requests/.test(low))
     return ctx.action === "airdrop"
       ? "The devnet faucet is rate-limited. Wait a minute and try again."
-      : "The network is busy right now (rate-limited). Wait a few seconds and try again. Using a private RPC (set EXPO_PUBLIC_MAINNET_RPC) makes this rare.";
+      : "The network is busy right now (rate-limited). Wait a few seconds and try again. A private RPC makes this rare.";
   if (/\b(500|502|503)\b|service unavailable|internal error/.test(low))
-    return "Solana's RPC is having trouble at the moment. Give it a few seconds and try again.";
+    return "The RPC node is having trouble at the moment. Give it a few seconds and try again.";
 
   // Slippage (check before generic "insufficient") -------------------------------
   if (/slippage|0x1771|exceeds desired|price impact too high|price moved|exceeded slippage/.test(low))
     return "The price moved more than your slippage tolerance before the trade landed. Raise the slippage a little or try again.";
-
-  // Confirmation timeout — the tx was sent but the (slow/rate-limited) RPC didn't confirm it in
-  // time. It MAY still land, so tell the user to check before resending (avoids double-sends).
-  if (/not confirmed|unknown if it succeeded|node is behind|timed out waiting|confirmation tim|was not confirmed/.test(low))
-    return "The network is congested and your transaction didn't confirm in time — it may still go through. Check it on the explorer before sending again. A private RPC (set EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC) makes this reliable.";
 
   // Expired / stale blockhash ----------------------------------------------------
   if (/block height exceeded|blockhash not found|transaction expired|too old|expired/.test(low))
@@ -72,20 +76,23 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
     return "No swap route is available for this pair right now. Try a different amount or token.";
 
   // EVM-specific ------------------------------------------------------------------
-  if (/insufficient funds for gas|insufficient funds for transfer|gas required exceeds/.test(low))
-    return "Not enough native balance to cover the amount plus the gas fee. Top up (ETH on Ethereum, BNB on BSC) and try again.";
-  if (/nonce too low|replacement transaction underpriced|already known/.test(low))
+  if (/insufficient funds for gas|insufficient funds for transfer|gas required exceeds|out of gas|gas limit|max fee per gas|max priority fee/.test(low))
+    return `Not enough ${native} to cover the amount plus the gas fee. Add ${native} and try again.`;
+  if (/nonce too low|replacement transaction underpriced|already known|nonce has already been used/.test(low))
     return "A previous transaction is still pending. Wait for it to confirm, then try again.";
-  if (/execution reverted|transaction may fail|intrinsic gas too low/.test(low))
-    return "The transaction would fail on-chain. Double-check the amount and the recipient, then try again.";
+  if (/reverted|execution reverted|call exception|transaction may fail|intrinsic gas too low|transfer amount exceeds/.test(low))
+    return "The transaction failed on-chain (reverted) — usually the amount, a token allowance, or a transfer restriction on the token. Double-check the details and try again.";
+  // Swap build/route failed (0x / KyberSwap) -------------------------------------
+  if (ctx.action === "swap" && /build failed|returned no transaction|no liquidity|not enough liquidity|allowance/.test(low))
+    return "Couldn't build this swap right now — the route or provider is briefly unavailable or lacks liquidity. Try again, or use a different amount or token.";
 
   // Insufficient funds -----------------------------------------------------------
   if (/insufficient lamports|insufficient funds for rent|found no record of a prior credit|insufficient funds|custom program error: 0x1\b/.test(low)) {
     if (ctx.action === "swap")
-      return "Not enough SOL to complete the swap. You need the amount you're swapping plus a little extra SOL (about 0.005) for the network fee and token-account rent. Add SOL or lower the amount.";
+      return `Not enough ${native} to complete the swap. You need the amount you're swapping plus a little extra ${native} for the network fee${native === "SOL" ? " and token-account rent" : ""}. Add ${native} or lower the amount.`;
     if (ctx.action === "send")
-      return `Not enough to send this. You need enough ${asset}, plus a little SOL (about 0.002) for the network fee — and if the recipient is a brand-new wallet, a bit more to create their token account. Add SOL and try again.`;
-    return "Not enough SOL to cover this. Add a little SOL and try again.";
+      return `Not enough to send this. You need enough ${asset}, plus a little ${native} for the network fee${native === "SOL" ? " — and if the recipient is a brand-new wallet, a bit more to create their token account" : ""}. Add ${native} and try again.`;
+    return `Not enough ${native} to cover this. Add a little ${native} and try again.`;
   }
 
   // Missing token account --------------------------------------------------------
@@ -97,8 +104,8 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   // Simulation failed with no useful logs — almost always the fee payer can't pay -
   if (/simulation failed|transaction simulation/.test(low))
     return ctx.action === "swap"
-      ? "The network rejected the swap before running it — this is almost always too little SOL for fees. Make sure you have some SOL beyond the amount you're swapping, then try again."
-      : "The network rejected the transaction before running it — usually too little SOL for the network fee (and, for a new recipient, their token-account rent). Add a little SOL and try again.";
+      ? `The network rejected the swap before running it — this is almost always too little ${native} for fees. Make sure you have some ${native} beyond the amount you're swapping, then try again.`
+      : `The network rejected the transaction before running it — usually too little ${native} for the network fee${native === "SOL" ? " (and, for a new recipient, their token-account rent)" : ""}. Add a little ${native} and try again.`;
 
   // User cancelled (biometrics / a wallet or dApp prompt) ------------------------
   if (/user rejected|user cancell?ed|user denied|request rejected|cancell?ed by user|declined/.test(low))

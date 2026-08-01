@@ -204,7 +204,7 @@ export function SendScreen() {
       const sig = await sendAsset(selected, effectiveTo, amtNum);
       setSignature(sig);
     } catch (e) {
-      setError(humanizeError(e, { action: "send", symbol: selected.symbol }));
+      setError(humanizeError(e, { action: "send", symbol: selected.symbol, native: native.symbol }));
     } finally {
       setSending(false);
     }
