@@ -9,8 +9,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { connection } from "./connection";
 import { solLogo, LOGO_OVERRIDES } from "../config/logos";
 
-// Persistent metadata cache key prefix. Bump the version to invalidate all stored entries.
-const TM_KEY = "tm.v1:";
+// Persistent metadata cache key prefix. Bump the version to invalidate all stored entries
+// (v2: pump.fun logo source + reliable-gateway handling).
+const TM_KEY = "tm.v2:";
 // A stored logo older than this is refreshed in the background (stale-while-revalidate), so a
 // token that changed its logo/name eventually updates without ever showing a blank.
 const TM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -149,10 +150,35 @@ async function fromJupiter(mint: string): Promise<TokenMeta | undefined> {
   return undefined;
 }
 
-/** A logo we can trust to load on mobile: a plain HTTPS URL that isn't an IPFS/Arweave
- *  gateway (those are slow/flaky on-device). Used to prefer a CDN image when several exist. */
+/** A logo we can trust to load on mobile: a plain HTTPS CDN URL (not a flaky IPFS/Arweave
+ *  gateway). pump.fun's own gateway is dedicated + reliable on mobile, so it counts too. */
 function isReliableLogo(u?: string): boolean {
-  return !!u && /^https?:\/\//i.test(u) && !/\/ipfs\/|ipfs\.io|arweave/i.test(u);
+  if (!u) return false;
+  if (/pump\.mypinata\.cloud/i.test(u)) return true;
+  return /^https?:\/\//i.test(u) && !/\/ipfs\/|ipfs\.io|arweave/i.test(u);
+}
+
+/**
+ * pump.fun's own metadata API — the authoritative source for `*pump` tokens (Jupiter/DexScreener
+ * often lack a logo or return a broken one for fresh memecoins). Returns the pump-pinned image,
+ * which loads reliably on mobile. Best-effort; only meaningful for pump.fun mints.
+ */
+async function fromPumpFun(mint: string): Promise<TokenMeta | undefined> {
+  try {
+    const res = await fetch(`https://frontend-api-v3.pump.fun/coins/${mint}`);
+    if (!res.ok) return undefined;
+    const j = (await res.json()) as { symbol?: string; name?: string; image_uri?: string } | null;
+    if (j?.symbol || j?.image_uri) {
+      return {
+        symbol: j.symbol ?? "",
+        name: j.name ?? j.symbol ?? "",
+        logoURI: j.image_uri ? toHttp(j.image_uri, mint) : undefined,
+      };
+    }
+  } catch {
+    /* not reachable / not a pump coin */
+  }
+  return undefined;
 }
 
 /** DexScreener — reliable HTTPS CDN logo (and name/symbol) for any pooled token. */
@@ -174,21 +200,30 @@ async function fromDexScreener(mint: string): Promise<TokenMeta | undefined> {
   }
 }
 
-/** Resolve a token's metadata from the network (Jupiter + DexScreener + on-chain Metaplex). */
+/** Resolve a token's metadata from the network (pump.fun for pump mints + Jupiter + DexScreener
+ *  + on-chain Metaplex). */
 async function resolveFromNetwork(mint: string): Promise<TokenMeta | undefined> {
-  // Jupiter (fast, name+symbol) and DexScreener (reliable CDN image) in parallel; on-chain
-  // Metaplex only if either name/symbol or a logo is still missing (keeps RPC load down).
-  const [jup, dex] = await Promise.all([fromJupiter(mint), fromDexScreener(mint)]);
-  const haveSymbol = !!(jup?.symbol || dex?.symbol);
-  const haveLogo = !!(jup?.logoURI || dex?.logoURI);
-  const onchain = haveSymbol && haveLogo ? undefined : await fetchOnChainMeta(mint);
+  const isPump = mint.endsWith("pump");
+  // pump.fun (authoritative image for pump mints), Jupiter (fast name+symbol) and DexScreener
+  // (CDN image) in parallel.
+  const [pump, jup, dex] = await Promise.all([
+    isPump ? fromPumpFun(mint) : Promise.resolve(undefined),
+    fromJupiter(mint),
+    fromDexScreener(mint),
+  ]);
 
-  const symbol = jup?.symbol || dex?.symbol || onchain?.symbol;
-  const name = jup?.name || dex?.name || onchain?.name || symbol;
+  // On-chain Metaplex only when we still lack a symbol or a RELIABLE logo — this is where a
+  // pump token's real image lives if the APIs came up empty (keeps RPC load down otherwise).
+  const haveSymbol = !!(pump?.symbol || jup?.symbol || dex?.symbol);
+  const haveReliable = [pump?.logoURI, dex?.logoURI, jup?.logoURI].some(isReliableLogo);
+  const onchain = haveSymbol && haveReliable ? undefined : await fetchOnChainMeta(mint);
 
-  // Prefer a CDN (non-IPFS) logo — DexScreener's is the most mobile-reliable — then fall back
-  // to any available one. A manual override always wins.
-  const candidates = [dex?.logoURI, jup?.logoURI, onchain?.logoURI].filter(Boolean) as string[];
+  const symbol = pump?.symbol || jup?.symbol || dex?.symbol || onchain?.symbol;
+  const name = pump?.name || jup?.name || dex?.name || onchain?.name || symbol;
+
+  // Prefer a reliable logo (pump image / CDN) over a flaky IPFS one; fall back to any available.
+  // A manual override always wins.
+  const candidates = [pump?.logoURI, dex?.logoURI, onchain?.logoURI, jup?.logoURI].filter(Boolean) as string[];
   let logoURI = candidates.find(isReliableLogo) ?? candidates[0];
   if (LOGO_OVERRIDES[mint]) logoURI = LOGO_OVERRIDES[mint];
 
