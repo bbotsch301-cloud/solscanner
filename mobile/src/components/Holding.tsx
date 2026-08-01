@@ -13,6 +13,7 @@ export function Holding({
   logoURI,
   color,
   offchainDetail,
+  subtitle,
   icon,
 }: {
   symbol: string;
@@ -24,6 +25,8 @@ export function Holding({
   color: string;
   /** When set, this is an off-chain asset — show this detail + an "off-chain" tag. */
   offchainDetail?: string;
+  /** Plain subtitle override (no tag), e.g. the "Other holdings" count. */
+  subtitle?: string;
   /** Built-in SVG coin logo for off-chain assets (silver / dinar). */
   icon?: AssetIcon;
 }) {
@@ -33,7 +36,11 @@ export function Holding({
       <View style={styles.mid}>
         <Text style={styles.symbol}>{name}</Text>
         <Text style={styles.sub}>
-          {offchainDetail != null ? `${offchainDetail} · off-chain` : `${compact(amount ?? 0)} ${symbol}`}
+          {offchainDetail != null
+            ? `${offchainDetail} · off-chain`
+            : subtitle != null
+              ? subtitle
+              : `${compact(amount ?? 0)} ${symbol}`}
         </Text>
       </View>
       <View style={styles.rightCol}>

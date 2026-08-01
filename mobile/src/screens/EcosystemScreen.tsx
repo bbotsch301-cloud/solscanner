@@ -11,13 +11,9 @@ import { buildAllocation } from "../solana/allocation";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
-import { fetchOffchainPrices, offchainValue, type OffchainPrices } from "../prices/offchain";
-import { OFFCHAIN_ASSETS } from "../config/treasuryAssets";
-import { nativeLogo } from "../config/logos";
+import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { solscanAccount, IS_MAINNET } from "../solana/connection";
 import { colors, compact, font, radius, shortAddress, spacing, usd } from "../theme";
-
-const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
 
 function StatTile({ label, value, delta, deltaUp }: { label: string; value: string; delta?: string; deltaUp?: boolean }) {
   return (
@@ -72,8 +68,9 @@ export function EcosystemScreen() {
     load();
   }, [load]);
 
-  // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar.
-  const { slices, total: treasuryValue, solUsd, sortedTokens } = buildAllocation(holdings, prices, metas, ocPrices);
+  // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar, with the
+  // long tail of crypto lumped into one "Other holdings" row so the list stays short.
+  const { slices, rows, total: treasuryValue } = buildAllocation(holdings, prices, metas, ocPrices, { topN: 5 });
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -146,55 +143,26 @@ export function EcosystemScreen() {
         </>
       )}
 
-      {/* Holdings — on-chain + off-chain silver/dinar */}
+      {/* Holdings — top 5 crypto + Other, then off-chain silver/dinar */}
       <Text style={styles.sectionTitle}>Holdings</Text>
       <View style={styles.list}>
-        <Holding
-          symbol="SOL"
-          name="Solana"
-          amount={holdings?.sol ?? 0}
-          usdValue={solUsd}
-          pct={pctOf(solUsd, treasuryValue)}
-          logoURI={nativeLogo.solana}
-          color={colors.accent}
-        />
-        {sortedTokens.map(({ t, value }) => {
-          const meta = metas[t.mint];
-          const price = prices[t.mint]?.usdPrice;
-          return (
-            <View key={t.mint}>
-              <View style={styles.divider} />
-              <Holding
-                symbol={meta?.symbol ?? t.mint.slice(0, 3)}
-                name={meta?.name ?? shortAddress(t.mint, 4, 4)}
-                amount={t.amount}
-                usdValue={price != null ? value : undefined}
-                pct={pctOf(value, treasuryValue)}
-                logoURI={meta?.logoURI}
-                color={colors.primary}
-              />
-            </View>
-          );
-        })}
-        {OFFCHAIN_ASSETS.map((a) => {
-          const value = offchainValue(a, ocPrices);
-          return (
-            <View key={a.label}>
-              <View style={styles.divider} />
-              <Holding
-                symbol={a.category}
-                name={a.label}
-                usdValue={value}
-                pct={pctOf(value, treasuryValue)}
-                color={colors.accent}
-                icon={a.icon}
-                offchainDetail={
-                  a.amount != null ? `${a.amount.toLocaleString("en-US")} ${a.unit ?? ""}`.trim() : a.category
-                }
-              />
-            </View>
-          );
-        })}
+        {rows.map((r, i) => (
+          <View key={r.key}>
+            {i > 0 && <View style={styles.divider} />}
+            <Holding
+              symbol={r.symbol}
+              name={r.name}
+              amount={r.amount}
+              usdValue={r.usdValue}
+              pct={r.pct}
+              logoURI={r.logoURI}
+              color={r.color}
+              icon={r.icon}
+              offchainDetail={r.offchainDetail}
+              subtitle={r.subtitle}
+            />
+          </View>
+        ))}
       </View>
 
       <Text style={styles.note}>

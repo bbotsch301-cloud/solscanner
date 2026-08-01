@@ -13,13 +13,10 @@ import { fetchHoldings, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
-import { nativeLogo } from "../config/logos";
 import { activeMultisigAddress, multisigConfigured, multisigLabel } from "../config/multisig";
 import { solscanAccount } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing, usd } from "../theme";
 import type { RootNav } from "../navigation";
-
-const pctOf = (v: number, total: number) => (total > 0 ? (v / total) * 100 : 0);
 
 export function MultisigWalletScreen() {
   const insets = useSafeAreaInsets();
@@ -64,8 +61,8 @@ export function MultisigWalletScreen() {
 
   const member = isMember(info, solanaAddress);
   const label = multisigLabel(activeMultisigAddress());
-  // A multisig vault holds only on-chain assets (no off-chain silver/dinar).
-  const { slices, total, solUsd, sortedTokens } = buildAllocation(holdings, prices, metas, {}, false);
+  // A multisig vault holds only on-chain assets (no off-chain silver/dinar); lump the tail.
+  const { slices, rows, total } = buildAllocation(holdings, prices, metas, {}, { includeOffchain: false, topN: 5 });
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
@@ -152,35 +149,25 @@ export function MultisigWalletScreen() {
 
             <Text style={styles.sectionTitle}>Holdings</Text>
             <View style={styles.list}>
-              <Holding
-                symbol="SOL"
-                name="Solana"
-                amount={holdings?.sol ?? 0}
-                usdValue={solUsd}
-                pct={pctOf(solUsd, total)}
-                logoURI={nativeLogo.solana}
-                color={colors.accent}
-              />
-              {sortedTokens.map(({ t, value }) => {
-                const meta = metas[t.mint];
-                const price = prices[t.mint]?.usdPrice;
-                return (
-                  <View key={t.mint}>
-                    <View style={styles.divider} />
+              {holdings && total === 0 ? (
+                <Text style={styles.empty}>This vault is empty. Fund it by sending to the address above.</Text>
+              ) : (
+                rows.map((r, i) => (
+                  <View key={r.key}>
+                    {i > 0 && <View style={styles.divider} />}
                     <Holding
-                      symbol={meta?.symbol ?? t.mint.slice(0, 3)}
-                      name={meta?.name ?? shortAddress(t.mint, 4, 4)}
-                      amount={t.amount}
-                      usdValue={price != null ? value : undefined}
-                      pct={pctOf(value, total)}
-                      logoURI={meta?.logoURI}
-                      color={colors.primary}
+                      symbol={r.symbol}
+                      name={r.name}
+                      amount={r.amount}
+                      usdValue={r.usdValue}
+                      pct={r.pct}
+                      logoURI={r.logoURI}
+                      color={r.color}
+                      icon={r.icon}
+                      subtitle={r.subtitle}
                     />
                   </View>
-                );
-              })}
-              {sortedTokens.length === 0 && (holdings?.sol ?? 0) === 0 && (
-                <Text style={styles.empty}>This vault is empty. Fund it by sending to the address above.</Text>
+                ))
               )}
             </View>
           </>
