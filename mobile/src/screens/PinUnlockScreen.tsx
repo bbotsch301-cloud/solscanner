@@ -115,7 +115,10 @@ export function PinUnlockScreen() {
         style={[styles.btn, (pin.length < 6 || busy || lockedOut) && styles.btnDisabled]}
       >
         {busy ? (
-          <ActivityIndicator color={colors.bg} />
+          <>
+            <ActivityIndicator color={colors.bg} />
+            <Text style={styles.btnText}>Unlocking…</Text>
+          </>
         ) : (
           <>
             <Ionicons name="lock-open" size={18} color={colors.bg} />
@@ -124,9 +127,13 @@ export function PinUnlockScreen() {
         )}
       </Pressable>
 
-      <Pressable onPress={forgotPin} disabled={busy} style={styles.forgot} hitSlop={8}>
-        <Text style={styles.forgotText}>Forgot PIN?</Text>
-      </Pressable>
+      {busy ? (
+        <Text style={styles.busyHint}>Decrypting your wallets — this can take a few seconds.</Text>
+      ) : (
+        <Pressable onPress={forgotPin} style={styles.forgot} hitSlop={8}>
+          <Text style={styles.forgotText}>Forgot PIN?</Text>
+        </Pressable>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -163,4 +170,5 @@ const styles = StyleSheet.create({
   btnText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
   forgot: { alignItems: "center", paddingVertical: spacing(4) },
   forgotText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  busyHint: { color: colors.textMuted, fontSize: font.small, textAlign: "center", paddingVertical: spacing(4) },
 });

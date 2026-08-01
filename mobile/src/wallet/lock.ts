@@ -23,12 +23,14 @@ const SECURE_OPTS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-// scrypt cost for NEW locks. Tuned for mobile: React Native's Hermes engine has no JIT, so
-// pure-JS scrypt is far slower than on a desktop — N=2^15 could take tens of seconds and
-// freeze the UI. N=2^13 keeps it memory-hard (a meaningful second layer over the hardware
-// keychain + the brute-force lockout) while finishing quickly. Existing locks keep their own
-// stored params, so this only affects newly-created PINs.
-const SCRYPT = { N: 2 ** 13, r: 8, p: 1, dkLen: 32 } as const;
+// scrypt cost for NEW locks, tuned for mobile. React Native's Hermes engine has no JIT, so
+// pure-JS scrypt is far slower than on desktop (N=2^15 took ~10s on-device). This KDF is
+// defense-in-depth: it wraps a data key that ALSO lives in the hardware keychain
+// (WHEN_UNLOCKED_THIS_DEVICE_ONLY), and a 6-digit PIN is only ~20 bits regardless — so the
+// real barriers are the Secure Enclave and the brute-force lockout, not the KDF iteration
+// count. N=2^12 stays memory-hard while keeping unlock ~1s. A heavier old lock is migrated
+// down to this on the next successful unlock (see unlock()).
+const SCRYPT = { N: 2 ** 12, r: 8, p: 1, dkLen: 32 } as const;
 
 // Brute-force throttle: the first few misses are free (fat-finger tolerance), then a
 // rising lockout defeats offline/on-device guessing of a short PIN even if the attacker
