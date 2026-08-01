@@ -8,8 +8,10 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionInstruction,
   TransactionMessage,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -198,47 +200,73 @@ export async function createMultisig(
     throw new Error(`Threshold must be between 1 and ${members.length}.`);
   }
 
-  await multisig.rpc.multisigCreateV2({
-    connection,
-    treasury: programConfig.treasury,
-    createKey,
+  // Confirm the creation before returning, so the caller can immediately read/propose against
+  // it. createKey is an ephemeral signer that authorizes the PDA derivation (not a member).
+  await sendConfirmed(
     creator,
-    multisigPda,
-    configAuthority: null, // autonomous — the members govern it, no admin key
-    threshold,
-    members,
-    timeLock: 0,
-    rentCollector: null,
-  });
+    [
+      multisig.instructions.multisigCreateV2({
+        treasury: programConfig.treasury,
+        createKey: createKey.publicKey,
+        creator: creator.publicKey,
+        multisigPda,
+        configAuthority: null, // autonomous — the members govern it, no admin key
+        threshold,
+        members,
+        timeLock: 0,
+        rentCollector: null,
+      }),
+    ],
+    [createKey]
+  );
 
   const address = multisigPda.toBase58();
   await setMultisigAddress(address);
   return address;
 }
 
+/**
+ * Build a legacy transaction from instructions, sign with `signer`, and WAIT for confirmation.
+ *
+ * The SDK's `rpc.*` helpers only `sendTransaction` (fire-and-forget, no confirm), which races
+ * any flow that spans more than one instruction: e.g. create-then-proposalCreate would send the
+ * proposal before the create landed, so the on-chain `transactionIndex` was still stale →
+ * `InvalidTransactionIndex (6009)`. Composing the instructions into one confirmed transaction
+ * makes the index update visible to the proposal within the same execution, and confirming
+ * means the UI reload afterwards reflects the new state.
+ */
+async function sendConfirmed(
+  signer: Keypair,
+  ixs: TransactionInstruction[],
+  extraSigners: Keypair[] = []
+): Promise<string> {
+  const tx = new Transaction().add(...ixs);
+  return sendAndConfirmTransaction(connection, tx, [signer, ...extraSigners]);
+}
+
 /** Approve a proposal — signs & sends with the member's key (Squads enforces permissions). */
 export async function approveProposal(member: Keypair, index: number): Promise<string> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
-  return multisig.rpc.proposalApprove({
-    connection,
-    feePayer: member,
-    member,
-    multisigPda: ms,
-    transactionIndex: BigInt(index),
-  });
+  return sendConfirmed(member, [
+    multisig.instructions.proposalApprove({
+      multisigPda: ms,
+      transactionIndex: BigInt(index),
+      member: member.publicKey,
+    }),
+  ]);
 }
 
 export async function rejectProposal(member: Keypair, index: number): Promise<string> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
-  return multisig.rpc.proposalReject({
-    connection,
-    feePayer: member,
-    member,
-    multisigPda: ms,
-    transactionIndex: BigInt(index),
-  });
+  return sendConfirmed(member, [
+    multisig.instructions.proposalReject({
+      multisigPda: ms,
+      transactionIndex: BigInt(index),
+      member: member.publicKey,
+    }),
+  ]);
 }
 
 /** Execute an approved proposal — a vault spend or a config (signer/threshold) change. */
@@ -250,22 +278,23 @@ export async function executeProposal(
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
   if (kind === "config") {
-    return multisig.rpc.configTransactionExecute({
-      connection,
-      feePayer: member,
-      multisigPda: ms,
-      transactionIndex: BigInt(index),
-      member,
-      rentPayer: member,
-    });
+    return sendConfirmed(member, [
+      multisig.instructions.configTransactionExecute({
+        multisigPda: ms,
+        transactionIndex: BigInt(index),
+        member: member.publicKey,
+        rentPayer: member.publicKey,
+      }),
+    ]);
   }
-  return multisig.rpc.vaultTransactionExecute({
+  // Our vault transfers use no address lookup tables, so a legacy tx is sufficient.
+  const { instruction } = await multisig.instructions.vaultTransactionExecute({
     connection,
-    feePayer: member,
     multisigPda: ms,
     transactionIndex: BigInt(index),
     member: member.publicKey,
   });
+  return sendConfirmed(member, [instruction]);
 }
 
 // ---- config-change proposals (add/remove signer, change threshold) -----------
@@ -273,27 +302,26 @@ export async function executeProposal(
 type ConfigAction = Parameters<typeof multisig.rpc.configTransactionCreate>[0]["actions"][number];
 
 /** Propose a config change — creates a config transaction + proposal the current signers
- *  must approve (then execute). Signed by the proposing member. */
+ *  must approve (then execute). Both instructions ride one confirmed transaction so the
+ *  proposal sees the freshly-incremented transaction index (avoids InvalidTransactionIndex). */
 async function proposeConfigChange(creator: Keypair, actions: ConfigAction[]): Promise<string> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
   const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
   const index = BigInt(acc.transactionIndex.toString()) + 1n;
-  await multisig.rpc.configTransactionCreate({
-    connection,
-    feePayer: creator,
-    multisigPda: ms,
-    transactionIndex: index,
-    creator: creator.publicKey,
-    actions,
-  });
-  return multisig.rpc.proposalCreate({
-    connection,
-    feePayer: creator,
-    creator,
-    multisigPda: ms,
-    transactionIndex: index,
-  });
+  return sendConfirmed(creator, [
+    multisig.instructions.configTransactionCreate({
+      multisigPda: ms,
+      transactionIndex: index,
+      creator: creator.publicKey,
+      actions,
+    }),
+    multisig.instructions.proposalCreate({
+      multisigPda: ms,
+      transactionIndex: index,
+      creator: creator.publicKey,
+    }),
+  ]);
 }
 
 export async function proposeAddSigner(creator: Keypair, address: string): Promise<string> {
@@ -379,23 +407,22 @@ export async function proposeTransfer(
     instructions: ixs,
   });
 
-  await multisig.rpc.vaultTransactionCreate({
-    connection,
-    feePayer: creator,
-    multisigPda: ms,
-    transactionIndex: index,
-    creator: creator.publicKey,
-    vaultIndex: 0,
-    ephemeralSigners: 0,
-    transactionMessage,
-    memo: `Send ${uiAmount} ${asset.symbol}`,
-  });
-
-  return multisig.rpc.proposalCreate({
-    connection,
-    feePayer: creator,
-    creator,
-    multisigPda: ms,
-    transactionIndex: index,
-  });
+  // Create the vault transaction + its proposal in one confirmed tx so the proposal sees the
+  // freshly-incremented transaction index (otherwise: InvalidTransactionIndex).
+  return sendConfirmed(creator, [
+    multisig.instructions.vaultTransactionCreate({
+      multisigPda: ms,
+      transactionIndex: index,
+      creator: creator.publicKey,
+      vaultIndex: 0,
+      ephemeralSigners: 0,
+      transactionMessage,
+      memo: `Send ${uiAmount} ${asset.symbol}`,
+    }),
+    multisig.instructions.proposalCreate({
+      multisigPda: ms,
+      transactionIndex: index,
+      creator: creator.publicKey,
+    }),
+  ]);
 }
