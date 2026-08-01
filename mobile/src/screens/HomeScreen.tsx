@@ -126,7 +126,7 @@ export function HomeScreen() {
           onPress={() => nav.navigate("TokenDetail", { asset: "native" })}
           style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
         >
-          <TokenAvatar symbol={native.symbol} color={activeChain.color} />
+          <TokenAvatar symbol={native.symbol} color={activeChain.color} logoURI={activeChain.logoURI} />
           <View style={styles.mid}>
             <Text style={styles.symbol}>{activeChain.name}</Text>
             <Text style={styles.sub}>{native.symbol}</Text>

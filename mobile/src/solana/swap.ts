@@ -8,6 +8,7 @@ import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
 import { feeBpsFor, SOLANA_FEE_ACCOUNT } from "../config/swapFee";
+import { solLogo } from "../config/logos";
 
 /**
  * Jupiter's DEX label(s) for the AMMs the treasury owns liquidity on. The treasury
@@ -47,8 +48,7 @@ const TREASURY_QUOTE_MINT = SOL_MINT;
 
 const JUP_QUOTE = "https://lite-api.jup.ag/swap/v1/quote";
 
-const LOGO = (mint: string) =>
-  `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`;
+const LOGO = (mint: string): string | undefined => solLogo[mint];
 
 export interface SwapToken {
   mint: string;
@@ -74,8 +74,8 @@ export const SWAP_TOKENS: SwapToken[] = [
   { mint: "So11111111111111111111111111111111111111112", symbol: "SOL", decimals: 9, logoURI: LOGO("So11111111111111111111111111111111111111112") },
   { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", symbol: "USDC", decimals: 6, logoURI: LOGO("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v") },
   { mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", decimals: 6, logoURI: LOGO("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB") },
-  { mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", decimals: 6 },
-  { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", decimals: 5 },
+  { mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", decimals: 6, logoURI: LOGO("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN") },
+  { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", decimals: 5, logoURI: LOGO("DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263") },
   XGO_TOKEN,
 ];
 
