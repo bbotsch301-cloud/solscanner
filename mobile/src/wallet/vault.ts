@@ -17,12 +17,14 @@
 import * as SecureStore from "expo-secure-store";
 import { Keypair } from "@solana/web3.js";
 import {
+  bip39SeedSync,
   generateMnemonic,
   keypairFromMnemonic,
+  keypairFromSeed,
   normalizeMnemonic,
   validateMnemonic,
 } from "./mnemonic";
-import { deriveEvmAccount, type EvmAccount } from "./evm";
+import { evmAccountFromSeed, type EvmAccount } from "./evm";
 import * as lock from "./lock";
 
 const INDEX_KEY = "solwallet.vault.v2";
@@ -166,17 +168,43 @@ export interface DerivedAccount {
   evmAddress: string | null;
 }
 
+// In-memory cache of the 64-byte BIP39 seed per wallet. Computing it (PBKDF2-HMAC-SHA512 × 2048)
+// is the dominant cost of key derivation on Hermes and does NOT depend on the account index, so we
+// pay it once per wallet per unlocked session and derive every account (both chains, any index)
+// from the cached seed — that's what makes account/wallet switching feel instant. Cleared on lock
+// (lockSeeds) and when a wallet is removed (deleteSeedKeys); it lives exactly as long as the
+// mnemonic it came from is already available in memory, so it adds no exposure.
+const seedCache = new Map<string, Uint8Array>();
+
+/** Resolve a wallet's derivation material: the cached BIP39 `seed` for mnemonic wallets (computing
+ *  + caching it on first use), or the raw `secretKey` for legacy key-only seeds. A cache hit skips
+ *  the SecureStore reads entirely. */
+async function resolveSeed(seedId: string): Promise<{ seed: Uint8Array | null; secretKey: string | null }> {
+  const hit = seedCache.get(seedId);
+  if (hit) return { seed: hit, secretKey: null };
+  const { mnemonic, passphrase, secretKey } = await seedSecret(seedId);
+  if (mnemonic) {
+    const seed = bip39SeedSync(mnemonic, passphrase);
+    seedCache.set(seedId, seed);
+    return { seed, secretKey: null };
+  }
+  return { seed: null, secretKey };
+}
+
+const legacyKeypair = (secretKey: string): Keypair =>
+  Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey) as number[]));
+
 /** Public addresses for one (seed, index). Null if the seed material can't be read. */
 export async function deriveAccount(seedId: string, index: number): Promise<DerivedAccount | null> {
   try {
-    const { mnemonic, secretKey, passphrase } = await seedSecret(seedId);
-    if (mnemonic) {
-      const kp = keypairFromMnemonic(mnemonic, passphrase, index);
-      const evm = deriveEvmAccount(mnemonic, passphrase, index);
+    const { seed, secretKey } = await resolveSeed(seedId);
+    if (seed) {
+      const kp = keypairFromSeed(seed, index);
+      const evm = evmAccountFromSeed(seed, index);
       return { seedId, index, solanaAddress: kp.publicKey.toBase58(), evmAddress: evm.address };
     }
     if (secretKey) {
-      const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey) as number[]));
+      const kp = legacyKeypair(secretKey);
       return { seedId, index: 0, solanaAddress: kp.publicKey.toBase58(), evmAddress: null };
     }
     return null;
@@ -188,9 +216,9 @@ export async function deriveAccount(seedId: string, index: number): Promise<Deri
 /** The Solana keypair for a (seed, index) — the signing key for that account. */
 export async function keypairFor(seedId: string, index: number): Promise<Keypair | null> {
   try {
-    const { mnemonic, secretKey, passphrase } = await seedSecret(seedId);
-    if (mnemonic) return keypairFromMnemonic(mnemonic, passphrase, index);
-    if (secretKey) return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretKey) as number[]));
+    const { seed, secretKey } = await resolveSeed(seedId);
+    if (seed) return keypairFromSeed(seed, index);
+    if (secretKey) return legacyKeypair(secretKey);
     return null;
   } catch {
     return null;
@@ -200,9 +228,8 @@ export async function keypairFor(seedId: string, index: number): Promise<Keypair
 /** The EVM account for a (seed, index), or null for legacy key-only seeds. */
 export async function evmAccountFor(seedId: string, index: number): Promise<EvmAccount | null> {
   try {
-    const { mnemonic, passphrase } = await seedSecret(seedId);
-    if (!mnemonic) return null;
-    return deriveEvmAccount(mnemonic, passphrase, index);
+    const { seed } = await resolveSeed(seedId);
+    return seed ? evmAccountFromSeed(seed, index) : null;
   } catch {
     return null;
   }
@@ -405,6 +432,7 @@ export async function clearVault(): Promise<void> {
 }
 
 async function deleteSeedKeys(id: string): Promise<void> {
+  seedCache.delete(id); // forget the cached seed for a wallet we're removing
   await SecureStore.deleteItemAsync(seedKey(id, "mnemonic"));
   await SecureStore.deleteItemAsync(seedKey(id, "passphrase"));
   await SecureStore.deleteItemAsync(seedKey(id, "secretKey"));
@@ -435,6 +463,7 @@ export function pinLockoutMs(): number {
 /** Drop the in-memory key (on background / auto-lock). */
 export function lockSeeds(): void {
   lock.lockNow();
+  seedCache.clear(); // drop cached BIP39 seeds so nothing derivable survives the lock
 }
 
 /**

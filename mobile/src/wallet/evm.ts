@@ -7,11 +7,10 @@
  * Pure-JS noble stack (same family as the hand-rolled Solana derivation) so it
  * bundles cleanly in React Native. Verified against a known test vector.
  */
-import * as bip39 from "bip39";
 import { HDKey } from "@scure/bip32";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { normalizeMnemonic } from "./mnemonic";
+import { bip39SeedSync } from "./mnemonic";
 
 // m/44'/60'/0'/0/<account> — MetaMask/Phantom account numbering, so account N here
 // == the same 0x address MetaMask/Phantom show for their account N.
@@ -66,8 +65,12 @@ export interface EvmAccount {
  * the Solana derivation, so one passphrase covers both chains from the same phrase.
  */
 export function deriveEvmAccount(mnemonic: string, passphrase = "", account = 0): EvmAccount {
-  const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);
-  const hd = HDKey.fromMasterSeed(new Uint8Array(seed)).derive(evmPath(account));
+  return evmAccountFromSeed(bip39SeedSync(mnemonic, passphrase), account);
+}
+
+/** EVM account for an account index from an already-computed BIP39 seed (skips the PBKDF2 step). */
+export function evmAccountFromSeed(seed: Uint8Array, account = 0): EvmAccount {
+  const hd = HDKey.fromMasterSeed(seed).derive(evmPath(account));
   if (!hd.privateKey) throw new Error("Could not derive the EVM account.");
   const privateKey = hd.privateKey;
   // Uncompressed public key: 0x04 || X(32) || Y(32); address = last 20 bytes of

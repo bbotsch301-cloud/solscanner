@@ -5,7 +5,7 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWallet } from "../wallet/WalletContext";
@@ -15,26 +15,32 @@ import { haptics } from "../ui/haptics";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
+// Public addresses are stable per (seed, index), so cache them across opens — a reopened menu
+// shows them immediately with no re-derivation flash.
+const ADDR_CACHE: Record<string, { sol: string; evm: string | null }> = {};
+
 export function WalletSwitcher() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
   const { seeds, activeSeedId, activeIndex, switchAccount } = useWallet();
 
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>({});
+  const [addrs, setAddrs] = useState<Record<string, { sol: string; evm: string | null }>>(() => ({ ...ADDR_CACHE }));
 
-  // Derive each account's public addresses for display — only while the menu is open.
+  // Derive each account's public addresses for display — only while the menu is open. Cheap now
+  // that the BIP39 seed is cached in the vault, and results are memoized in ADDR_CACHE.
   const structureKey = seeds.map((s) => `${s.id}:${s.accounts.join(",")}`).join("|");
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const map: Record<string, { sol: string; evm: string | null }> = {};
+      const map: Record<string, { sol: string; evm: string | null }> = { ...ADDR_CACHE };
       for (const s of seeds) {
         for (const i of s.accounts) {
+          const key = `${s.id}:${i}`;
+          if (map[key]) continue;
           const d = await deriveAccount(s.id, i);
-          if (d) map[`${s.id}:${i}`] = { sol: d.solanaAddress, evm: d.evmAddress };
+          if (d) map[key] = ADDR_CACHE[key] = { sol: d.solanaAddress, evm: d.evmAddress };
         }
       }
       if (!cancelled) setAddrs(map);
@@ -49,20 +55,13 @@ export function WalletSwitcher() {
   const triggerText =
     (activeSeed?.accounts.length ?? 0) > 1 ? `${activeLabel} · Account ${activeIndex + 1}` : activeLabel;
 
-  const select = async (seedId: string, index: number) => {
-    if (seedId === activeSeedId && index === activeIndex) {
-      setOpen(false);
-      return;
-    }
-    const key = `${seedId}:${index}`;
+  // Close the menu immediately and switch in the background — the header label and balances update
+  // underneath (balances skeleton-load), so it feels instant instead of blocking on a spinner.
+  const select = (seedId: string, index: number) => {
+    setOpen(false);
+    if (seedId === activeSeedId && index === activeIndex) return;
     haptics.select();
-    setBusy(key);
-    try {
-      await switchAccount(seedId, index);
-      setOpen(false);
-    } finally {
-      setBusy(null);
-    }
+    void switchAccount(seedId, index);
   };
 
   const goManage = () => {
@@ -107,15 +106,11 @@ export function WalletSwitcher() {
                           </Text>
                         )}
                       </View>
-                      {busy === key ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <Ionicons
-                          name={active ? "checkmark-circle" : "ellipse-outline"}
-                          size={22}
-                          color={active ? colors.primary : colors.textFaint}
-                        />
-                      )}
+                      <Ionicons
+                        name={active ? "checkmark-circle" : "ellipse-outline"}
+                        size={22}
+                        color={active ? colors.primary : colors.textFaint}
+                      />
                     </PressableScale>
                   );
                 })

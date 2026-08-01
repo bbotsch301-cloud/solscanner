@@ -66,7 +66,19 @@ export function validateMnemonic(mnemonic: string): boolean {
  * passphrase" error). Empty string = the standard no-passphrase wallet.
  */
 export function keypairFromMnemonic(mnemonic: string, passphrase = "", account = 0): Keypair {
-  const seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase);
-  const derived = deriveEd25519Seed(new Uint8Array(seed), account);
-  return Keypair.fromSeed(derived);
+  return keypairFromSeed(bip39SeedSync(mnemonic, passphrase), account);
+}
+
+/**
+ * The 64-byte BIP39 seed (PBKDF2-HMAC-SHA512 × 2048) for a (mnemonic, passphrase). This is the
+ * expensive step — on Hermes (no JIT) it dominates key derivation — and it does NOT depend on the
+ * account index, so callers cache it per wallet and derive many accounts from the one seed.
+ */
+export function bip39SeedSync(mnemonic: string, passphrase = ""): Uint8Array {
+  return new Uint8Array(bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic), passphrase));
+}
+
+/** Solana keypair for an account index from an already-computed BIP39 seed (the cheap step). */
+export function keypairFromSeed(seed: Uint8Array, account = 0): Keypair {
+  return Keypair.fromSeed(deriveEd25519Seed(seed, account));
 }
