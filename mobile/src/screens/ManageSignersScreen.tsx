@@ -104,10 +104,14 @@ export function ManageSignersScreen() {
     propose("Add signer?", `Add ${shortAddress(a, 6, 6)} as a signer.`, (kp) => prepareAddSigner(kp, a));
   };
 
-  const removeSigner = (a: string) =>
-    propose("Remove signer?", `Remove ${shortAddress(a, 6, 6)} from the multisig.`, (kp) =>
-      prepareRemoveSigner(kp, a)
-    );
+  const removeSigner = (a: string) => {
+    const newCount = (info?.members.length ?? 1) - 1;
+    const willLower = !!info && info.threshold > newCount;
+    const detail =
+      `Remove ${shortAddress(a, 6, 6)} from the multisig.` +
+      (willLower ? ` Approvals will drop to ${newCount} of ${newCount}.` : "");
+    propose("Remove signer?", detail, (kp) => prepareRemoveSigner(kp, a));
+  };
 
   const changeThreshold = (n: number) => {
     if (!info || n < 1 || n > info.members.length || n === info.threshold) return;

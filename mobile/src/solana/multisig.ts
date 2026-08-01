@@ -264,14 +264,22 @@ export interface PreparedTx {
   send(): Promise<string>;
 }
 
-/** Common Squads custom-program error codes → plain English (restores the meaning the SDK's
- *  rpc.* would have translated; we build txs ourselves for confirmed, atomic, previewable sends). */
+/** Squads custom-program error codes → plain English (restores the meaning the SDK's rpc.*
+ *  would have translated; we build txs ourselves for confirmed, atomic, previewable sends). */
 const SQUADS_ERROR: Record<number, string> = {
-  6002: "You're not a member of this multisig.",
-  6003: "Your key doesn't have permission for this action.",
-  6005: "Not enough signers have approved this yet.",
+  6001: "A multisig must keep at least one signer.",
+  6002: "Too many signers for one multisig.",
+  6003: "That would make the approval threshold invalid — it can't be higher than the number of signers. (Removing a signer lowers the threshold automatically; recreate the proposal.)",
+  6004: "Your key isn't authorized for this — it may not be a member or may lack the needed permission.",
+  6005: "That address isn't a member of this multisig.",
+  6007: "This proposal is stale — a later config change superseded it. Create a fresh one.",
   6008: "This proposal isn't ready to execute — it needs enough approvals and must not be already executed or cancelled.",
   6009: "Proposal index mismatch — refresh and try again.",
+  6015: "You can't remove the last signer of a multisig.",
+  6016: "That change would leave no one able to approve (vote).",
+  6017: "That change would leave no one able to propose.",
+  6018: "That change would leave no one able to execute.",
+  6021: "This proposal is still time-locked and can't be executed yet.",
 };
 
 /** Turn a failed simulation (err + logs) into the REAL reason, not a generic "low SOL" guess. */
@@ -424,7 +432,17 @@ export async function prepareAddSigner(creator: Keypair, address: string): Promi
 }
 
 export async function prepareRemoveSigner(creator: Keypair, address: string): Promise<PreparedTx> {
-  return prepareConfigChange(creator, [{ __kind: "RemoveMember", oldMember: new PublicKey(address) }]);
+  const ms = multisigPubkey();
+  if (!ms) throw new Error("No multisig configured.");
+  const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
+  const newCount = acc.members.length - 1;
+  if (newCount < 1) throw new Error("A multisig must keep at least one signer.");
+  const actions: ConfigAction[] = [];
+  // Squads rejects threshold > members, so lower the threshold FIRST when the removal would
+  // otherwise leave it too high (e.g. 2-of-2 → remove one → must become 1-of-1).
+  if (acc.threshold > newCount) actions.push({ __kind: "ChangeThreshold", newThreshold: newCount });
+  actions.push({ __kind: "RemoveMember", oldMember: new PublicKey(address) });
+  return prepareConfigChange(creator, actions);
 }
 
 export async function prepareChangeThreshold(creator: Keypair, newThreshold: number): Promise<PreparedTx> {
