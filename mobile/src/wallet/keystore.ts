@@ -139,6 +139,13 @@ export async function importMnemonic(mnemonic: string, passphrase = ""): Promise
       "That recovery phrase isn't valid. Check for typos and that it's 12 or 24 words in order."
     );
   }
+  // Same fail-closed guard as create: never overwrite an existing wallet on import.
+  if (await existingWalletPresent()) {
+    throw new Error(
+      "A wallet already exists on this device. Reset your current wallet first in Settings " +
+        "before importing another — this protects you from overwriting a funded wallet."
+    );
+  }
   const kp = keypairFromMnemonic(phrase, passphrase);
   await persist(phrase, passphrase, kp);
   await setNeedsBackup(false); // restored wallets are already backed up
