@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
@@ -32,12 +33,48 @@ import type { RootNav, RootStackParamList } from "../navigation";
 const FEE_BUFFER_SOL = 0.001;
 const FEE_BUFFER_EVM = 0.002; // leave a little native for gas
 
+function Detail({
+  label,
+  value,
+  onCopy,
+  copied,
+}: {
+  label: string;
+  value: string;
+  onCopy?: () => void;
+  copied?: boolean;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <View style={styles.detailRight}>
+        <Text style={styles.detailValue}>{value}</Text>
+        {onCopy && (
+          <Pressable onPress={onCopy} hitSlop={8}>
+            <Ionicons
+              name={copied ? "checkmark" : "copy-outline"}
+              size={15}
+              color={copied ? colors.positive : colors.textMuted}
+            />
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
 export function SendScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Send">>();
   const insets = useSafeAreaInsets();
   const { activeChain, activeAddress, native, assets, sendAsset, refresh: refreshWallet } = useWallet();
   const [refreshing, setRefreshing] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyField = async (key: string, value: string) => {
+    await Clipboard.setStringAsync(value);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 1500);
+  };
   const isSolana = activeChain.kind === "solana";
 
   // Native asset + the chain's tokens, unified.
@@ -187,22 +224,48 @@ export function SendScreen() {
   };
 
   if (signature) {
+    const toDisplay = nameKind ? trimmedTo : shortAddress(effectiveTo ?? trimmedTo, 6, 6);
     return (
-      <View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
-        <View style={styles.successCircle}>
-          <Ionicons name="checkmark" size={48} color={colors.bg} />
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.successBody}>
+          <View style={styles.successRing}>
+            <View style={styles.successCircle}>
+              <Ionicons name="checkmark" size={52} color={colors.bg} />
+            </View>
+          </View>
+          <Text style={styles.successTitle}>Sent</Text>
+          <Text style={styles.successAmount}>
+            {fmtAmount(amtNum)} {selected.symbol}
+          </Text>
+
+          <View style={styles.detailCard}>
+            <Detail
+              label="To"
+              value={toDisplay}
+              onCopy={() => copyField("to", effectiveTo ?? trimmedTo)}
+              copied={copied === "to"}
+            />
+            <View style={styles.detailDivider} />
+            <Detail label="Network" value={activeChain.name} />
+            <View style={styles.detailDivider} />
+            <Detail
+              label="Transaction"
+              value={shortAddress(signature, 6, 6)}
+              onCopy={() => copyField("sig", signature)}
+              copied={copied === "sig"}
+            />
+          </View>
         </View>
-        <Text style={styles.successTitle}>Sent</Text>
-        <Text style={styles.successSub}>
-          {fmtAmount(amtNum)} {selected.symbol} to{" "}
-          {nameKind ? trimmedTo : shortAddress(effectiveTo ?? trimmedTo, 4, 4)}
-        </Text>
-        <Pressable onPress={() => Linking.openURL(activeChain.explorerTx(signature))}>
-          <Text style={styles.link}>View on explorer ↗</Text>
-        </Pressable>
-        <Pressable onPress={() => nav.goBack()} style={styles.primaryBtn}>
-          <Text style={styles.primaryText}>Done</Text>
-        </Pressable>
+
+        <View style={[styles.successFooter, { paddingBottom: insets.bottom + spacing(3) }]}>
+          <Pressable onPress={() => Linking.openURL(activeChain.explorerTx(signature))} style={styles.secondaryBtn}>
+            <Ionicons name="open-outline" size={18} color={colors.text} />
+            <Text style={styles.secondaryText}>View on explorer</Text>
+          </Pressable>
+          <Pressable onPress={() => nav.goBack()} style={styles.primaryBtn}>
+            <Text style={styles.primaryText}>Done</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -340,7 +403,6 @@ export function SendScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  center: { alignItems: "center", justifyContent: "center", gap: spacing(3), paddingHorizontal: spacing(6) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
   title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   label: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginBottom: spacing(2) },
@@ -395,8 +457,20 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
   primaryDisabled: { backgroundColor: colors.card },
   primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
-  successCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginBottom: spacing(2) },
-  successTitle: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  successSub: { color: colors.textMuted, fontSize: font.body, textAlign: "center" },
-  link: { color: colors.primary, fontSize: font.body, fontWeight: "700", marginTop: spacing(1) },
+
+  // Success state
+  successBody: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing(6) },
+  successRing: { width: 120, height: 120, borderRadius: 60, backgroundColor: colors.primary + "1F", alignItems: "center", justifyContent: "center", marginBottom: spacing(4) },
+  successCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  successTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
+  successAmount: { color: colors.textMuted, fontSize: font.h3, fontWeight: "700", marginTop: spacing(1), marginBottom: spacing(6) },
+  detailCard: { alignSelf: "stretch", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing(4) },
+  detailRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing(3.5) },
+  detailLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "600" },
+  detailRight: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  detailValue: { color: colors.text, fontSize: font.body, fontWeight: "700" },
+  detailDivider: { height: 1, backgroundColor: colors.cardBorder },
+  successFooter: { paddingHorizontal: spacing(4), paddingTop: spacing(3), gap: spacing(2) },
+  secondaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3.5), borderRadius: radius.pill, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card },
+  secondaryText: { color: colors.text, fontSize: font.body, fontWeight: "800" },
 });
