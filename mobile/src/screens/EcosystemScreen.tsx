@@ -91,7 +91,7 @@ export function EcosystemScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.greet}>{greeting}</Text>
-      <Text style={styles.greetSub}>Building a Better Tomorrow Together</Text>
+      <Text style={styles.greetSub}>Building the Kingdom Economy</Text>
 
       {IS_MAINNET && (
         <View style={styles.soonBanner}>
