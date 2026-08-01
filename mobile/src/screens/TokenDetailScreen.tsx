@@ -1,6 +1,6 @@
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
@@ -14,7 +14,7 @@ export function TokenDetailScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "TokenDetail">>();
   const insets = useSafeAreaInsets();
-  const { activeChain, native, assets } = useWallet();
+  const { activeChain, native, assets, refresh: refreshWallet } = useWallet();
   const assetKey = route.params.asset;
 
   // Resolve the asset from live wallet state (balances stay fresh).
@@ -38,17 +38,22 @@ export function TokenDetailScreen() {
 
   const [chart, setChart] = useState<TokenChart | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadChart = useCallback(async (): Promise<TokenChart | null> => {
+    if (!view) return null;
+    return fetchTokenChart({
+      chainId: activeChain.id,
+      symbol: view.symbol,
+      isNative: view.isNative,
+      contract: view.contract,
+    });
+  }, [view, activeChain.id]);
 
   useEffect(() => {
-    if (!view) return;
     let cancelled = false;
     (async () => {
-      const c = await fetchTokenChart({
-        chainId: activeChain.id,
-        symbol: view.symbol,
-        isNative: view.isNative,
-        contract: view.contract,
-      });
+      const c = await loadChart();
       if (!cancelled) {
         setChart(c);
         setLoading(false);
@@ -57,7 +62,21 @@ export function TokenDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [view, activeChain.id]);
+  }, [loadChart]);
+
+  // Pull-to-refresh: re-price the wallet (updates this token's balance + USD value) and reload
+  // the chart. fetchPrices/fetchTokenChart aren't cached, so this pulls genuinely fresh numbers.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [c] = await Promise.all([loadChart(), refreshWallet()]);
+      setChart(c);
+    } catch {
+      /* keep last */
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadChart, refreshWallet]);
 
   if (!view) {
     return (
@@ -77,6 +96,7 @@ export function TokenDetailScreen() {
     <ScrollView
       style={styles.screen}
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <View style={styles.topBar}>
         <View style={styles.titleRow}>
