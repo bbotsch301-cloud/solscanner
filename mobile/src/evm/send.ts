@@ -5,7 +5,7 @@
 import type { ChainDef } from "../chains/registry";
 import { estimateGas, getFees, sendRawTransaction } from "./rpc";
 import { reserveNonce } from "./nonce";
-import { erc20TransferData, signEip1559, type EvmTx } from "./tx";
+import { erc20ApproveData, erc20TransferData, signEip1559, type EvmTx } from "./tx";
 import { toBaseUnits } from "./units";
 
 /** Send native ETH/BNB. Returns the tx hash. */
@@ -114,6 +114,41 @@ export async function sendTokenEvm(
     return hash;
   } catch (e) {
     res.rollback(); // any failure after reserving must release the lock (no leak/deadlock)
+    throw e;
+  }
+}
+
+/**
+ * Set an ERC-20 allowance for `spender` on `token` to `amount` (pass 0n to revoke). Same
+ * nonce-safe, leak-safe scaffold as sendTokenEvm. Returns the tx hash.
+ */
+export async function approveEvm(
+  chain: ChainDef,
+  privateKey: Uint8Array,
+  from: string,
+  token: string,
+  spender: string,
+  amount: bigint
+): Promise<string> {
+  const data = erc20ApproveData(spender, amount);
+  const res = await reserveNonce(chain, from);
+  try {
+    const fees = await getFees(chain);
+    const tx: EvmTx = {
+      chainId: chain.evmChainId!,
+      nonce: res.nonce,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      maxFeePerGas: fees.maxFeePerGas,
+      gasLimit: 70_000n,
+      to: token,
+      value: 0n,
+      data,
+    };
+    const hash = await sendRawTransaction(chain, signEip1559(tx, privateKey));
+    res.commit();
+    return hash;
+  } catch (e) {
+    res.rollback();
     throw e;
   }
 }

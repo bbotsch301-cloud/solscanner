@@ -37,11 +37,13 @@ import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
+import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref } from "./src/security/prefs";
 import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
+import { loadApprovals } from "./src/safety/approvals";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -175,6 +177,7 @@ function Root() {
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
+          <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
@@ -188,9 +191,13 @@ export default function App() {
     // The blocklist refresh is best-effort and must never delay startup on a slow network,
     // so it's fired alongside but the app doesn't block on its result (it fails open).
     loadBlocklist();
-    Promise.all([loadNetworkPref(), loadSecurityPref(), loadMultisigPref(), loadRecipients()]).finally(() =>
-      setReady(true)
-    );
+    Promise.all([
+      loadNetworkPref(),
+      loadSecurityPref(),
+      loadMultisigPref(),
+      loadRecipients(),
+      loadApprovals(),
+    ]).finally(() => setReady(true));
   }, []);
 
   return (

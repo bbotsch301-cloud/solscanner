@@ -34,7 +34,7 @@ import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "..
 import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
 import { fetchEvmNativePrices, stableUsd } from "../evm/prices";
-import { sendNativeEvm, sendTokenEvm, previewEvmSend } from "../evm/send";
+import { sendNativeEvm, sendTokenEvm, previewEvmSend, approveEvm } from "../evm/send";
 import { executeUnifiedSwap } from "../swap";
 import type { UnifiedQuote } from "../swap/types";
 import {
@@ -63,6 +63,7 @@ import {
   type AccountRef,
 } from "./vault";
 import { isPinPrompted, setPinPrompted, clearPinPrompted } from "../security/prefs";
+import { recordApproval } from "../safety/approvals";
 import type { EvmAccount } from "./evm";
 
 const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
@@ -187,6 +188,8 @@ interface WalletState {
   previewSend: (asset: UnifiedAsset, to: string, uiAmount: number) => Promise<{ feeNative: number; symbol: string }>;
   /** Execute a swap on the active chain (signs with the right key), returns tx id/sig. */
   swapExecute: (quote: UnifiedQuote, onStatus?: (s: string) => void) => Promise<string>;
+  /** Revoke an ERC-20 allowance (set to 0) on the active EVM chain. Returns the tx hash. */
+  revokeApproval: (token: string, spender: string) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -660,12 +663,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  /** Revoke (set to 0) an ERC-20 allowance on the active EVM chain. Returns the tx hash. */
+  const revokeApproval = useCallback(async (token: string, spender: string): Promise<string> => {
+    const chain = getChain(activeChainRef.current);
+    if (chain.kind !== "evm") throw new Error("Approvals apply to EVM chains only.");
+    const acct = evmAccountRef.current;
+    if (!acct) throw new Error("No EVM wallet on this device.");
+    const hash = await approveEvm(chain, acct.privateKey, acct.address, token, spender, 0n);
+    loadChain(chain.id);
+    return hash;
+  }, [loadChain]);
+
   const swapExecute = useCallback(
     async (quote: UnifiedQuote, onStatus?: (s: string) => void): Promise<string> => {
       const chain = getChain(activeChainRef.current);
       const signer = chain.kind === "solana" ? keypairRef.current : evmAccountRef.current;
       if (!signer) throw new Error("No wallet for this chain.");
       const sig = await executeUnifiedSwap(chain, quote, signer, onStatus);
+      // Remember any ERC-20 router approval this swap relied on, so it shows up (and can be
+      // revoked) on the Token Approvals screen.
+      if (chain.kind === "evm" && chain.evmChainId && quote.evm?.spender && quote.input.mint) {
+        recordApproval(chain.evmChainId, quote.input.mint, quote.evm.spender).catch(() => {});
+      }
       loadChain(chain.id);
       return sig;
     },
@@ -790,6 +809,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       sendAsset,
       previewSend,
       swapExecute,
+      revokeApproval,
     };
   }, [
     initializing,
@@ -832,6 +852,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     sendAsset,
     previewSend,
     swapExecute,
+    revokeApproval,
   ]);
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

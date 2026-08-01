@@ -33,6 +33,7 @@ import type { RootNav, RootStackParamList } from "../navigation";
 
 const FEE_BUFFER_SOL = 0.001;
 const FEE_BUFFER_EVM = 0.002; // leave a little native for gas
+const LARGE_USD = 1000; // amounts worth at least this get an extra "large transfer" caution
 
 function Detail({
   label,
@@ -203,6 +204,19 @@ export function SendScreen() {
   const blockedByRisk = risk?.level === "danger" && !acknowledged;
   const valid = validAddress && amtNum > 0 && amtNum <= selected.balance && !blockedByRisk;
 
+  // Non-blocking "are you sure?" cautions for high-consequence sends.
+  const perUnitUsd = selected.usd != null && selected.balance > 0 ? selected.usd / selected.balance : null;
+  const amtUsd = perUnitUsd != null ? perUnitUsd * amtNum : null;
+  const wholeBalance = amtNum > 0 && amtNum >= selected.balance - 1e-9;
+  const largeUsd = amtUsd != null && amtUsd >= LARGE_USD;
+  const amountCaution = !over && (wholeBalance || largeUsd)
+    ? wholeBalance
+      ? selected.kind === "native"
+        ? `You're sending your entire ${selected.symbol} balance — nothing will be left to cover future network fees.`
+        : `You're sending your entire ${selected.symbol} balance.`
+      : `This is a large transfer${amtUsd != null ? ` (~$${Math.round(amtUsd).toLocaleString("en-US")})` : ""}. Double-check the amount and recipient.`
+    : null;
+
   const buffer = isSolana ? FEE_BUFFER_SOL : FEE_BUFFER_EVM;
   const maxAmount = selected.kind === "native" ? Math.max(0, selected.balance - buffer) : selected.balance;
 
@@ -243,9 +257,10 @@ export function SendScreen() {
     const poisonLine = lookalike
       ? `\n\n⚠ This closely resembles a different address you've used before (${shortAddress(lookalike, 6, 6)}). Address-poisoning scams rely on lookalikes — be certain this is the one you mean.`
       : "";
+    const cautionLine = amountCaution ? `\n\n${amountCaution}` : "";
     Alert.alert(
       "Confirm send",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}${poisonLine}\n\nDouble-check every character — sends can’t be undone.`,
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${effectiveTo}${feeLine}${poisonLine}${cautionLine}\n\nDouble-check every character — sends can’t be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Send", style: "default", onPress: reallySend },
@@ -421,6 +436,13 @@ export function SendScreen() {
 
         {(checking || risk) && <RiskCard report={risk} checking={checking} />}
 
+        {amountCaution && (
+          <View style={styles.amountCaution}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+            <Text style={styles.amountCautionText}>{amountCaution}</Text>
+          </View>
+        )}
+
         {risk?.level === "danger" && (
           <Pressable onPress={() => setAcknowledged((a) => !a)} style={styles.ackRow}>
             <Ionicons name={acknowledged ? "checkbox" : "square-outline"} size={20} color={colors.negative} />
@@ -507,6 +529,15 @@ const styles = StyleSheet.create({
   symbolTag: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   usdLine: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2), marginLeft: spacing(1) },
   feeLine: { color: colors.warning, fontSize: font.small, marginTop: spacing(1), marginLeft: spacing(1) },
+  amountCaution: {
+    flexDirection: "row",
+    gap: spacing(2),
+    alignItems: "flex-start",
+    backgroundColor: colors.warning + "18",
+    borderRadius: radius.md,
+    padding: spacing(3),
+  },
+  amountCautionText: { flex: 1, color: colors.warning, fontSize: font.small, lineHeight: 18 },
   error: { color: colors.negative, fontSize: font.small },
   ackRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
   ackText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "600" },

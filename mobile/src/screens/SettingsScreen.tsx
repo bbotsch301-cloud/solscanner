@@ -194,6 +194,7 @@ export function SettingsScreen() {
       <Text style={styles.sectionTitle}>Connections</Text>
       <View style={styles.group}>
         <Row icon="link" label="Connect to a dApp" onPress={() => nav.navigate("WalletConnect")} />
+        <Row icon="shield-checkmark-outline" label="Token approvals" onPress={() => nav.navigate("TokenApprovals")} />
       </View>
 
       <Text style={styles.sectionTitle}>Danger zone</Text>

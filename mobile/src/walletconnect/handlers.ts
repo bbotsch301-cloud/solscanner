@@ -15,6 +15,7 @@ import { signTypedData, type TypedData } from "../evm/eip712";
 import { signEip1559, type EvmTx } from "../evm/tx";
 import { estimateGas, getFees, sendRawTransaction } from "../evm/rpc";
 import { reserveNonce } from "../evm/nonce";
+import { recordApproval } from "../safety/approvals";
 import { summarizeEvmData, summarizeSolanaTx } from "./decode";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
@@ -184,6 +185,15 @@ export async function handleEvmRequest(
         }
         const hash = await sendRawTransaction(chain, raw);
         res?.commit();
+        // If this was an ERC-20 approve(spender, amount) with a non-zero amount, remember it
+        // so the user can find and revoke it later on the Token Approvals screen. An
+        // approve(_, 0) is itself a revoke, so there's nothing to record.
+        const data = (tx.data ?? "").toLowerCase();
+        if (chain.evmChainId && data.startsWith("0x095ea7b3") && data.length >= 138) {
+          const spender = "0x" + data.slice(34, 74);
+          const amount = BigInt("0x" + (data.slice(74, 138) || "0"));
+          if (amount > 0n) recordApproval(chain.evmChainId, tx.to, spender).catch(() => {});
+        }
         return hash;
       } catch (e) {
         res?.rollback();
