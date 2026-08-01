@@ -52,7 +52,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "sync": "git restore package-lock.json 2>/dev/null || true; git pull origin claude/practical-mendel-3im7fw && npm install --no-audit --no-fund"
   },
   "private": true
 }
