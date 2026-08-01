@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useWallet } from "../wallet/WalletContext";
+import { TokenAvatar } from "./TokenAvatar";
 import { colors, font, radius, spacing } from "../theme";
 
 /** Segmented pills to switch the active chain (Solana / Ethereum / BNB). */
@@ -18,7 +19,7 @@ export function ChainSwitcher() {
               active && { backgroundColor: c.color + "22", borderColor: c.color },
             ]}
           >
-            <View style={[styles.dot, { backgroundColor: c.color }]} />
+            <TokenAvatar symbol={c.symbol} color={c.color} logoURI={c.logoURI} size={18} />
             <Text style={[styles.label, active && { color: colors.text }]}>{c.symbol}</Text>
           </Pressable>
         );
@@ -40,6 +41,5 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     backgroundColor: colors.card,
   },
-  dot: { width: 7, height: 7, borderRadius: 3.5 },
   label: { color: colors.textMuted, fontSize: font.small, fontWeight: "800" },
 });

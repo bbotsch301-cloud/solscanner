@@ -157,7 +157,9 @@ export function TreasuryScreen() {
               usdValue={a.valueUsd}
               pct={pctOf(a.valueUsd, total)}
               color={colors.accent}
-              offchain
+              offchainDetail={
+                a.amount != null ? `${a.amount.toLocaleString("en-US")} ${a.unit ?? ""}`.trim() : a.category
+              }
             />
           </View>
         ))}
@@ -179,7 +181,7 @@ function Holding({
   pct,
   logoURI,
   color,
-  offchain,
+  offchainDetail,
 }: {
   symbol: string;
   name: string;
@@ -188,7 +190,8 @@ function Holding({
   pct?: number;
   logoURI?: string;
   color: string;
-  offchain?: boolean;
+  /** When set, this is an off-chain asset — show this detail + an "off-chain" tag. */
+  offchainDetail?: string;
 }) {
   return (
     <View style={styles.row}>
@@ -196,7 +199,7 @@ function Holding({
       <View style={styles.mid}>
         <Text style={styles.symbol}>{name}</Text>
         <Text style={styles.sub}>
-          {offchain ? `${symbol} · off-chain` : `${compact(amount ?? 0)} ${symbol}`}
+          {offchainDetail != null ? `${offchainDetail} · off-chain` : `${compact(amount ?? 0)} ${symbol}`}
         </Text>
       </View>
       <View style={styles.rightCol}>
