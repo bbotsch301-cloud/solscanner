@@ -35,7 +35,43 @@ async function readPersisted(mint: string): Promise<{ meta: TokenMeta; stale: bo
   }
 }
 function writePersisted(mint: string, meta: TokenMeta): void {
+  warm.set(mint, meta);
   AsyncStorage.setItem(TM_KEY + mint, JSON.stringify({ meta, ts: Date.now() })).catch(() => {});
+}
+
+// A synchronous snapshot of the on-disk metadata, loaded once at startup so names/logos can be
+// shown on the FIRST render (no flash of the contract address while an async read resolves).
+const warm = new Map<string, TokenMeta>();
+
+/** Load the persisted metadata into memory (call once at startup, before rendering). */
+export async function preloadTokenMetaCache(): Promise<void> {
+  try {
+    const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(TM_KEY));
+    if (!keys.length) return;
+    for (const [k, raw] of await AsyncStorage.multiGet(keys)) {
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as { meta?: TokenMeta } & Partial<TokenMeta>;
+        const meta = (parsed.meta ?? parsed) as TokenMeta;
+        if (meta?.symbol) warm.set(k.slice(TM_KEY.length), meta);
+      } catch {
+        /* skip a corrupt entry */
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Synchronously read already-known metadata (built-ins + warm disk cache + this session's
+ *  resolutions) for the given mints — used to seed names/logos instantly on first render. */
+export function cachedTokenMetas(mints: string[]): Record<string, TokenMeta> {
+  const out: Record<string, TokenMeta> = {};
+  for (const m of mints) {
+    const meta = KNOWN[m] ?? warm.get(m) ?? cache.get(m) ?? undefined;
+    if (meta) out[m] = meta;
+  }
+  return out;
 }
 
 export interface TokenMeta {

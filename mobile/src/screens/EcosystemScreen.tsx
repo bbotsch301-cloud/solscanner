@@ -12,7 +12,7 @@ import { buildAllocation } from "../solana/allocation";
 import { fetchDeposits, type Deposit } from "../solana/deposits";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
-import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
+import { fetchTokenMetas, cachedTokenMetas, type TokenMeta } from "../solana/tokens";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { solscanAccount, IS_MAINNET } from "../solana/connection";
 import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
@@ -50,10 +50,13 @@ export function EcosystemScreen() {
         getSupply(XGO_MINT),
         getTransferFee(XGO_MINT).catch(() => null),
       ]);
+      const mints = h.tokens.map((t) => t.mint);
       setHoldings(h);
       setSupply(s);
       setFee(f);
-      const mints = h.tokens.map((t) => t.mint);
+      // Seed names/logos synchronously from the warm cache so they render immediately with the
+      // holdings (no flash of the contract address); the async fetch below fills in the rest.
+      setMetas((prev) => ({ ...cachedTokenMetas(mints), ...prev }));
       const [p, m, oc, d] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
@@ -61,7 +64,7 @@ export function EcosystemScreen() {
         fetchDeposits(treasuryAddress(), 15).catch(() => [] as Deposit[]),
       ]);
       setPrices(p);
-      setMetas(m);
+      setMetas((prev) => ({ ...prev, ...m }));
       setOcPrices(oc);
       setDeposits(d);
     } catch {

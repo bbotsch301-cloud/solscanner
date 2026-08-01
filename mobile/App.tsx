@@ -44,6 +44,7 @@ import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
 import { loadRecipients } from "./src/safety/recipients";
 import { loadApprovals } from "./src/safety/approvals";
+import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
 import { colors } from "./src/theme";
@@ -201,6 +202,7 @@ export default function App() {
       loadMultisigPref(),
       loadRecipients(),
       loadApprovals(),
+      preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);
 
