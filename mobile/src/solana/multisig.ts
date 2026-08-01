@@ -252,60 +252,122 @@ export async function createMultisig(
   return address;
 }
 
+/** A built, signed, fee-estimated, pre-simulated transaction awaiting the user's confirmation. */
+export interface PreparedTx {
+  /** Estimated network (signature) fee in SOL — paid from the signer's own wallet. */
+  feeSol: number;
+  /** True when the tx opens on-chain accounts (proposing), which also locks a small refundable rent. */
+  rent: boolean;
+  /** A pre-flight problem: the tx simulated as failing, with the real reason. undefined = looks good. */
+  warn?: string;
+  /** Broadcast the prepared transaction and wait for confirmation. */
+  send(): Promise<string>;
+}
+
+/** Common Squads custom-program error codes → plain English (restores the meaning the SDK's
+ *  rpc.* would have translated; we build txs ourselves for confirmed, atomic, previewable sends). */
+const SQUADS_ERROR: Record<number, string> = {
+  6002: "You're not a member of this multisig.",
+  6003: "Your key doesn't have permission for this action.",
+  6005: "Not enough signers have approved this yet.",
+  6008: "This proposal isn't ready to execute — it needs enough approvals and must not be already executed or cancelled.",
+  6009: "Proposal index mismatch — refresh and try again.",
+};
+
+/** Turn a failed simulation (err + logs) into the REAL reason, not a generic "low SOL" guess. */
+function explainSimError(err: unknown, logs: string[]): string {
+  const text = logs.join(" ");
+  if (/insufficient lamports|insufficient funds|debit an account but found no record/i.test(text))
+    return "The vault doesn't have enough SOL/tokens to cover this transfer (plus rent for the recipient's account). Fund the vault, then try again.";
+  const code = Number(JSON.stringify(err).match(/"Custom":(\d+)/)?.[1] ?? NaN);
+  if (!Number.isNaN(code))
+    return (
+      SQUADS_ERROR[code] ??
+      `The Squads program rejected this (error ${code}). Make sure the proposal is approved by enough signers and hasn't already been executed.`
+    );
+  const log = [...logs].reverse().find((l) => /Program log: (Error|AnchorError|failed)/i.test(l));
+  if (log) return log.replace(/^.*Program log:\s*/i, "");
+  return "The network rejected this transaction — it would fail on-chain.";
+}
+
 /**
- * Build a legacy transaction from instructions, sign with `signer`, and WAIT for confirmation.
- *
- * The SDK's `rpc.*` helpers only `sendTransaction` (fire-and-forget, no confirm), which races
- * any flow that spans more than one instruction: e.g. create-then-proposalCreate would send the
- * proposal before the create landed, so the on-chain `transactionIndex` was still stale →
- * `InvalidTransactionIndex (6009)`. Composing the instructions into one confirmed transaction
- * makes the index update visible to the proposal within the same execution, and confirming
- * means the UI reload afterwards reflects the new state.
+ * Build + sign a legacy tx, estimate its fee, and PRE-SIMULATE it so a doomed transaction is
+ * caught and explained BEFORE sending (e.g. an underfunded vault, or a not-yet-approved proposal)
+ * instead of surfacing as a misleading "low SOL" error. We build the tx ourselves (not the SDK's
+ * fire-and-forget rpc.*) so multi-instruction flows stay atomic + confirmed and we can preview.
  */
-async function sendConfirmed(
+async function prepareTx(
   signer: Keypair,
   ixs: TransactionInstruction[],
-  extraSigners: Keypair[] = []
-): Promise<string> {
+  opts: { extraSigners?: Keypair[]; rent?: boolean } = {}
+): Promise<PreparedTx> {
+  const extraSigners = opts.extraSigners ?? [];
   const tx = new Transaction().add(...ixs);
-  return sendAndConfirmTransaction(connection, tx, [signer, ...extraSigners]);
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  tx.recentBlockhash = blockhash;
+  tx.lastValidBlockHeight = lastValidBlockHeight;
+  tx.feePayer = signer.publicKey;
+  tx.sign(signer, ...extraSigners);
+
+  let feeSol = 0.000005; // fallback: one signature
+  try {
+    const fee = await connection.getFeeForMessage(tx.compileMessage(), "confirmed");
+    if (fee.value != null) feeSol = fee.value / LAMPORTS_PER_SOL;
+  } catch {
+    /* keep fallback */
+  }
+
+  let warn: string | undefined;
+  try {
+    const sim = await connection.simulateTransaction(tx);
+    if (sim.value.err) warn = explainSimError(sim.value.err, sim.value.logs ?? []);
+  } catch {
+    /* couldn't run simulation — the real send will surface any error */
+  }
+
+  return {
+    feeSol,
+    rent: !!opts.rent,
+    warn,
+    // Refetch the blockhash at send time — the confirm dialog can sit long enough for the
+    // prepared blockhash to expire; sendAndConfirmTransaction re-signs for the new one.
+    send: async () => {
+      const bh = await connection.getLatestBlockhash();
+      tx.recentBlockhash = bh.blockhash;
+      tx.lastValidBlockHeight = bh.lastValidBlockHeight;
+      return sendAndConfirmTransaction(connection, tx, [signer, ...extraSigners]);
+    },
+  };
 }
 
-/** Approve a proposal — signs & sends with the member's key (Squads enforces permissions). */
-export async function approveProposal(member: Keypair, index: number): Promise<string> {
+/** Prepare + immediately send (no fee preview needed, e.g. multisig creation). */
+async function sendConfirmed(signer: Keypair, ixs: TransactionInstruction[], extraSigners: Keypair[] = []): Promise<string> {
+  return (await prepareTx(signer, ixs, { extraSigners })).send();
+}
+
+/** Prepare an approval — the member signs; Squads enforces permissions on send. */
+export async function prepareApprove(member: Keypair, index: number): Promise<PreparedTx> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
-  return sendConfirmed(member, [
-    multisig.instructions.proposalApprove({
-      multisigPda: ms,
-      transactionIndex: BigInt(index),
-      member: member.publicKey,
-    }),
+  return prepareTx(member, [
+    multisig.instructions.proposalApprove({ multisigPda: ms, transactionIndex: BigInt(index), member: member.publicKey }),
   ]);
 }
 
-export async function rejectProposal(member: Keypair, index: number): Promise<string> {
+export async function prepareReject(member: Keypair, index: number): Promise<PreparedTx> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
-  return sendConfirmed(member, [
-    multisig.instructions.proposalReject({
-      multisigPda: ms,
-      transactionIndex: BigInt(index),
-      member: member.publicKey,
-    }),
+  return prepareTx(member, [
+    multisig.instructions.proposalReject({ multisigPda: ms, transactionIndex: BigInt(index), member: member.publicKey }),
   ]);
 }
 
-/** Execute an approved proposal — a vault spend or a config (signer/threshold) change. */
-export async function executeProposal(
-  member: Keypair,
-  index: number,
-  kind: "vault" | "config" = "vault"
-): Promise<string> {
+/** Prepare execution of an approved proposal — a vault spend or a config (signer/threshold) change. */
+export async function prepareExecute(member: Keypair, index: number, kind: "vault" | "config" = "vault"): Promise<PreparedTx> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
   if (kind === "config") {
-    return sendConfirmed(member, [
+    return prepareTx(member, [
       multisig.instructions.configTransactionExecute({
         multisigPda: ms,
         transactionIndex: BigInt(index),
@@ -321,48 +383,52 @@ export async function executeProposal(
     transactionIndex: BigInt(index),
     member: member.publicKey,
   });
-  return sendConfirmed(member, [instruction]);
+  return prepareTx(member, [instruction]);
 }
 
 // ---- config-change proposals (add/remove signer, change threshold) -----------
 
 type ConfigAction = Parameters<typeof multisig.rpc.configTransactionCreate>[0]["actions"][number];
 
-/** Propose a config change — creates a config transaction + proposal the current signers
- *  must approve (then execute). Both instructions ride one confirmed transaction so the
- *  proposal sees the freshly-incremented transaction index (avoids InvalidTransactionIndex). */
-async function proposeConfigChange(creator: Keypair, actions: ConfigAction[]): Promise<string> {
+/** Prepare a config change — creates a config transaction + proposal the current signers must
+ *  approve (then execute). Both instructions ride one confirmed transaction so the proposal sees
+ *  the freshly-incremented transaction index (avoids InvalidTransactionIndex). */
+async function prepareConfigChange(creator: Keypair, actions: ConfigAction[]): Promise<PreparedTx> {
   const ms = multisigPubkey();
   if (!ms) throw new Error("No multisig configured.");
   const acc = await multisig.accounts.Multisig.fromAccountAddress(connection, ms);
   const index = BigInt(acc.transactionIndex.toString()) + 1n;
-  return sendConfirmed(creator, [
-    multisig.instructions.configTransactionCreate({
-      multisigPda: ms,
-      transactionIndex: index,
-      creator: creator.publicKey,
-      actions,
-    }),
-    multisig.instructions.proposalCreate({
-      multisigPda: ms,
-      transactionIndex: index,
-      creator: creator.publicKey,
-    }),
-  ]);
+  return prepareTx(
+    creator,
+    [
+      multisig.instructions.configTransactionCreate({
+        multisigPda: ms,
+        transactionIndex: index,
+        creator: creator.publicKey,
+        actions,
+      }),
+      multisig.instructions.proposalCreate({
+        multisigPda: ms,
+        transactionIndex: index,
+        creator: creator.publicKey,
+      }),
+    ],
+    { rent: true }
+  );
 }
 
-export async function proposeAddSigner(creator: Keypair, address: string): Promise<string> {
-  return proposeConfigChange(creator, [
+export async function prepareAddSigner(creator: Keypair, address: string): Promise<PreparedTx> {
+  return prepareConfigChange(creator, [
     { __kind: "AddMember", newMember: { key: new PublicKey(address), permissions: multisig.types.Permissions.all() } },
   ]);
 }
 
-export async function proposeRemoveSigner(creator: Keypair, address: string): Promise<string> {
-  return proposeConfigChange(creator, [{ __kind: "RemoveMember", oldMember: new PublicKey(address) }]);
+export async function prepareRemoveSigner(creator: Keypair, address: string): Promise<PreparedTx> {
+  return prepareConfigChange(creator, [{ __kind: "RemoveMember", oldMember: new PublicKey(address) }]);
 }
 
-export async function proposeChangeThreshold(creator: Keypair, newThreshold: number): Promise<string> {
-  return proposeConfigChange(creator, [{ __kind: "ChangeThreshold", newThreshold }]);
+export async function prepareChangeThreshold(creator: Keypair, newThreshold: number): Promise<PreparedTx> {
+  return prepareConfigChange(creator, [{ __kind: "ChangeThreshold", newThreshold }]);
 }
 
 // ---- spend proposals (transfer SOL/SPL out of the vault) ----------------------
@@ -377,17 +443,17 @@ export interface TransferAsset {
 }
 
 /**
- * Propose a transfer OUT of the multisig vault. Wraps a SOL or SPL transfer (executed by the
+ * Prepare a transfer OUT of the multisig vault. Wraps a SOL or SPL transfer (executed by the
  * vault PDA) in a Squads vault transaction + proposal the members must approve, then execute.
- * Signed here by the proposing member; the vault itself only moves funds on execution after
- * the threshold approves. `to` is the recipient (base58). Returns the proposal signature.
+ * Signed by the proposing member; the vault itself only moves funds on execution after the
+ * threshold approves. `to` is the recipient (base58). Returns a PreparedTx (fee + simulation).
  */
-export async function proposeTransfer(
+export async function prepareTransfer(
   creator: Keypair,
   to: string,
   uiAmount: number,
   asset: TransferAsset
-): Promise<string> {
+): Promise<PreparedTx> {
   const ms = multisigPubkey();
   const vault = vaultPda();
   if (!ms || !vault) throw new Error("No multisig configured.");
@@ -436,20 +502,24 @@ export async function proposeTransfer(
 
   // Create the vault transaction + its proposal in one confirmed tx so the proposal sees the
   // freshly-incremented transaction index (otherwise: InvalidTransactionIndex).
-  return sendConfirmed(creator, [
-    multisig.instructions.vaultTransactionCreate({
-      multisigPda: ms,
-      transactionIndex: index,
-      creator: creator.publicKey,
-      vaultIndex: 0,
-      ephemeralSigners: 0,
-      transactionMessage,
-      memo: `Send ${uiAmount} ${asset.symbol}`,
-    }),
-    multisig.instructions.proposalCreate({
-      multisigPda: ms,
-      transactionIndex: index,
-      creator: creator.publicKey,
-    }),
-  ]);
+  return prepareTx(
+    creator,
+    [
+      multisig.instructions.vaultTransactionCreate({
+        multisigPda: ms,
+        transactionIndex: index,
+        creator: creator.publicKey,
+        vaultIndex: 0,
+        ephemeralSigners: 0,
+        transactionMessage,
+        memo: `Send ${uiAmount} ${asset.symbol}`,
+      }),
+      multisig.instructions.proposalCreate({
+        multisigPda: ms,
+        transactionIndex: index,
+        creator: creator.publicKey,
+      }),
+    ],
+    { rent: true }
+  );
 }

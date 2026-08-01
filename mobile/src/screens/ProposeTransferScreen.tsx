@@ -18,7 +18,7 @@ import { PublicKey } from "@solana/web3.js";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
 import { useWallet } from "../wallet/WalletContext";
-import { proposeTransfer, type TransferAsset } from "../solana/multisig";
+import { prepareTransfer, type TransferAsset } from "../solana/multisig";
 import { fetchHoldings } from "../solana/treasury";
 import { fetchTokenMeta } from "../solana/tokens";
 import { vaultPda } from "../config/multisig";
@@ -170,33 +170,48 @@ export function ProposeTransferScreen() {
 
   const maxAmount = selected?.kind === "sol" ? Math.max(0, bal - FEE_BUFFER_SOL) : bal;
 
-  const reallyPropose = async () => {
-    if (!keypair || !selected || !effectiveTo) return;
+  const doPropose = async () => {
+    if (!keypair || !selected || !effectiveTo || busy) return;
+    // Prepare (build + simulate + fee) so the confirm shows the network fee and catches a
+    // doomed proposal with the real reason before anything is sent.
     setBusy(true);
+    const asset: TransferAsset = {
+      kind: selected.kind,
+      mint: selected.mint,
+      decimals: selected.decimals,
+      symbol: selected.symbol,
+    };
+    let prepared;
     try {
-      const asset: TransferAsset = {
-        kind: selected.kind,
-        mint: selected.mint,
-        decimals: selected.decimals,
-        symbol: selected.symbol,
-      };
-      await proposeTransfer(keypair, effectiveTo, amtNum, asset);
-      setProposed(true);
+      prepared = await prepareTransfer(keypair, effectiveTo, amtNum, asset);
     } catch (e) {
-      Alert.alert("Couldn't propose", e instanceof Error ? e.message : "Please try again.");
+      Alert.alert("Couldn't prepare", e instanceof Error ? e.message : "Please try again.");
+      return;
     } finally {
       setBusy(false);
     }
-  };
-
-  const doPropose = () => {
-    if (!selected || !effectiveTo) return;
     Alert.alert(
       "Propose this transfer?",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} from the treasury to:\n\n${effectiveTo}\n\nThis creates a proposal — funds don't move until your signers approve and it's executed.`,
+      `Send ${fmtAmount(amtNum)} ${selected.symbol} from the treasury to:\n\n${effectiveTo}\n\n` +
+        `Network fee ≈ ${prepared.feeSol.toFixed(6)} SOL${prepared.rent ? " + a small refundable rent deposit" : ""} (from your wallet).` +
+        (prepared.warn ? `\n\n⚠️ ${prepared.warn}` : "") +
+        `\n\nFunds don't move until your signers approve and it's executed.`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Propose", onPress: reallyPropose },
+        {
+          text: prepared.warn ? "Propose anyway" : "Propose",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await prepared.send();
+              setProposed(true);
+            } catch (e) {
+              Alert.alert("Couldn't propose", e instanceof Error ? e.message : "Please try again.");
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
       ]
     );
   };

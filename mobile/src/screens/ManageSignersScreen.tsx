@@ -18,10 +18,11 @@ import { PublicKey } from "@solana/web3.js";
 import { useWallet } from "../wallet/WalletContext";
 import {
   fetchMultisigInfo,
-  proposeAddSigner,
-  proposeRemoveSigner,
-  proposeChangeThreshold,
+  prepareAddSigner,
+  prepareRemoveSigner,
+  prepareChangeThreshold,
   type MultisigInfo,
+  type PreparedTx,
 } from "../solana/multisig";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
@@ -43,23 +44,35 @@ export function ManageSignersScreen() {
   }, [load]);
 
   // Any config change is a proposal the current signers must approve, then execute.
-  const propose = (
+  const propose = async (
     title: string,
     detail: string,
-    run: (kp: NonNullable<typeof keypair>) => Promise<string>
+    prepare: (kp: NonNullable<typeof keypair>) => Promise<PreparedTx>
   ) => {
     if (!keypair || busy) return;
+    setBusy(true);
+    let prepared: PreparedTx;
+    try {
+      prepared = await prepare(keypair);
+    } catch (e) {
+      Alert.alert("Couldn't prepare", e instanceof Error ? e.message : "Please try again.");
+      return;
+    } finally {
+      setBusy(false);
+    }
     Alert.alert(
       title,
-      `${detail}\n\nThis creates a proposal your co-signers must approve (${info?.threshold} of ${info?.members.length}) before it takes effect.`,
+      `${detail}\n\nCreates a proposal your co-signers must approve (${info?.threshold} of ${info?.members.length}).\n` +
+        `Network fee ≈ ${prepared.feeSol.toFixed(6)} SOL${prepared.rent ? " + a small refundable rent" : ""}.` +
+        (prepared.warn ? `\n\n⚠️ ${prepared.warn}` : ""),
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Propose",
+          text: prepared.warn ? "Propose anyway" : "Propose",
           onPress: async () => {
             setBusy(true);
             try {
-              await run(keypair);
+              await prepared.send();
               Alert.alert("Proposed", "Your co-signers can now approve it.", [
                 { text: "View proposals", onPress: () => nav.navigate("TreasuryMultisig") },
                 { text: "Done" },
@@ -88,18 +101,18 @@ export function ManageSignersScreen() {
       Alert.alert("Already a signer", "That address is already on the multisig.");
       return;
     }
-    propose("Add signer?", `Add ${shortAddress(a, 6, 6)} as a signer.`, (kp) => proposeAddSigner(kp, a));
+    propose("Add signer?", `Add ${shortAddress(a, 6, 6)} as a signer.`, (kp) => prepareAddSigner(kp, a));
   };
 
   const removeSigner = (a: string) =>
     propose("Remove signer?", `Remove ${shortAddress(a, 6, 6)} from the multisig.`, (kp) =>
-      proposeRemoveSigner(kp, a)
+      prepareRemoveSigner(kp, a)
     );
 
   const changeThreshold = (n: number) => {
     if (!info || n < 1 || n > info.members.length || n === info.threshold) return;
     propose("Change approvals?", `Require ${n} of ${info.members.length} signers to approve spends.`, (kp) =>
-      proposeChangeThreshold(kp, n)
+      prepareChangeThreshold(kp, n)
     );
   };
 

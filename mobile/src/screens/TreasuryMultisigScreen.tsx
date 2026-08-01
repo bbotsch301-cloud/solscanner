@@ -8,14 +8,14 @@ import {
   fetchMultisigInfo,
   fetchProposals,
   isMember,
-  approveProposal,
-  rejectProposal,
-  executeProposal,
+  prepareApprove,
+  prepareReject,
+  prepareExecute,
   type MultisigInfo,
+  type PreparedTx,
   type ProposalView,
 } from "../solana/multisig";
 import { multisigConfigured } from "../config/multisig";
-import { humanizeError } from "../solana/errors";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -49,27 +49,40 @@ export function TreasuryMultisigScreen() {
     load();
   }, [load]);
 
-  const act = (
+  const act = async (
     p: ProposalView,
     verb: "Approve" | "Reject" | "Execute",
-    run: (kp: NonNullable<typeof keypair>, index: number) => Promise<string>
+    prepare: (kp: NonNullable<typeof keypair>, index: number) => Promise<PreparedTx>
   ) => {
-    if (!keypair) return;
+    if (!keypair || busy != null) return;
+    // Build + simulate + estimate the fee first, so the confirm shows the real fee and catches
+    // a doomed tx (e.g. an underfunded vault) with the true reason instead of sending blindly.
+    setBusy(p.index);
+    let prepared: PreparedTx;
+    try {
+      prepared = await prepare(keypair, p.index);
+    } catch (e) {
+      Alert.alert(`Couldn't prepare ${verb.toLowerCase()}`, e instanceof Error ? e.message : "Please try again.");
+      return;
+    } finally {
+      setBusy(null);
+    }
     Alert.alert(
       `${verb} proposal #${p.index}?`,
-      `${p.summary}\n\nApprovals: ${p.approvals}/${p.threshold}. This signs a real transaction with your key.`,
+      `${p.summary}\n\nApprovals: ${p.approvals}/${p.threshold}\nNetwork fee ≈ ${prepared.feeSol.toFixed(6)} SOL (from your wallet)` +
+        (prepared.warn ? `\n\n⚠️ ${prepared.warn}` : ""),
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: verb,
+          text: prepared.warn ? `${verb} anyway` : verb,
           style: verb === "Reject" ? "destructive" : "default",
           onPress: async () => {
             setBusy(p.index);
             try {
-              await run(keypair, p.index);
+              await prepared.send();
               await load();
             } catch (e) {
-              Alert.alert(`${verb} failed`, humanizeError(e, { action: "load" }));
+              Alert.alert(`${verb} failed`, e instanceof Error ? e.message : "Please try again.");
             } finally {
               setBusy(null);
             }
@@ -153,17 +166,17 @@ export function TreasuryMultisigScreen() {
                       <ActivityIndicator color={colors.primary} />
                     ) : active ? (
                       <>
-                        <Pressable style={[styles.btn, styles.approve]} onPress={() => act(p, "Approve", approveProposal)}>
+                        <Pressable style={[styles.btn, styles.approve]} onPress={() => act(p, "Approve", prepareApprove)}>
                           <Text style={styles.approveText}>Approve</Text>
                         </Pressable>
-                        <Pressable style={[styles.btn, styles.reject]} onPress={() => act(p, "Reject", rejectProposal)}>
+                        <Pressable style={[styles.btn, styles.reject]} onPress={() => act(p, "Reject", prepareReject)}>
                           <Text style={styles.rejectText}>Reject</Text>
                         </Pressable>
                       </>
                     ) : (
                       <Pressable
                         style={[styles.btn, styles.execute]}
-                        onPress={() => act(p, "Execute", (kp, i) => executeProposal(kp, i, p.kind))}
+                        onPress={() => act(p, "Execute", (kp, i) => prepareExecute(kp, i, p.kind))}
                       >
                         <Text style={styles.approveText}>Execute</Text>
                       </Pressable>
