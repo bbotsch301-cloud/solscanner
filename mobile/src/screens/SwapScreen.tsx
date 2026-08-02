@@ -459,20 +459,25 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
           </View>
         )}
 
-        <View style={styles.banner}>
-          <Ionicons name="pricetags-outline" size={16} color={colors.primary} />
-          <Text style={styles.bannerText}>
-            {isSolana
-              ? "Live rates via Jupiter. Executing swaps needs mainnet — devnet has no liquidity."
-              : "Best rate across aggregators. ERC-20 swaps ask for a one-time approval first."}
-          </Text>
-        </View>
+        {/* The Solana half of this used to read "Executing swaps needs mainnet — devnet has no
+            liquidity" and rendered unconditionally, so it showed on mainnet while swaps worked
+            fine. Gone. The EVM line stays: a one-time approval is a real second transaction the
+            user is about to be asked to sign, which is worth saying before they start. */}
+        {!isSolana && (
+          <View style={styles.banner}>
+            <Ionicons name="pricetags-outline" size={16} color={colors.primary} />
+            <Text style={styles.bannerText}>
+              Best rate across aggregators. ERC-20 swaps ask for a one-time approval first.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
         {!canSwap ? (
           <View style={[styles.primaryBtn, styles.primaryDisabled]}>
-            <Text style={styles.primaryTextDisabled}>Swap · available on mainnet</Text>
+            {/* Only reachable on the test network, where there's no liquidity to route against. */}
+            <Text style={styles.primaryTextDisabled}>Swap · not available on the test network</Text>
           </View>
         ) : swapping ? (
           // Keep the live status ("Approving…", "Submitting…") beside the spinner while swapping.

@@ -1,12 +1,12 @@
-# SolWallet (mobile)
+# XGO Wallet (mobile)
 
-A native Solana wallet app (Phantom-inspired, passkey/Face ID unlock), built with
-**Expo + React Native + TypeScript**.
+A native multi-chain wallet (Solana + Ethereum + BNB Smart Chain) with PIN / Face ID
+unlock, built with **Expo + React Native + TypeScript**.
 
-**Phase 2 — live on devnet.** The wallet now generates a real keypair (stored in the
-device keychain via `expo-secure-store`), shows real balances, funds itself from the
-devnet faucet, and sends real signed transactions on Solana's **test network**. It's
-real crypto with **test money only** — mainnet (real funds) is a deliberate later step.
+**Live on mainnet — this handles real funds.** Keys are generated on-device and stored
+in the device keychain (`expo-secure-store`), encrypted behind an app PIN. Balances,
+swaps (Jupiter on Solana, KyberSwap on EVM), transfers and the treasury view are all
+real. A test network is still reachable from Settings for development.
 
 ## Run it on your iPhone (no Xcode needed)
 
@@ -26,12 +26,13 @@ real crypto with **test money only** — mainnet (real funds) is a deliberate la
 - **Onboarding** — "Create with passkey": Face ID prompt, then a real Solana keypair
   is generated and stored in the device keychain.
 - **Lock screen** — biometric unlock gate.
-- **Home** — live SOL balance, SPL token list, **Get SOL** (devnet faucet airdrop),
-  pull-to-refresh.
-- **Send** — real signed SOL transfer on devnet, with a Solscan link to the confirmed tx.
-- **Receive** — QR code + real wallet address.
-- **Activity** — real recent transactions from the chain (tap to open in Solscan).
-- **Settings** — address, cluster, lock, and a "Reset wallet" danger action.
+- **Wallet** — live balances, token list with names/logos, pull-to-refresh.
+- **Swap** — Jupiter on Solana, KyberSwap on Ethereum/BSC, with a hold-to-confirm sheet.
+- **Purchases** — NFTs and access passes, with archive and burn-to-reclaim-rent.
+- **Ecosystem** — the treasury, its holdings, and recent inflows, all verifiable on-chain.
+- **Send / Receive** — signed transfers with a Solscan link; QR + address.
+- **Activity** — parsed transactions that say what moved and how much.
+- **Settings** — PIN, Face ID, notifications, custom RPC, and a "Reset wallet" danger action.
 
 ## Safety layer (the differentiator)
 
@@ -48,10 +49,10 @@ risk verdict shown as a `RiskCard` in the Send flow:
 
 ```
 src/polyfills.ts            get-random-values + Buffer + URL (required by web3.js)
-src/solana/connection.ts    devnet Connection + Solscan links
+src/solana/connection.ts    mainnet Connection (custom RPC aware) + Solscan links
 src/solana/history.ts       recent signatures for an address
-src/wallet/keystore.ts      keypair in expo-secure-store (device keychain)
-src/wallet/WalletContext.tsx  balances, faucet airdrop, signed transfers
+src/wallet/keystore.ts      encrypted seed vault in expo-secure-store (device keychain)
+src/wallet/WalletContext.tsx  balances, prices, signed transfers
 ```
 
 ## Structure
@@ -60,18 +61,12 @@ src/wallet/WalletContext.tsx  balances, faucet airdrop, signed transfers
 App.tsx              auth gate (onboarding / lock / main) + navigation
 src/theme.ts         design tokens (Phantom-flavored palette)
 src/auth.tsx         session state (onboarded / unlocked)
-src/data/mockWallet  the ONLY source of funds right now (simulated)
-src/components/       reusable UI (BalanceCard, TokenRow, GhostLogo, …)
-src/screens/          Home, Activity, Settings, Send, Receive, Onboarding, Lock
+src/chains/registry  chain definitions (Solana, Ethereum, BNB Smart Chain)
+src/cache/           disk-backed snapshots so a cold open paints instantly
+src/components/       reusable UI (BalanceCard, TokenRow, Skeleton, Updating, …)
+src/screens/          Wallet, Swap, Purchases, Ecosystem, More + the stack screens
 ```
 
 ## Roadmap
 
-- **Phase 2 — Devnet:** ✅ real keypair + secure storage, live balances, faucet, and
-  signed transfers.
-- **Phase 3 — polish:** ✅ live prices, ✅ readable tokens (names/logos) + SPL token
-  transfers, ✅ in-app swap (live Jupiter quotes, quote-only on devnet), ✅ BIP39
-  recovery phrase (backup + import, Phantom-compatible `m/44'/501'/0'/0'`).
-  Still open: richer parsed activity.
-- **Phase 4 — Mainnet:** only after the above is solid, with explicit warnings and
-  hardened key handling, does it touch real funds.
+See `ROADMAP.md` for where this is going and the open compliance questions.

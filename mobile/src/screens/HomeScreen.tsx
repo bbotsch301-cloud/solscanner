@@ -15,7 +15,7 @@ import { Updating } from "../components/Updating";
 import { ActivityRow } from "../components/ActivityRow";
 import { activitySnapshots } from "../cache/screens";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
-import { CLUSTER, IS_MAINNET } from "../solana/connection";
+import { IS_MAINNET } from "../solana/connection";
 import { compact, colors, font, radius, spacing, tracking, usd as fmtUsd, weight } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -72,7 +72,10 @@ export function HomeScreen() {
   const empty = native.balance != null && native.balance === 0 && assets.length === 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
+  // The pill names the chain the assets are on. It used to read "Mainnet", which told the user
+  // nothing they needed — a wallet app is on the live network unless something is very wrong.
+  // BalanceCard swaps in a warning when it isn't.
+  const network = activeChain.name;
   const openToken = useCallback((key: string) => nav.navigate("TokenDetail", { asset: key }), [nav]);
 
   // Seeded from the same persisted history the Activity screen writes, so "Recent activity"
@@ -135,6 +138,7 @@ export function HomeScreen() {
         symbol={native.symbol}
         address={activeAddress ?? ""}
         network={network}
+        onTestNetwork={isSolana && !IS_MAINNET}
         refreshing={refreshing}
         usdValue={totalUsd}
         change24h={native.symbol === "SOL" ? solChange24h : null}
@@ -154,7 +158,7 @@ export function HomeScreen() {
           <Text style={styles.emptyTitle}>Fund your wallet</Text>
           <Text style={styles.emptySub}>
             {isSolana && !IS_MAINNET
-              ? "This is a fresh devnet wallet — airdrop 1 test SOL to get started. It’s free and not real money."
+              ? "This is a fresh test-network wallet — airdrop 1 test SOL to get started. It’s free and not real money."
               : `Send ${native.symbol} or tokens to your ${activeChain.name} address (tap Receive) to get started.`}
           </Text>
           {isSolana && !IS_MAINNET && (

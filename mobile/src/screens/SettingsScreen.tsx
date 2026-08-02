@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, setCustomRpc, getCustomRpc, isPublicRpc, type Network } from "../solana/connection";
+import { IS_MAINNET, setNetwork, solscanAccount, setCustomRpc, getCustomRpc, isPublicRpc, type Network } from "../solana/connection";
 import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled, isFastBalancesEnabled, setFastBalancesEnabled } from "../security/prefs";
 import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
@@ -44,7 +44,6 @@ export function SettingsScreen() {
   const nav = useNavigation<RootNav>();
   const { lock } = useAuth();
   const { address, reset, pinEnabled, syncPushRegistration } = useWallet();
-  const network = CLUSTER === "devnet" ? "Devnet" : CLUSTER;
   const [biometric, setBiometric] = useState(isBiometricEnabled());
   const [notifications, setNotifications] = useState(isNotificationsEnabled());
   const [pinAction, setPinAction] = useState<PinAction>(null);
@@ -111,12 +110,12 @@ export function SettingsScreen() {
       }
     };
     if (n === "mainnet-beta") {
-      Alert.alert("Switch to Mainnet?", "This uses REAL funds. The app will reload.", [
+      Alert.alert("Switch to the live network?", "This uses REAL funds. The app will reload.", [
         { text: "Cancel", style: "cancel" },
         { text: "Switch", style: "destructive", onPress: doIt },
       ]);
     } else {
-      Alert.alert("Switch to Devnet?", "Test network (no real funds). The app will reload.", [
+      Alert.alert("Switch to the test network?", "Fake money only. XGO, the treasury and swaps won't work there. The app will reload.", [
         { text: "Cancel", style: "cancel" },
         { text: "Switch", onPress: doIt },
       ]);
@@ -126,7 +125,10 @@ export function SettingsScreen() {
   const confirmReset = () => {
     Alert.alert(
       "Reset wallet?",
-      "This deletes the key on this device. On devnet there are no real funds, but you'll get a brand-new address.",
+      // This used to say "On devnet there are no real funds" — unconditionally, so it told a
+      // mainnet user their money wasn't real immediately before deleting the only key that
+      // controls it. A destructive confirmation has to state the actual stakes.
+      "This deletes this device's key and creates a brand-new address. Anything held by the current wallet is unreachable without its recovery phrase. Make sure you have that phrase saved before continuing.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Reset", style: "destructive", onPress: () => reset() },
@@ -161,25 +163,6 @@ export function SettingsScreen() {
 
       <Text style={styles.sectionTitle}>Network</Text>
       <View style={styles.group}>
-        <View style={styles.netRow}>
-          <Ionicons name="git-network-outline" size={20} color={colors.primary} />
-          <Text style={styles.rowLabel}>Cluster</Text>
-          <View style={styles.netToggle}>
-            <Pressable
-              onPress={() => switchTo("devnet")}
-              style={[styles.netOpt, !IS_MAINNET && styles.netOptActive]}
-            >
-              <Text style={[styles.netOptText, !IS_MAINNET && { color: colors.bg }]}>Devnet</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => switchTo("mainnet-beta")}
-              style={[styles.netOpt, IS_MAINNET && styles.netOptActive]}
-            >
-              <Text style={[styles.netOptText, IS_MAINNET && { color: colors.bg }]}>Mainnet</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.divider} />
         <Row
           icon="open-outline"
           label="View on Solscan"
@@ -190,7 +173,7 @@ export function SettingsScreen() {
       <View style={styles.rpcCard}>
         <View style={styles.rpcHead}>
           <Ionicons name="server-outline" size={18} color={colors.primary} />
-          <Text style={styles.rpcLabel}>Mainnet RPC</Text>
+          <Text style={styles.rpcLabel}>Solana RPC</Text>
           <View style={[styles.rpcPill, { backgroundColor: (isPublicRpc() ? colors.warning : colors.positive) + "22" }]}>
             <Text style={[styles.rpcPillText, { color: isPublicRpc() ? colors.warning : colors.positive }]}>
               {isPublicRpc() ? "Public · limited" : "Custom"}
@@ -229,6 +212,31 @@ export function SettingsScreen() {
           Loads your tokens, prices, and logos in one Helius call instead of many — much faster and
           cheaper at scale. Needs a dedicated/Helius RPC above; falls back automatically otherwise.
           Applies on the next refresh.
+        </Text>
+        {/* Moved down here from its own "Cluster" section at the top. Devnet stays reachable for
+            testing, but it's a developer control, not something a normal user should meet first. */}
+        <View style={styles.divider} />
+        <View style={styles.netRow}>
+          <Ionicons name="git-network-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Solana network</Text>
+          <View style={styles.netToggle}>
+            <Pressable
+              onPress={() => switchTo("devnet")}
+              style={[styles.netOpt, !IS_MAINNET && styles.netOptActive]}
+            >
+              <Text style={[styles.netOptText, !IS_MAINNET && { color: colors.bg }]}>Test</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => switchTo("mainnet-beta")}
+              style={[styles.netOpt, IS_MAINNET && styles.netOptActive]}
+            >
+              <Text style={[styles.netOptText, IS_MAINNET && { color: colors.bg }]}>Live</Text>
+            </Pressable>
+          </View>
+        </View>
+        <Text style={styles.hint}>
+          The test network uses fake money. XGO, the treasury and swaps only exist on the live
+          network, so most of the app won&apos;t work there.
         </Text>
       </View>
 
@@ -311,13 +319,18 @@ export function SettingsScreen() {
         <Row icon="trash-outline" label="Reset wallet" danger onPress={confirmReset} />
       </View>
 
-      <View style={styles.notice}>
-        <Ionicons name="flask-outline" size={16} color={colors.warning} />
-        <Text style={styles.noticeText}>
-          Live on Solana {network} — real keypair, real transactions, test money only.
-          Mainnet (real funds) is a deliberate later step.
-        </Text>
-      </View>
+      {/* Silent on mainnet. The old notice ran unconditionally and claimed "test money only" on a
+          wallet holding real funds — reassurance about exactly the wrong thing. Now the only time
+          the app mentions a network is when it's on the one that ISN'T normal. */}
+      {!IS_MAINNET && (
+        <View style={styles.notice}>
+          <Ionicons name="flask-outline" size={16} color={colors.warning} />
+          <Text style={styles.noticeText}>
+            Test network. Balances and transactions here aren&apos;t real, and XGO, the treasury and
+            swaps won&apos;t work — they only exist on the live network.
+          </Text>
+        </View>
+      )}
     </ScrollView>
   );
 }

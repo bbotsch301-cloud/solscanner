@@ -7,6 +7,7 @@ export function BalanceCard({
   solBalance,
   address,
   network,
+  onTestNetwork,
   refreshing,
   usdValue,
   change24h,
@@ -14,7 +15,10 @@ export function BalanceCard({
 }: {
   solBalance: number | null;
   address: string;
+  /** The chain's name — "Solana", "Ethereum", "BNB Smart Chain". Not the network. */
   network: string;
+  /** True on Solana's test network, where every number above is play money. */
+  onTestNetwork?: boolean;
   refreshing?: boolean;
   usdValue?: number | null;
   change24h?: number | null;
@@ -38,9 +42,14 @@ export function BalanceCard({
       <View style={styles.overlay}>
         <View style={styles.row}>
           <Text style={styles.label}>Balance</Text>
-          <View style={styles.netPill}>
-            <View style={styles.dot} />
-            <Text style={styles.netText}>{network}</Text>
+          {/* Silent about the network in the normal case — the pill just names the chain. On the
+              test network the balances above are fake, and that IS worth shouting about, so the
+              pill becomes a warning instead. Solana-only: the EVM chains have no test mode here. */}
+          <View style={[styles.netPill, onTestNetwork && styles.netPillWarn]}>
+            <View style={[styles.dot, onTestNetwork && { backgroundColor: colors.warning }]} />
+            <Text style={[styles.netText, onTestNetwork && { color: colors.warning }]}>
+              {onTestNetwork ? "TEST NETWORK" : network}
+            </Text>
           </View>
         </View>
 
@@ -100,4 +109,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#0A0A0C" },
   netText: { color: "#0A0A0C", fontSize: font.tiny, fontWeight: "800" },
+  // On the gold hero, the usual warning amber would disappear — so the test-network pill goes
+  // dark-on-gold instead, which reads as loudly here as amber does elsewhere.
+  netPillWarn: { backgroundColor: "#0A0A0C" },
 });

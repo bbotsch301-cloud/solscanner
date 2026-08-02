@@ -198,7 +198,7 @@ export function EcosystemScreen() {
           <Ionicons name="rocket-outline" size={16} color={colors.primary} />
           <Text style={styles.soonText}>
             The exchange is live. XGO treasury, supply, and governance activate when
-            XGO launches on mainnet.
+            XGO launches.
           </Text>
         </View>
       )}

@@ -5,10 +5,10 @@ Not legal advice — the token/treasury structure needs a securities/crypto atto
 before any of the financial pieces go live.
 
 ## Where it is now
-- Gold/black XGO wallet, live on **mainnet** as a **general exchange** (Jupiter
-  swaps: SOL/USDC/USDT/JUP/BONK). XGO features activate once XGO is on mainnet.
-- Tabs: Home (ecosystem dashboard) · Wallet · Buy/Swap · Treasury · More
-  (Governance / Activity / Settings + coming-soon Impact / Marketplace / Map / Steward AI).
+- Gold/black XGO wallet, live as a **general exchange** (Jupiter swaps on Solana,
+  KyberSwap on Ethereum/BSC). XGO's own features activate once XGO is listed.
+- Tabs: Wallet · Swap · Purchases · Ecosystem (treasury) · More
+  (Governance / Activity / Contacts / Settings + coming-soon Impact / Marketplace / Map).
 - Self-custody (BIP39 seed backup + import), Token-2022 support, anti-drainer
   safety layer, transparent treasury view.
 - **Governance/membership staking (non-custodial):** hold XGO = voting weight;
@@ -54,10 +54,10 @@ liquid, quality tokens it holds — earning LP fees on all of them.
 - **Build later:** a "Treasury liquidity" screen — add/remove liquidity on a DEX,
   track fees per pool. Timed with XGO launch + real volume.
 
-## Mainnet / launch checklist
-- Deploy XGO on mainnet; set `XGO_MINT` (`src/solana/token2022.ts`) +
-  `TREASURY_ADDRESS` (`src/solana/treasury.ts`) to mainnet values.
-- Set a real RPC: `MAINNET_RPC` in `src/solana/connection.ts` (Helius).
+## XGO launch checklist
+- Deploy XGO; set `XGO_MINT` (`src/solana/token2022.ts`) +
+  `TREASURY_ADDRESS` (`src/solana/treasury.ts`) to the live values.
+- Set a dedicated RPC (Helius) — in Settings, or `EXPO_PUBLIC_MAINNET_RPC` at build time.
 - Seed protocol-owned XGO/USDC liquidity; enable 1.11% fee harvest to treasury.
 - Move off Expo Go → a **standalone signed build** (EAS → TestFlight/App Store).
 - **Security review** before community funds flow. Start with tiny amounts.

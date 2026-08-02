@@ -104,7 +104,7 @@ export function ConnectMultisigScreen() {
         {notFound && (
           <Text style={styles.warn}>
             No Squads multisig found at that address. Double-check it — and that you&apos;re on the
-            right network (devnet vs mainnet).
+            right network.
           </Text>
         )}
 

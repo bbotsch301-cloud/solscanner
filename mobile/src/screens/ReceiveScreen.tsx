@@ -10,7 +10,7 @@ import { Button } from "../components/Button";
 import { PressableScale } from "../components/PressableScale";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER } from "../solana/connection";
+import { IS_MAINNET } from "../solana/connection";
 import { haptics } from "../ui/haptics";
 import { colors, font, leading, radius, spacing, weight } from "../theme";
 import type { RootNav } from "../navigation";
@@ -23,7 +23,10 @@ export function ReceiveScreen() {
   const address = activeAddress;
   const [copied, setCopied] = useState(false);
   const isSolana = activeChain.kind === "solana";
-  const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
+  // The pill names the CHAIN, not the network. Which network a wallet is on isn't something a
+  // user needs told — except when it's the test one, where an address that looks identical holds
+  // nothing real. That case gets a warning instead.
+  const onTestNetwork = isSolana && !IS_MAINNET;
 
   const copy = async () => {
     if (!address) return;
@@ -48,9 +51,11 @@ export function ReceiveScreen() {
           </View>
         </View>
 
-        <View style={styles.netPill}>
-          <View style={styles.dot} />
-          <Text style={styles.netText}>{network}</Text>
+        <View style={[styles.netPill, onTestNetwork && styles.netPillWarn]}>
+          <View style={[styles.dot, onTestNetwork && { backgroundColor: colors.warning }]} />
+          <Text style={[styles.netText, onTestNetwork && { color: colors.warning }]}>
+            {onTestNetwork ? "TEST NETWORK" : activeChain.name}
+          </Text>
         </View>
 
         <Text style={styles.label}>Your {activeChain.name} address</Text>
@@ -71,7 +76,7 @@ export function ReceiveScreen() {
 
         <Text style={styles.hint}>
           {isSolana
-            ? `Only send Solana (SPL) assets to this address on ${network}.`
+            ? `Only send Solana (SPL) assets to this address.${onTestNetwork ? " This is the test network — anything sent here isn't real." : ""}`
             : `Only send ${activeChain.name} assets — ${activeChain.symbol} and its tokens — to this address. Sending assets from another chain will lose them.`}
         </Text>
       </View>
@@ -103,6 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     marginTop: spacing(6),
   },
+  netPillWarn: { backgroundColor: colors.warning + "1A", borderColor: colors.warning },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
   netText: { color: colors.textMuted, fontSize: font.tiny, fontWeight: weight.bold },
   label: { color: colors.text, fontSize: font.h3, fontWeight: weight.semibold, marginTop: spacing(1) },

@@ -72,8 +72,8 @@ export function BackupScreen() {
           <View style={styles.legacy}>
             <Text style={styles.legacyText}>
               This wallet was created before recovery phrases were added, so it has
-              no phrase. To get a backup-enabled wallet, reset in Settings (devnet
-              only — no real funds) and create a new one.
+              no phrase. To get a backup-enabled wallet, move any funds out first,
+              then reset in Settings and create a new one.
             </Text>
           </View>
         ) : !words ? (

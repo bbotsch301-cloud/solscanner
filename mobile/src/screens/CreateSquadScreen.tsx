@@ -18,7 +18,7 @@ import { PublicKey } from "@solana/web3.js";
 import { useWallet } from "../wallet/WalletContext";
 import { createMultisig } from "../solana/multisig";
 import { humanizeError } from "../solana/errors";
-import { IS_MAINNET, CLUSTER } from "../solana/connection";
+import { IS_MAINNET } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -60,8 +60,8 @@ export function CreateSquadScreen() {
     if (!keypair || busy) return;
     Alert.alert(
       "Create this multisig?",
-      `${threshold} of ${total} signers must approve every spend.\n\nThis deploys a Squads multisig on ${
-        IS_MAINNET ? "MAINNET — a small real fee + rent applies" : `${CLUSTER} (test)`
+      `${threshold} of ${total} signers must approve every spend.\n\nThis deploys a Squads multisig${
+        IS_MAINNET ? " — a small real fee + rent applies" : " on the test network (fake money)"
       }, paid and signed by your wallet.`,
       [
         { text: "Cancel", style: "cancel" },
@@ -162,7 +162,7 @@ export function CreateSquadScreen() {
         <View style={styles.warn}>
           <Ionicons name="shield-checkmark" size={16} color={colors.accent} />
           <Text style={styles.warnText}>
-            Powered by Squads Protocol (audited). Deploying on {IS_MAINNET ? "mainnet costs a small fee + rent" : `${CLUSTER}`}.
+            Powered by Squads Protocol (audited). {IS_MAINNET ? "Deploying costs a small fee + rent" : "Deploying on the test network (fake money)"}.
             Add real signers you trust — a {threshold}-of-{total} threshold means any {threshold} of them can move funds.
           </Text>
         </View>

@@ -51,14 +51,16 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
   // time. It MAY still land, so tell the user to check before resending (avoids double-sends).
   // Checked BEFORE generic connectivity so "timed out waiting…" doesn't read as "no internet".
   if (/not confirmed|unknown if it succeeded|node is behind|timed out waiting|confirmation tim|was not confirmed/.test(low))
-    return "The network is congested and your transaction didn't confirm in time — it may still go through. Check it on the explorer before sending again. A private RPC (EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC, or your own EVM RPC) makes this reliable.";
+    // Points at Settings, not at env vars: naming build-time variables in a message a user reads
+    // gives them nothing they can act on.
+    return "The network is congested and your transaction didn't confirm in time — it may still go through. Check it on the explorer before sending again. Setting a dedicated RPC in Settings makes this reliable.";
 
   // Connectivity ----------------------------------------------------------------
   if (/network request failed|failed to fetch|networkerror|timeout|timed out|econnreset|network error/.test(low))
     return "Couldn't reach the network. Check your internet connection and try again.";
   if (/\b429\b|rate.?limit|too many requests/.test(low))
     return ctx.action === "airdrop"
-      ? "The devnet faucet is rate-limited. Wait a minute and try again."
+      ? "The test faucet is rate-limited. Wait a minute and try again."
       : "The network is busy right now (rate-limited). Wait a few seconds and try again. A private RPC makes this rare.";
   if (/\b(500|502|503)\b|service unavailable|internal error/.test(low))
     return "The RPC node is having trouble at the moment. Give it a few seconds and try again.";
@@ -117,7 +119,7 @@ export function humanizeError(e: unknown, ctx: HumanizeContext = {}): string {
 
   // Fallback — every path leaves the user with a next step (never a dead end). ----
   if (ctx.action === "load")
-    return "Couldn't load the latest data — likely a busy or unreachable network. Pull down to refresh or check your connection. A private RPC (EXPO_PUBLIC_MAINNET_RPC / EXPO_PUBLIC_DEVNET_RPC) makes this rare.";
+    return "Couldn't load the latest data — likely a busy or unreachable network. Pull down to refresh or check your connection. Setting a dedicated RPC in Settings makes this rare.";
   if (ctx.action === "send" || ctx.action === "swap")
     return "It didn't go through — usually a momentarily busy network. Wait a few seconds and try again. Check the explorer first to be sure it didn't already land before resending.";
   if (ctx.action === "airdrop")
