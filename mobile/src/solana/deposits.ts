@@ -27,19 +27,20 @@ export interface Deposit {
   explorerUrl: string;
 }
 
-// The number of the treasury's token accounts we fan `getSignaturesForAddress` across — the single
-// heaviest, most rate-limited part of the feed. It's ADAPTIVE so the app works with no RPC key out
-// of the box: on the public endpoint we stay light (or the whole feed 429s and shows "couldn't
-// load"); on a dedicated RPC we scan the full set so no SPL fee ATA is missed. The common swap fee
-// (a SOL-output swap) lands on the treasury WALLET itself, which is always scanned, so even the
-// light path catches it without a key.
+// How many of the treasury's token accounts we fan `getSignaturesForAddress` across — the single
+// heaviest, most rate-limited part of the feed, so it's adaptive: a handful on the public endpoint
+// (more and it 429s into "couldn't load"), the full set on a dedicated RPC so no SPL fee ATA is
+// missed. Note the fee usually IS an SPL deposit — Jupiter charges it in the swap's output token,
+// so it only lands as native SOL when the output is SOL.
 const MAX_TOKEN_ACCOUNTS_DEDICATED = 40;
+// Enough to cover the treasury's actively-paid mints without exhausting the public endpoint.
+const MAX_TOKEN_ACCOUNTS_PUBLIC = 6;
 const PER_ACCOUNT_SIGS = 4;
-// The public path scans the wallet alone, so it can afford a deeper slice of its history.
-const PER_ACCOUNT_SIGS_PUBLIC = 10;
+const PER_ACCOUNT_SIGS_PUBLIC = 3;
 // Concurrent signature lookups per wave. Helius' free tier allows ~10 requests/second, and the
 // dedicated path can span 40+ accounts — so these go out in waves instead of one burst.
 const SIG_WAVE = 5;
+const SIG_WAVE_PUBLIC = 3;
 
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
@@ -56,30 +57,30 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
   }
   const ownerStr = owner.toBase58();
 
-  // The public endpoint can't survive the full scan: enumerating token accounts (2 calls) plus a
-  // signature call per account (9+) plus getParsedTransactions, mostly in parallel bursts, reliably
-  // 429s and the whole feed fails closed. So the public path deliberately scans ONLY the treasury
-  // wallet — 2 calls total. That still catches the self-collected swap fee, which is a plain SOL
-  // transfer to the wallet itself; it's SPL deposits into fresh ATAs that need the wide scan and a
-  // dedicated RPC. Partial data beats "couldn't load".
+  // The public endpoint can't survive the full scan (enumerating token accounts, a signature call
+  // per account, then getParsedTransactions) — it 429s and the feed fails closed. So it runs a
+  // narrower version rather than being skipped: the treasury wallet plus a handful of token
+  // accounts.
+  //
+  // The token accounts are the important part and must NOT be dropped. When a swap's output is an
+  // SPL token, Jupiter charges the community fee inline into the treasury's ATA for that mint —
+  // it only arrives as native SOL on a SOL-output swap. A wallet-only scan would therefore miss
+  // the ordinary case entirely and report "no deposits" on a treasury that is in fact being paid.
   const light = isPublicRpc();
 
   try {
     // 1. The treasury's token accounts (both token programs) — their ATAs receive SPL deposits.
-    //    Skipped entirely on the public endpoint, and never fatal: losing the ATA list just means
-    //    a wallet-only scan, which is far better than no feed at all.
-    let tokenAccts: PublicKey[] = [];
-    if (!light) {
-      const [legacy, t22] = await Promise.all([
-        connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }).catch(() => null),
-        connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => null),
-      ]);
-      // A swap fee lands as a *small* amount in a possibly-fresh ATA, so we can't prioritize by
-      // balance or age — coverage is the only way not to miss it.
-      tokenAccts = [...(legacy?.value ?? []), ...(t22?.value ?? [])]
-        .slice(0, MAX_TOKEN_ACCOUNTS_DEDICATED)
-        .map((a) => a.pubkey);
-    }
+    //    Never fatal: losing the list degrades to a wallet-only scan rather than no feed at all.
+    const [legacy, t22] = await Promise.all([
+      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }).catch(() => null),
+      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => null),
+    ]);
+    // A swap fee lands as a *small* amount in a possibly-fresh ATA, so it can't be prioritized by
+    // balance or age — coverage is the only way not to miss it. The public endpoint takes as many
+    // as it can afford; a dedicated RPC takes the lot.
+    const tokenAccts = [...(legacy?.value ?? []), ...(t22?.value ?? [])]
+      .slice(0, light ? MAX_TOKEN_ACCOUNTS_PUBLIC : MAX_TOKEN_ACCOUNTS_DEDICATED)
+      .map((a) => a.pubkey);
     const accounts = [owner, ...tokenAccts];
 
     // 2. Recent signatures across the wallet + token accounts, deduped, newest first.
@@ -88,10 +89,11 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     //    requests-per-second limit — which failed the whole feed even though the key was fine.
     const perAccount = light ? PER_ACCOUNT_SIGS_PUBLIC : PER_ACCOUNT_SIGS;
     const sigLists: Awaited<ReturnType<typeof connection.getSignaturesForAddress>>[] = [];
-    for (let i = 0; i < accounts.length; i += SIG_WAVE) {
+    const waveSize = light ? SIG_WAVE_PUBLIC : SIG_WAVE;
+    for (let i = 0; i < accounts.length; i += waveSize) {
       const wave = await Promise.all(
         accounts
-          .slice(i, i + SIG_WAVE)
+          .slice(i, i + waveSize)
           .map((a) => connection.getSignaturesForAddress(a, { limit: perAccount }).catch(() => []))
       );
       sigLists.push(...wave);
