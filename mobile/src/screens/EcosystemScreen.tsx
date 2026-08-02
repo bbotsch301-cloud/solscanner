@@ -8,6 +8,7 @@ import { PieChart } from "../components/PieChart";
 import { Holding } from "../components/Holding";
 import { HeroCard } from "../components/HeroCard";
 import { EmptyState } from "../components/EmptyState";
+import { HelpTip } from "../components/HelpTip";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
@@ -15,7 +16,7 @@ import { fetchDeposits, type Deposit } from "../solana/deposits";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 // The fee economics drive the swap flow but were displayed nowhere until now.
 import { SWAP_FEE_BPS } from "../config/swapFee";
-import { XGO_FEES } from "../config/xgo";
+import { XGO_FEE_TOTAL } from "../config/xgo";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, cachedTokenMetas, type TokenMeta } from "../solana/tokens";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
@@ -205,34 +206,16 @@ export function EcosystemScreen() {
         </Text>
       )}
 
-      {/* The fee policy, stated as policy — never as measured income. These constants drive the
-          actual swap flow but were displayed nowhere. */}
-      <Text style={styles.sectionTitle}>How the treasury is funded</Text>
-      <View style={styles.list}>
-        <View style={styles.policyRow}>
-          <Text style={styles.policyLabel}>Community fee on swaps</Text>
-          <Text style={styles.policyValue}>{(SWAP_FEE_BPS / 100).toFixed(2)}%</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.policyRow}>
-          <Text style={styles.policyLabel}>Swaps involving XGO</Text>
-          <Text style={styles.policyValue}>Free</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.policyRow}>
-          <Text style={styles.policyLabel}>XGO transfer fee → treasury</Text>
-          <Text style={styles.policyValue}>{XGO_FEES.treasuryAllocation.toFixed(2)}%</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.policyRow}>
-          <Text style={styles.policyLabel}>XGO transfer fee → permanent burn</Text>
-          <Text style={styles.policyValue}>{XGO_FEES.permanentBurn.toFixed(2)}%</Text>
-        </View>
+      {/* One line plus a (?) rather than a four-row table: this is policy a user reads once and
+          then never needs again, and it was outweighing the numbers it exists to explain. */}
+      <View style={styles.fundedRow}>
+        <Ionicons name="git-branch-outline" size={15} color={colors.primary} />
+        <Text style={styles.fundedText}>
+          Funded by a {(SWAP_FEE_BPS / 100).toFixed(2)}% swap fee and {XGO_FEE_TOTAL.toFixed(2)}% on
+          XGO transfers
+        </Text>
+        <HelpTip topic="treasuryFunding" size={16} />
       </View>
-      <Text style={styles.policyNote}>
-        Stated protocol policy. The deposits below are the actual arrivals, each one checkable on
-        Solscan.
-      </Text>
 
       {/* Allocation */}
       {holdings && slices.length > 0 && (
@@ -383,27 +366,24 @@ export function EcosystemScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
+  fundedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing(2),
+    marginTop: spacing(4),
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+  },
+  fundedText: { flex: 1, color: colors.textMuted, fontSize: font.small, lineHeight: font.small * 1.4 },
   pending: {
     color: colors.textMuted,
     fontSize: font.small,
     lineHeight: font.small * 1.5,
     marginTop: spacing(4),
-  },
-  policyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing(3),
-    paddingVertical: spacing(3),
-    paddingHorizontal: spacing(4),
-  },
-  policyLabel: { color: colors.textMuted, fontSize: font.small, flexShrink: 1 },
-  policyValue: { color: colors.text, fontSize: font.small, fontWeight: "700" },
-  policyNote: {
-    color: colors.textFaint,
-    fontSize: font.tiny,
-    lineHeight: font.tiny * 1.5,
-    marginTop: spacing(2),
   },
   greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, marginBottom: spacing(4), fontWeight: "600" },
   soonBanner: { flexDirection: "row", gap: spacing(2), alignItems: "flex-start", backgroundColor: colors.primary + "14", borderRadius: radius.md, padding: spacing(3.5), marginBottom: spacing(4) },
