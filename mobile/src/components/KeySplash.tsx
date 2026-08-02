@@ -1,12 +1,10 @@
 /**
  * The Kingdom Key turning upright.
  *
- * This is deliberately the same shape as the crown animation that worked: one Animated.Value driven
- * 0→1 by a single timing, interpolated straight to degrees. Earlier versions layered on a sequence,
- * a spring, a value listener for haptics, a scale track and an async reduce-motion gate — and
- * somewhere in all that the turn stopped happening at all.
- *
- * Start from what works. Anything added back goes in one piece at a time, checked on a device.
+ * Same shape as the crown animation that worked: one Animated.Value driven 0→1 by a single timing,
+ * interpolated straight to degrees. An earlier attempt at the magnetic feel used a sequence and a
+ * spring and stopped turning altogether — so the pull lives in the EASING instead, which changes
+ * how it moves without changing what drives it.
  */
 import { useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
@@ -18,7 +16,14 @@ const KEY = require("../../assets/kingdom-key.png") as number;
 
 /** The artwork is 212×640, so `size` is the key's HEIGHT and the width follows. */
 const ASPECT = 212 / 640;
-const TURN_MS = 1100;
+const TURN_MS = 1150;
+/**
+ * How hard it resists, and how far it overshoots. `back` easing leaves the 0→1 range at both ends:
+ * below zero at the start (the key rotates slightly the WRONG way, as if straining against the
+ * pull) and above one at the end (it swings past upright and eases home). Raise for more drama,
+ * lower toward 0 for a plain turn.
+ */
+const MAGNETISM = 1.4;
 
 export function KeySplash({
   size = 320,
@@ -35,13 +40,18 @@ export function KeySplash({
     const anim = Animated.timing(spin, {
       toValue: 1,
       duration: TURN_MS,
-      easing: Easing.out(Easing.cubic),
+      // The whole magnetic character is this curve — anticipation, then a hard pull, then an
+      // overshoot that settles. Structurally identical to the plain turn that works: still one
+      // value, one timing, one interpolation. Only the easing changed.
+      easing: Easing.inOut(Easing.back(MAGNETISM)),
       useNativeDriver: true,
     });
     anim.start();
     return () => anim.stop();
   }, [animate, spin]);
 
+  // Default extrapolation matters here: `back` sends the driver outside 0→1, and that's precisely
+  // what carries the key past 360° and back. Clamping would flatten the effect into a plain turn.
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
 
   return (
