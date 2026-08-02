@@ -293,11 +293,10 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       haptics.success();
       setSignature(sig);
       setPhase("success");
-      // Pull balances straight away rather than waiting on the 45s notification poll. This is what
-      // spots the incoming side of the trade and fires the "Received" alert — without it the
-      // notification lands whenever the timer next happens to run, or not at all if the balance
-      // change gets folded into a routine refresh first.
-      void refreshWallet();
+      // No refresh here on purpose. `swapExecute` now runs a settling reload that retries until
+      // the chain reflects the trade; a second read from this screen only raced it, and both
+      // typically landed before the node had caught up — which is why the "Received" alert kept
+      // not appearing.
     } catch (e) {
       haptics.error();
       setSheetError(humanizeError(e, { action: "swap", symbol: from.symbol, native: native.symbol }));

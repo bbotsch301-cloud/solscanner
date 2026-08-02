@@ -533,6 +533,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     await loadAll();
   }, [loadAll]);
 
+  /**
+   * Reload balances repeatedly after a trade until the chain actually reflects it.
+   *
+   * A single read straight after confirmation is a coin flip: we confirm at "confirmed"
+   * commitment and then immediately ask for balances, and the node frequently still answers with
+   * pre-swap state. When that happens the incoming side isn't a delta yet, so no "Received" alert
+   * fires — and the change only surfaces on the 45-second poll, by which time the user has moved
+   * on and reasonably concludes the notification is broken. That's the whole "sometimes it
+   * notifies, sometimes it doesn't" complaint.
+   *
+   * Retrying is safe precisely because `detectReceipts` advances its baseline once it reports a
+   * delta: whichever attempt first sees the new balance fires exactly one notification, and the
+   * rest are no-ops. Cheap insurance rather than a guess about propagation timing.
+   */
+  const settleAfterTrade = useCallback(
+    (id: ChainId) => {
+      for (const delay of [0, 3000, 9000]) {
+        setTimeout(() => void loadChain(id), delay);
+      }
+    },
+    [loadChain]
+  );
+
   const setActiveChain = useCallback(
     async (id: ChainId) => {
       activeChainRef.current = id;
@@ -869,10 +892,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         })
       );
       const sig = await sendAndConfirmGuarded(tx, [kp]);
-      fetchBalances(kp.publicKey).catch(() => {});
+      // Same settling reload as a swap: one read here usually predates the node catching up,
+      // which is what leaves a just-sent balance looking unchanged.
+      settleAfterTrade("solana");
       return sig;
     },
-    [fetchBalances]
+    [settleAfterTrade]
   );
 
   const sendToken = useCallback(
@@ -900,10 +925,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       );
 
       const sig = await sendAndConfirmGuarded(tx, [kp]);
-      fetchBalances(kp.publicKey).catch(() => {});
+      // Same settling reload as a swap: one read here usually predates the node catching up,
+      // which is what leaves a just-sent balance looking unchanged.
+      settleAfterTrade("solana");
       return sig;
     },
-    [fetchBalances]
+    [settleAfterTrade]
   );
 
   const sendNative = useCallback(
@@ -918,14 +945,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           const acct = evmAccountRef.current;
           if (!acct) throw new Error("No EVM wallet on this device.");
           const sig = await sendNativeEvm(chain, acct.privateKey, acct.address, to, uiAmount);
-          loadChain(chain.id);
+          settleAfterTrade(chain.id);
           return sig;
         }
         default:
           return assertNever(chain.kind, "chain kind in sendNative");
       }
     },
-    [send, loadChain]
+    [send, settleAfterTrade]
   );
 
   const sendAsset = useCallback(
@@ -951,14 +978,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             to,
             uiAmount
           );
-          loadChain(chain.id);
+          settleAfterTrade(chain.id);
           return sig;
         }
         default:
           return assertNever(asset.kind, "asset kind in sendAsset");
       }
     },
-    [sendNative, sendToken, loadChain]
+    [sendNative, sendToken, settleAfterTrade]
   );
 
   /**
@@ -1026,10 +1053,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (chain.kind === "evm" && chain.evmChainId && quote.evm?.spender && quote.input.mint) {
         recordApproval(chain.evmChainId, quote.input.mint, quote.evm.spender).catch(() => {});
       }
-      loadChain(chain.id);
+      // The ONLY refresh after a swap. SwapScreen used to fire its own as well, so two reads raced
+      // each other against a node that usually hadn't caught up yet — and neither saw a delta.
+      settleAfterTrade(chain.id);
       return sig;
     },
-    [loadChain]
+    [settleAfterTrade]
   );
 
   const value = useMemo<WalletState>(() => {
