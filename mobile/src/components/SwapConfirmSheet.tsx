@@ -174,11 +174,10 @@ export function SwapConfirmSheet({
                     label="View on explorer"
                     variant="secondary"
                     icon="open-outline"
-                    style={styles.footerBtn}
                     onPress={() => Linking.openURL(explorerUrl)}
                   />
                 )}
-                <Button label="Done" style={styles.footerBtn} onPress={onClose} />
+                <Button label="Done" onPress={onClose} />
               </View>
             </View>
           ) : phase === "executing" ? (
@@ -349,13 +348,12 @@ const styles = StyleSheet.create({
   cancel: { alignSelf: "center", paddingVertical: spacing(3) },
   cancelText: { color: colors.textMuted, fontSize: font.body, fontWeight: weight.semibold },
 
-  centered: { alignItems: "center", paddingVertical: spacing(6), gap: spacing(2) },
+  centered: { alignItems: "center", paddingVertical: spacing(7), gap: spacing(3) },
   execTitle: { color: colors.text, fontSize: font.h2, fontWeight: weight.bold, marginTop: spacing(3) },
   execStatus: { color: colors.primary, fontSize: font.body, fontWeight: weight.semibold },
   execHint: { color: colors.textFaint, fontSize: font.small, marginTop: spacing(1) },
   successTitle: { color: colors.text, fontSize: font.h1, fontWeight: weight.black, marginTop: spacing(3) },
   successAmount: { color: colors.textMuted, fontSize: font.h3 },
   feeNote: { color: colors.warning, fontSize: font.small, textAlign: "center", marginTop: spacing(2), lineHeight: font.small * leading.normal },
-  footer: { flexDirection: "row", gap: spacing(3), marginTop: spacing(5), alignSelf: "stretch" },
-  footerBtn: { flex: 1 },
+  footer: { alignSelf: "stretch", gap: spacing(3), marginTop: spacing(7) },
 });
