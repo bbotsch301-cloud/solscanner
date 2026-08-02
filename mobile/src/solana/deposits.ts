@@ -57,6 +57,22 @@ const SIG_OVERSAMPLE = 2;
  */
 export class DepositsUnavailableError extends Error {}
 
+/**
+ * What the last scan actually saw. This feed has now been "fixed" several times on guesswork about
+ * where coverage was being lost; these counts turn the next report into evidence.
+ */
+export interface ScanStats {
+  tokenAccounts: number;
+  scannedAccounts: number;
+  signatures: number;
+  parsed: number;
+  deposits: number;
+}
+let lastScan: ScanStats | null = null;
+export function lastDepositScan(): ScanStats | null {
+  return lastScan;
+}
+
 export async function fetchDeposits(address: string, limit = 10): Promise<Deposit[]> {
   let owner: PublicKey;
   try {
@@ -84,10 +100,20 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }).catch(() => null),
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => null),
     ]);
-    // A swap fee lands as a *small* amount in a possibly-fresh ATA, so it can't be prioritized by
-    // balance or age — coverage is the only way not to miss it. The public endpoint takes as many
-    // as it can afford; a dedicated RPC takes the lot.
-    const tokenAccts = [...(legacy?.value ?? []), ...(t22?.value ?? [])]
+    // ORDER MATTERS, and this was the bug. getParsedTokenAccountsByOwner returns every token
+    // account the treasury has ever opened — including long-empty leftovers — in no useful order.
+    // Taking the first N therefore let dead accounts consume the slots that actively-paid mints
+    // needed, so a fee could land in a real holding that simply never got scanned.
+    //
+    // Balance is the right priority after all: a fee that just arrived leaves a NON-ZERO balance,
+    // and it's the empty accounts that are safe to drop. Non-empty first (largest first), then
+    // empties fill whatever room is left, in case a fee arrived somewhere since swept.
+    const all = [...(legacy?.value ?? []), ...(t22?.value ?? [])];
+    const amountOf = (a: (typeof all)[number]) =>
+      Number(a.account.data.parsed?.info?.tokenAmount?.uiAmount ?? 0);
+    const held = all.filter((a) => amountOf(a) > 0).sort((x, y) => amountOf(y) - amountOf(x));
+    const empty = all.filter((a) => amountOf(a) <= 0);
+    const tokenAccts = [...held, ...empty]
       .slice(0, light ? MAX_TOKEN_ACCOUNTS_PUBLIC : MAX_TOKEN_ACCOUNTS_DEDICATED)
       .map((a) => a.pubkey);
     const accounts = [owner, ...tokenAccts];
@@ -133,6 +159,13 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     }
     // Every batch failed and we have nothing to show — that's an outage, not an empty treasury.
     if (txs.length === 0) throw new DepositsUnavailableError("Couldn't read treasury transactions.");
+    lastScan = {
+      tokenAccounts: all.length,
+      scannedAccounts: accounts.length,
+      signatures: sigs.length,
+      parsed: txs.filter(Boolean).length,
+      deposits: 0,
+    };
     const raw: { signature: string; time: number | null; mint: string | null; amountUi: number }[] = [];
     for (const tx of txs) {
       if (!tx || !tx.meta || tx.meta.err) continue;
@@ -164,6 +197,7 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     //    `raw` can hold far more than `limit`, and pricing rows nobody will see is wasted calls.
     raw.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
     raw.splice(limit);
+    if (lastScan) lastScan.deposits = raw.length;
 
     const mints = [...new Set(raw.map((r) => r.mint).filter((m): m is string => !!m))];
     const [metas, prices] = await Promise.all([

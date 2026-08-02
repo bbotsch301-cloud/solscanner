@@ -12,7 +12,7 @@ import { HelpTip } from "../components/HelpTip";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
-import { fetchDeposits, type Deposit } from "../solana/deposits";
+import { fetchDeposits, lastDepositScan, type Deposit } from "../solana/deposits";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
 // The fee economics drive the swap flow but were displayed nowhere until now.
 import { SWAP_FEE_BPS } from "../config/swapFee";
@@ -124,6 +124,7 @@ export function EcosystemScreen() {
   const onchainUsd = solUsd + tokensUsd;
 
   const depositsTotal = deposits.reduce((s, d) => s + (d.usd ?? 0), 0);
+  const scan = lastDepositScan();
 
   return (
     <ScrollView
@@ -355,6 +356,15 @@ export function EcosystemScreen() {
         </Pressable>
       )}
 
+      {scan && (
+        // This feed has been "fixed" several times on guesses about where coverage was being lost.
+        // Showing what the scan actually reached turns the next report into evidence.
+        <Text style={styles.scanNote}>
+          Scanned {scan.scannedAccounts} of {scan.tokenAccounts + 1} treasury accounts ·{" "}
+          {scan.signatures} transactions · {scan.deposits} inflows found
+        </Text>
+      )}
+
       <Text style={styles.note}>
         On-chain holdings, XGO supply, and the transfer fee are read live from the chain.
         Off-chain assets (silver, dinar) are stated and live-priced where possible.
@@ -366,6 +376,12 @@ export function EcosystemScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
+  scanNote: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    marginTop: spacing(2),
+    lineHeight: font.tiny * 1.4,
+  },
   fundedRow: {
     flexDirection: "row",
     alignItems: "center",
