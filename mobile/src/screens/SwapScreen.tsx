@@ -31,13 +31,16 @@ import { humanizeError } from "../solana/errors";
 import { haptics } from "../ui/haptics";
 import { getLastFeeAttempt } from "../solana/feeDiagnostics";
 import { useWallet } from "../wallet/WalletContext";
-import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
+import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { ChainDef } from "../chains/registry";
 import type { RootNav } from "../navigation";
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
 const SOL_MINT_ADDR = "So11111111111111111111111111111111111111112";
 const SWAP_SOL_RESERVE = 0.005; // SOL kept back for fee + rent
+// Above this, the raw digits no longer fit the amount field and used to render as "429…".
+// Below it they fit fine, and rewriting a typed "1000" as "1.0K" would just be annoying.
+const COMPACT_FROM = 1_000_000;
 
 /**
  * Native to keep back for gas. Ethereum gas is far pricier than BSC, and an ERC-20
@@ -86,6 +89,10 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const [swapping, setSwapping] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<"from" | "to" | null>(null);
+  // Token amounts here run to billions (memecoin balances), which overflowed the input and
+  // rendered as "429…" — a number you can't read and can't act on. While the field isn't being
+  // edited we show a compact form ("429.86M"); focusing it restores the exact digits to type on.
+  const [amtFocused, setAmtFocused] = useState(false);
 
   const amtNum = parseFloat(amt) || 0;
   const nativeMint = isSolana ? SOL_MINT_ADDR : EVM_NATIVE;
@@ -312,17 +319,19 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         <View style={styles.panel}>
           <View style={styles.panelTop}>
             <Text style={styles.panelLabel}>You pay</Text>
-            <Pressable onPress={() => { haptics.select(); setAmtToPct(100); }} hitSlop={8}>
-              <Text style={styles.balanceText}>
-                Balance {fmtAmount(balanceOf(from.mint))} {from.symbol}
+            <Pressable onPress={() => { haptics.select(); setAmtToPct(100); }} hitSlop={8} style={styles.balancePress}>
+              <Text style={styles.balanceText} numberOfLines={1}>
+                Balance {compact(balanceOf(from.mint))} {from.symbol}
               </Text>
             </Pressable>
           </View>
           <View style={styles.panelRow}>
             <View style={styles.amountCol}>
               <TextInput
-                value={amt}
+                value={amtFocused || amtNum < COMPACT_FROM ? amt : compact(amtNum)}
                 onChangeText={setAmt}
+                onFocus={() => setAmtFocused(true)}
+                onBlur={() => setAmtFocused(false)}
                 placeholder="0.0"
                 placeholderTextColor={colors.textFaint}
                 keyboardType="decimal-pad"
@@ -375,7 +384,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
                   <ActivityIndicator color={colors.primary} />
                 ) : (
                   <Text style={styles.receiveAmount} numberOfLines={1} adjustsFontSizeToFit>
-                    {quote ? fmtAmount(quote.outUi) : "0.0"}
+                    {quote ? compact(quote.outUi) : "0.0"}
                   </Text>
                 )}
               </View>
@@ -500,12 +509,13 @@ function Row({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   panel: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(3) },
-  panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", flexShrink: 0 },
   panelTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  balancePress: { flexShrink: 1, marginLeft: spacing(3) },
   balanceText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   panelRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
   amountCol: { flex: 1, gap: 2 },
-  usdText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
+  usdText: { color: colors.text, fontSize: font.body, fontWeight: "700" },
   slider: { width: "100%", height: 32 },
   pctRow: { flexDirection: "row", gap: spacing(2) },
   pctChip: {
