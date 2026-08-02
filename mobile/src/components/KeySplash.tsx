@@ -21,13 +21,16 @@ import { colors } from "../theme";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const KEY = require("../../assets/kingdom-key.png") as number;
 
+/** The artwork's true aspect (212×640) — the key is tall and narrow, so `size` is its HEIGHT. */
+const ASPECT = 212 / 640;
+
 /** How far it drifts backwards before the pull takes hold. */
 const RESIST_TO = 190;
 const RESIST_MS = 400;
 /** The rotation at which it reads as "landed" — where the haptic fires. */
 const LOCK_AT = 350;
 
-export function KeySplash({ size = 210 }: { size?: number }) {
+export function KeySplash({ size = 320 }: { size?: number }) {
   // One driver for rotation; scale and glow are interpolated off it so they can't drift apart.
   const [turn] = useState(() => new Animated.Value(RESIST_TO));
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
@@ -103,14 +106,14 @@ export function KeySplash({ size = 210 }: { size?: number }) {
         pointerEvents="none"
         style={[
           styles.glow,
-          { width: size * 1.35, height: size * 1.35, borderRadius: size, opacity: glow },
+          { width: size * 0.62, height: size * 0.62, borderRadius: size, opacity: glow },
         ]}
       />
       <Animated.View style={{ transform: [{ rotate }, { scale }] }}>
         <Image
           source={KEY}
           alt="Kingdom Key"
-          style={{ width: size, height: size * 1.9 }}
+          style={{ width: size * ASPECT, height: size }}
           contentFit="contain"
           // No fade: the key must be present for the very first frame of the turn.
           transition={0}
