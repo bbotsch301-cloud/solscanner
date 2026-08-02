@@ -8,6 +8,7 @@
  * file pulls in no runtime dependencies beyond the cache factory itself.
  */
 import { createDiskSnapshot } from "./diskSnapshot";
+import { preloadFeaturedTokens } from "../swap/featuredTokens";
 import type { Holdings } from "../solana/treasury";
 import type { PriceInfo } from "../solana/prices";
 import type { Deposit } from "../solana/deposits";
@@ -61,5 +62,8 @@ export function preloadScreenCaches(): Promise<unknown> {
     ecoSnapshots.preload(),
     activitySnapshots.preload(),
     candleSnapshots.preload(),
+    // Lives in swap/ because it owns its own resolution, but it's the same idea and belongs in the
+    // same startup pass — the swap picker should open with its featured list already there.
+    preloadFeaturedTokens(),
   ]);
 }

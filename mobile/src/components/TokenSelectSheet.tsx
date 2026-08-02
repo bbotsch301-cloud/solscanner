@@ -12,9 +12,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "./TokenAvatar";
+import { SkeletonRow } from "./Skeleton";
 import { SWAP_TOKENS, type SwapToken } from "../solana/swap";
 import { looksLikeMint, resolveMint, searchTokens } from "../solana/tokenSearch";
 import { evmSwapTokens, resolveEvmToken } from "../evm/tokenList";
+import { useFeaturedTokens } from "../swap/featuredTokens";
+import { POPULAR_ANCHORS } from "../config/featuredTokens";
 import { isEvmAddress } from "../wallet/evm";
 import type { ChainDef } from "../chains/registry";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
@@ -52,6 +55,8 @@ export function TokenSelectSheet({
     [owned]
   );
 
+  const { tokens: featuredAll, loading: featuredLoading } = useFeaturedTokens(chain);
+
   const reset = () => {
     setQuery("");
     setResults([]);
@@ -79,14 +84,21 @@ export function TokenSelectSheet({
           if (resolved) found = [resolved];
         }
       } else {
-        // EVM: filter the curated list, then resolve a pasted contract on-chain.
+        // EVM: filter the built-in and featured lists, then resolve a pasted contract on-chain.
+        // Featured is included here too — a curated token the user searches for by name should
+        // be findable, not only visible in its section.
         const ql = q.toLowerCase();
-        found = evmSwapTokens(chain.id).filter(
-          (t) =>
+        const byMint = new Map<string, SwapToken>();
+        for (const t of [...evmSwapTokens(chain.id), ...featuredAll]) {
+          if (
             t.symbol.toLowerCase().includes(ql) ||
             (t.name ?? "").toLowerCase().includes(ql) ||
             t.mint.toLowerCase() === ql
-        );
+          ) {
+            byMint.set(t.mint.toLowerCase(), t);
+          }
+        }
+        found = [...byMint.values()];
         if (!found.length && isEvmAddress(q)) {
           const resolved = await resolveEvmToken(chain, q);
           if (resolved) found = [resolved];
@@ -101,7 +113,7 @@ export function TokenSelectSheet({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [query, chain]);
+  }, [query, chain, featuredAll]);
 
   const pick = (t: SwapToken) => {
     onSelect(t);
@@ -109,8 +121,20 @@ export function TokenSelectSheet({
   };
 
   const searching = query.trim().length > 0;
-  const popularSource = chain.kind === "solana" ? SWAP_TOKENS : evmSwapTokens(chain.id);
-  const popular = popularSource.filter((t) => t.mint !== exclude && !ownedByMint.has(t.mint));
+
+  // "Popular" is now just the anchors — the handful of majors people actually swap into. The
+  // curated list lives in its own section below. `SWAP_TOKENS` itself is untouched: SwapScreen
+  // uses `SWAP_TOKENS[0]` as the default "from" token, so its order matters elsewhere.
+  const anchors = POPULAR_ANCHORS[chain.id];
+  const builtIn = chain.kind === "solana" ? SWAP_TOKENS : evmSwapTokens(chain.id);
+  const popularSource = anchors ? builtIn.filter((t) => anchors.includes(t.mint)) : builtIn;
+
+  // Hide the other side of the pair, and anything already listed under "Your tokens" — and, for
+  // the featured list, anything an anchor already covers, so nothing appears twice.
+  const shown = (t: SwapToken) => t.mint !== exclude && !ownedByMint.has(t.mint);
+  const popular = popularSource.filter(shown);
+  const popularMints = new Set(popular.map((t) => t.mint));
+  const featured = featuredAll.filter((t) => shown(t) && !popularMints.has(t.mint));
 
   return (
     <Modal
@@ -182,14 +206,34 @@ export function TokenSelectSheet({
               <TokenRow item={item.token} owned={item} onPress={() => pick(item.token)} />
             )}
             ListFooterComponent={
-              popular.length ? (
-                <>
-                  <Text style={styles.sectionTitle}>Popular</Text>
-                  {popular.map((t) => (
-                    <TokenRow key={t.mint} item={t} onPress={() => pick(t)} />
-                  ))}
-                </>
-              ) : null
+              <>
+                {popular.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>Popular</Text>
+                    {popular.map((t) => (
+                      <TokenRow key={t.mint} item={t} onPress={() => pick(t)} />
+                    ))}
+                  </>
+                )}
+                {/* Featured resolves from the chain, so on a first run there's a beat before it
+                    lands. Skeletons rather than an empty gap — and no "Featured" heading over
+                    nothing once we know a chain has none. */}
+                {featuredLoading ? (
+                  <>
+                    <Text style={styles.sectionTitle}>Featured</Text>
+                    {[0, 1, 2, 3].map((k) => (
+                      <SkeletonRow key={`fsk${k}`} />
+                    ))}
+                  </>
+                ) : featured.length > 0 ? (
+                  <>
+                    <Text style={styles.sectionTitle}>Featured</Text>
+                    {featured.map((t) => (
+                      <TokenRow key={t.mint} item={t} onPress={() => pick(t)} />
+                    ))}
+                  </>
+                ) : null}
+              </>
             }
           />
         )}
