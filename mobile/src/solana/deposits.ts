@@ -30,9 +30,11 @@ export interface Deposit {
 // How many of the treasury's token accounts we fan `getSignaturesForAddress` across — the single
 // heaviest, most rate-limited part of the feed, so it's adaptive: a handful on the public endpoint
 // (more and it 429s into "couldn't load"), the full set on a dedicated RPC so no SPL fee ATA is
-// missed. Note the fee usually IS an SPL deposit — Jupiter charges it in the swap's output token,
+// missed (a treasury holding 20+ assets easily has more accounts than you'd guess, once dust and
+// long-empty ATAs are counted). Note the fee usually IS an SPL deposit — Jupiter charges it in the
+// swap's output token,
 // so it only lands as native SOL when the output is SOL.
-const MAX_TOKEN_ACCOUNTS_DEDICATED = 40;
+const MAX_TOKEN_ACCOUNTS_DEDICATED = 120;
 // Enough to cover the treasury's actively-paid mints without exhausting the public endpoint.
 const MAX_TOKEN_ACCOUNTS_PUBLIC = 6;
 const PER_ACCOUNT_SIGS = 4;
@@ -41,6 +43,8 @@ const PER_ACCOUNT_SIGS_PUBLIC = 3;
 // dedicated path can span 40+ accounts — so these go out in waves instead of one burst.
 const SIG_WAVE = 5;
 const SIG_WAVE_PUBLIC = 3;
+// Transactions to sample per deposit asked for — see the slice below.
+const SIG_OVERSAMPLE = 4;
 
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
@@ -103,7 +107,10 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       .flat()
       .filter((s) => !s.err && !seen.has(s.signature) && (seen.add(s.signature), true))
       .sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0))
-      .slice(0, limit)
+      // `limit` counts DEPOSITS, not transactions. Most of a treasury's recent activity produces
+      // no inflow at all, so slicing signatures to `limit` meant asking for 15 deposits and
+      // parsing only 15 transactions — of which just a few were deposits. Over-fetch instead.
+      .slice(0, Math.min(limit * SIG_OVERSAMPLE, light ? 24 : 90))
       .map((s) => s.signature);
     // Signatures came back, so the treasury address itself is reachable. From here on, an RPC
     // failure degrades to fewer deposits rather than none.
@@ -148,7 +155,11 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     }
     if (raw.length === 0) return [];
 
-    // 4. Enrich with symbol/logo + USD value.
+    // 4. Newest first, trimmed to what was asked for, THEN enriched — oversampling above means
+    //    `raw` can hold far more than `limit`, and pricing rows nobody will see is wasted calls.
+    raw.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+    raw.splice(limit);
+
     const mints = [...new Set(raw.map((r) => r.mint).filter((m): m is string => !!m))];
     const [metas, prices] = await Promise.all([
       fetchTokenMetas(mints).catch(() => ({}) as Awaited<ReturnType<typeof fetchTokenMetas>>),
