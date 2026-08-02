@@ -260,7 +260,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Receive-notification state: last-known per-asset balances for the active address, and the
   // time of the user's last SEND (to suppress a "received" caused by their own outgoing move).
   // Swaps deliberately do not suppress — see swapExecute.
-  const balanceBaselineRef = useRef<{ addr: string; amounts: Record<string, number> } | null>(null);
+  /**
+   * Last-seen balances, keyed by `${chainId}:${address}` — one entry PER CHAIN, not one for the
+   * whole wallet.
+   *
+   * It used to be a single slot. That was survivable while a refresh only ever loaded the active
+   * chain, but the cross-chain Wallet list made every refresh call `detectReceipts` three times
+   * (Solana, then both EVM chains) and each call overwrote the one slot. The `prev.addr === addr`
+   * guard then never matched two calls in a row, so Solana receipts silently stopped firing
+   * altogether. Scoping it also stops Ethereum and BSC — which share one address and both label
+   * their native asset "native" — from diffing ETH against BNB and inventing a receipt.
+   */
+  const balanceBaselineRef = useRef<Map<string, Record<string, number>>>(new Map());
   const lastActionRef = useRef(0);
   keypairRef.current = keypair;
   evmAccountRef.current = evmAccount;
@@ -270,20 +281,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // fires a local "Received X" notification (only when enabled, not right after the user's own
   // action, and never on the first load of an address). Then re-snapshots.
   const detectReceipts = useCallback(
-    (addr: string, entries: { key: string; symbol: string; amount: number; priceUsd?: number | null }[]) => {
-      const prev = balanceBaselineRef.current;
+    (
+      /** Which chain these balances are from — scopes the baseline. */
+      chainId: ChainId,
+      addr: string,
+      entries: { key: string; symbol: string; amount: number; priceUsd?: number | null }[]
+    ) => {
+      const scope = `${chainId}:${addr}`;
+      const prev = balanceBaselineRef.current.get(scope);
       const amounts: Record<string, number> = {};
       for (const e of entries) amounts[e.key] = e.amount;
       const quiet = Date.now() - lastActionRef.current < 12_000;
-      if (prev?.addr === addr && isNotificationsEnabled() && !quiet) {
+      // No baseline for this scope yet = first sight of this chain+account. Record it and stay
+      // silent, or opening the app would announce everything you already own.
+      if (prev && isNotificationsEnabled() && !quiet) {
         for (const e of entries) {
-          const delta = e.amount - (prev.amounts[e.key] ?? 0);
+          const delta = e.amount - (prev[e.key] ?? 0);
           if (delta > 1e-9) {
             notifyReceived({ symbol: e.symbol, amount: delta, usd: e.priceUsd != null ? e.priceUsd * delta : null });
           }
         }
       }
-      balanceBaselineRef.current = { addr, amounts };
+      balanceBaselineRef.current.set(scope, amounts);
     },
     []
   );
@@ -345,7 +364,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             });
           });
         }
-        detectReceipts(pubkey.toBase58(), [
+        detectReceipts("solana", pubkey.toBase58(), [
           { key: "native:SOL", symbol: "SOL", amount: solUi, priceUsd: prices[WSOL_MINT]?.usdPrice ?? null },
           ...das.tokens.map((t) => ({
             key: t.mint,
@@ -415,7 +434,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       prices: nextPrices,
     });
 
-    detectReceipts(pubkey.toBase58(), [
+    detectReceipts("solana", pubkey.toBase58(), [
       { key: "native:SOL", symbol: "SOL", amount: lamports / LAMPORTS_PER_SOL, priceUsd: nextPrices[WSOL_MINT]?.usdPrice ?? null },
       ...spl.map((t) => ({
         key: t.mint,
@@ -438,7 +457,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setEvmPrices((prev) => ({ ...prev, ...evPrices }));
     saveWalletSnapshot(`${chain.id}:${address}`, { evmNative: nativeAmt, evmTokens: toks, evmPrices: evPrices });
 
-    detectReceipts(address, [
+    detectReceipts(chain.id, address, [
       { key: "native", symbol: chain.symbol, amount: nativeAmt, priceUsd: evPrices[chain.symbol] ?? null },
       ...toks
         .filter((tb) => tb.balance > 0)

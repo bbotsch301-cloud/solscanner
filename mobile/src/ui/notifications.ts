@@ -48,6 +48,40 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
+/**
+ * What happened to the last notification we tried to send.
+ *
+ * Every failure in this file used to be swallowed — including the send itself, which is the single
+ * most valuable error here. That's why a deterministic bug took three attempts to find: from the
+ * outside, "blocked by the OS", "not built with notification support" and "the detector never
+ * fired" all look exactly the same, which is to say like nothing at all. Same idea as
+ * solana/feeDiagnostics.ts, which exists for the same reason on the fee path.
+ */
+export interface NotifyAttempt {
+  at: number;
+  body: string;
+  ok: boolean;
+  /** Why it failed, when it did. */
+  detail?: string;
+}
+let lastAttempt: NotifyAttempt | null = null;
+
+/** The last notification attempt, for the Settings screen to display. */
+export function lastNotifyAttempt(): NotifyAttempt | null {
+  return lastAttempt;
+}
+
+/** Current OS-level permission, which the in-app toggle does NOT track. */
+export async function notificationPermissionStatus(): Promise<"granted" | "denied" | "undetermined"> {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === "granted") return "granted";
+    return status === "denied" ? "denied" : "undetermined";
+  } catch {
+    return "undetermined";
+  }
+}
+
 /** Fire an immediate local "Received X" notification. Fire-and-forget. */
 export function notifyReceived(input: { symbol: string; amount: number; usd?: number | null }): void {
   const amt =
@@ -58,13 +92,22 @@ export function notifyReceived(input: { symbol: string; amount: number; usd?: nu
     input.usd != null && input.usd > 0
       ? ` (~$${input.usd.toLocaleString("en-US", { maximumFractionDigits: 2 })})`
       : "";
+  const body = `${amt} ${input.symbol}${usd}`;
+  const note = (ok: boolean, detail?: string) => {
+    lastAttempt = { at: Date.now(), body, ok, detail };
+  };
   try {
     Notifications.scheduleNotificationAsync({
-      content: { title: "Received", body: `${amt} ${input.symbol}${usd}`, sound: true },
+      content: { title: "Received", body, sound: true },
       trigger: null, // immediate
-    }).catch(() => {});
-  } catch {
-    /* ignore */
+    }).then(
+      () => note(true),
+      // Still swallowed — a failed alert must never break a balance refresh — but no longer
+      // invisible. Settings shows this, so "nothing happened" becomes a readable reason.
+      (e) => note(false, e instanceof Error ? e.message : String(e))
+    );
+  } catch (e) {
+    note(false, e instanceof Error ? e.message : String(e));
   }
 }
 

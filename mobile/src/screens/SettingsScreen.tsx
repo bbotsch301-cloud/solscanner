@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
 import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
@@ -9,7 +9,13 @@ import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { IS_MAINNET, setNetwork, solscanAccount, setCustomRpc, getCustomRpc, isPublicRpc, type Network } from "../solana/connection";
 import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled, isFastBalancesEnabled, setFastBalancesEnabled } from "../security/prefs";
-import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
+import {
+  requestNotificationPermission,
+  notifyReceived,
+  notificationPermissionStatus,
+  lastNotifyAttempt,
+  type NotifyAttempt,
+} from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
 import { IconChip } from "../components/IconChip";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
@@ -49,6 +55,17 @@ export function SettingsScreen() {
   const [pinAction, setPinAction] = useState<PinAction>(null);
   const [rpcUrl, setRpcUrl] = useState(getCustomRpc() ?? "");
   const [fastBalances, setFastBalances] = useState(isFastBalancesEnabled());
+  // The OS's view of permission, which the stored preference above never reconciles with.
+  const [permission, setPermission] = useState<"granted" | "denied" | "undetermined">("granted");
+  const [attempt, setAttempt] = useState<NotifyAttempt | null>(null);
+
+  useEffect(() => {
+    // Both reads happen after an await so nothing is set synchronously in the effect body.
+    void (async () => {
+      setPermission(await notificationPermissionStatus());
+      setAttempt(lastNotifyAttempt());
+    })();
+  }, []);
 
   const toggleFastBalances = (v: boolean) => {
     setFastBalances(v);
@@ -300,10 +317,35 @@ export function SettingsScreen() {
           />
         </View>
         <Text style={styles.hint}>Get a notification whenever funds arrive while the app is open.</Text>
+        {/* The switch above is a stored preference; this is what the OS actually thinks. They can
+            disagree — a permission granted once and later revoked in iOS Settings leaves the
+            switch on while every alert is dropped, which is indistinguishable from a broken app. */}
+        {notifications && permission !== "granted" && (
+          <Text style={styles.warnHint}>
+            {permission === "denied"
+              ? "Blocked in your phone's Settings — alerts are on here but iOS is dropping them. Enable notifications for XGO in Settings."
+              : "Your phone hasn't been asked for permission yet. Turn the switch off and on again to request it."}
+          </Text>
+        )}
         {notifications && (
           <>
             <View style={styles.divider} />
-            <Row icon="paper-plane-outline" label="Send a test notification" onPress={() => notifyReceived({ symbol: "SOL", amount: 1, usd: null })} />
+            <Row
+              icon="paper-plane-outline"
+              label="Send a test notification"
+              onPress={() => {
+                notifyReceived({ symbol: "SOL", amount: 1, usd: null });
+                // Read back a moment later; the send resolves asynchronously.
+                setTimeout(() => setAttempt(lastNotifyAttempt()), 600);
+              }}
+            />
+            {attempt && (
+              <Text style={attempt.ok ? styles.hint : styles.warnHint}>
+                {attempt.ok
+                  ? `Last alert sent OK — "${attempt.body}". If it didn't appear, the OS suppressed it.`
+                  : `Last alert failed: ${attempt.detail ?? "unknown reason"}`}
+              </Text>
+            )}
           </>
         )}
       </View>
@@ -387,6 +429,9 @@ const styles = StyleSheet.create({
   rowRight: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rowValue: { color: colors.textMuted, fontSize: font.body },
   hint: { color: colors.textFaint, fontSize: font.small, lineHeight: 17, paddingBottom: spacing(3) },
+  // Same shape as `hint`, but amber — for the cases where the switch says one thing and the OS
+  // is doing another, which the user otherwise has no way to see.
+  warnHint: { color: colors.warning, fontSize: font.small, lineHeight: 17, paddingBottom: spacing(3) },
   rpcCard: {
     backgroundColor: colors.card,
     borderWidth: 1,
