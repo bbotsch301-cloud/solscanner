@@ -23,15 +23,18 @@ const KEY = require("../../assets/kingdom-key.png") as number;
 /** The artwork's true aspect (212×640) — the key is tall and narrow, so `size` is its HEIGHT. */
 const ASPECT = 212 / 640;
 
-/** How far it drifts backwards before the pull takes hold. */
-const RESIST_TO = 190;
-const RESIST_MS = 400;
+/** Starts inverted, drifts a little further before the pull takes hold. */
+const START_AT = 180;
+const RESIST_TO = 188;
+const RESIST_MS = 320;
+/** The snap itself. Deterministic: it must finish inside the splash window (see SPLASH_MIN_MS). */
+const SNAP_MS = 620;
 /** The rotation at which it reads as "landed" — where the haptic fires. */
 const LOCK_AT = 350;
 
 export function KeySplash({ size = 320 }: { size?: number }) {
   // One driver: scale is interpolated off the same value so it can't drift from the rotation.
-  const [turn] = useState(() => new Animated.Value(RESIST_TO));
+  const [turn] = useState(() => new Animated.Value(START_AT));
   const locked = useRef(false);
 
   useEffect(() => {
@@ -47,16 +50,21 @@ export function KeySplash({ size = 320 }: { size?: number }) {
     const anim = Animated.sequence([
       // Resist: a slow drift the wrong way, as though straining against the pull.
       Animated.timing(turn, {
-        toValue: RESIST_TO + 8,
+        toValue: RESIST_TO,
         duration: RESIST_MS,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
-      // Snap: low friction so it overshoots and settles back with one small wobble.
-      Animated.spring(turn, {
+      // Snap: `back` overshoots past the target and eases home, which is the magnetic part.
+      //
+      // This was an Animated.spring, which was the bug: a spring's duration is emergent, and at
+      // `speed: 5` it needed well over a second to cover 170°. The splash unmounts on a fixed
+      // timer, so the turn was cut off after a few degrees. A timing curve lands in a duration we
+      // choose, so the whole motion is guaranteed to fit inside the window.
+      Animated.timing(turn, {
         toValue: 360,
-        speed: 5,
-        bounciness: 9,
+        duration: SNAP_MS,
+        easing: Easing.out(Easing.back(2.2)),
         useNativeDriver: true,
       }),
     ]);
@@ -83,8 +91,8 @@ export function KeySplash({ size = 320 }: { size?: number }) {
   const rotate = turn.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] });
   // Pulled toward the viewer as it rights itself, so the turn has depth rather than being flat.
   const scale = turn.interpolate({
-    inputRange: [RESIST_TO, LOCK_AT, 360],
-    outputRange: [0.92, 0.99, 1],
+    inputRange: [START_AT, LOCK_AT, 360],
+    outputRange: [0.9, 1.0, 1],
     extrapolate: "clamp",
   });
   return (
