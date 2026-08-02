@@ -465,10 +465,16 @@ export function EcosystemScreen() {
         // This feed has been "fixed" several times on guesses about where coverage was being lost.
         // Showing what the scan actually reached turns the next report into evidence — which is
         // why the failure counts are here too, and why they're recorded before the risky part.
+        // "Scanned 2 of 2 treasury accounts" read as though there were two treasuries. There's one
+        // wallet; the rest are its token accounts, one per token it has ever been paid in. Say that.
         <Text style={styles.scanNote}>
-          Scanned {scan.scannedAccounts - scan.accountsFailed} of {scan.tokenAccounts + 1} treasury
-          accounts · {scan.signatures} transactions · {scan.deposits} inflows found
-          {scan.accountsFailed > 0 ? ` · ${scan.accountsFailed} accounts unreachable` : ""}
+          Checked the treasury wallet
+          {scan.tokenAccounts > 0
+            ? ` and ${scan.tokenAccounts === scan.scannedAccounts - 1 ? "its" : `${scan.scannedAccounts - 1} of its`} ${scan.tokenAccounts} token account${scan.tokenAccounts === 1 ? "" : "s"}`
+            : ""}
+          {" · "}
+          {scan.signatures} transactions · {scan.deposits} inflows found
+          {scan.accountsFailed > 0 ? ` · ${scan.accountsFailed} unreachable` : ""}
           {scan.unreadable > 0 ? ` · ${scan.unreadable} unreadable` : ""}
           {scan.publicRpc ? " · public RPC" : ""}
         </Text>

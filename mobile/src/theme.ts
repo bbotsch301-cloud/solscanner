@@ -119,6 +119,11 @@ export function usd(n: number): string {
 
 /** Format a token amount with up to 4 decimals. */
 export function amount(n: number): string {
+  // Never print a real amount as "0". A 0.44% fee on a small swap is a few millionths of a SOL,
+  // and at four decimal places that rounded to "0" — so the deposits list showed "+0 SOL" beside
+  // a real dollar value. Below the visible threshold, switch to significant digits instead.
+  const abs = Math.abs(n);
+  if (abs > 0 && abs < 0.0001) return n.toLocaleString("en-US", { maximumSignificantDigits: 2 });
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
