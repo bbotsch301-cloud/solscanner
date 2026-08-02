@@ -44,7 +44,7 @@ import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
 import { BrowserScreen } from "./src/browser/BrowserScreen";
 import { loadBrowserData } from "./src/browser/dapps";
 import { loadConnections } from "./src/browser/connections";
-import { loadNetworkPref } from "./src/solana/connection";
+import { loadNetworkPref, loadRpcPref } from "./src/solana/connection";
 import { loadSecurityPref, getAcceptedLegalVersion, setAcceptedLegalVersion } from "./src/security/prefs";
 import { LEGAL_VERSION } from "./src/legal/content";
 import { loadMultisigPref } from "./src/config/multisig";
@@ -255,6 +255,7 @@ export default function App() {
     configureNotifications();
     Promise.all([
       loadNetworkPref(),
+      loadRpcPref(),
       loadSecurityPref(),
       loadMultisigPref(),
       loadRecipients(),

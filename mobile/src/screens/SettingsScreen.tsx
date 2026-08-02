@@ -1,13 +1,13 @@
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
-import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, DevSettings, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
-import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from "../solana/connection";
+import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, setCustomRpc, getCustomRpc, isPublicRpc, type Network } from "../solana/connection";
 import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled } from "../security/prefs";
 import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
@@ -48,6 +48,27 @@ export function SettingsScreen() {
   const [biometric, setBiometric] = useState(isBiometricEnabled());
   const [notifications, setNotifications] = useState(isNotificationsEnabled());
   const [pinAction, setPinAction] = useState<PinAction>(null);
+  const [rpcUrl, setRpcUrl] = useState(getCustomRpc() ?? "");
+
+  const saveRpc = () => {
+    const url = rpcUrl.trim();
+    if (url && !/^https:\/\//i.test(url)) {
+      Alert.alert("Invalid RPC URL", "Enter a full https:// endpoint (e.g. your Helius RPC URL).");
+      return;
+    }
+    const apply = async () => {
+      await setCustomRpc(url || null);
+      try {
+        DevSettings.reload();
+      } catch {
+        Alert.alert("Restart needed", "Close and reopen the app to apply the change.");
+      }
+    };
+    Alert.alert(url ? "Use this RPC?" : "Reset to default RPC?", "The app will reload to apply it.", [
+      { text: "Cancel", style: "cancel" },
+      { text: url ? "Save & reload" : "Reset & reload", onPress: apply },
+    ]);
+  };
 
   const toggleNotifications = async (v: boolean) => {
     if (v) {
@@ -158,6 +179,35 @@ export function SettingsScreen() {
           label="View on Solscan"
           onPress={() => address && Linking.openURL(solscanAccount(address))}
         />
+      </View>
+
+      <View style={styles.rpcCard}>
+        <View style={styles.rpcHead}>
+          <Ionicons name="server-outline" size={18} color={colors.primary} />
+          <Text style={styles.rpcLabel}>Mainnet RPC</Text>
+          <View style={[styles.rpcPill, { backgroundColor: (isPublicRpc() ? colors.warning : colors.positive) + "22" }]}>
+            <Text style={[styles.rpcPillText, { color: isPublicRpc() ? colors.warning : colors.positive }]}>
+              {isPublicRpc() ? "Public · limited" : "Custom"}
+            </Text>
+          </View>
+        </View>
+        <TextInput
+          value={rpcUrl}
+          onChangeText={setRpcUrl}
+          placeholder="https://mainnet.helius-rpc.com/?api-key=…"
+          placeholderTextColor={colors.textFaint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          style={styles.rpcInput}
+        />
+        <Pressable onPress={saveRpc} style={styles.rpcSave}>
+          <Text style={styles.rpcSaveText}>{rpcUrl.trim() ? "Save & reload" : "Reset to default & reload"}</Text>
+        </Pressable>
+        <Text style={styles.hint}>
+          The public endpoint is rate-limited, so treasury deposits and history often fail to load. A
+          dedicated RPC (a free Helius key works) fixes it. Stored only on this device.
+        </Text>
       </View>
 
       <Text style={styles.sectionTitle}>Security</Text>
@@ -302,6 +352,31 @@ const styles = StyleSheet.create({
   rowRight: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rowValue: { color: colors.textMuted, fontSize: font.body },
   hint: { color: colors.textFaint, fontSize: font.small, lineHeight: 17, paddingBottom: spacing(3) },
+  rpcCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+    padding: spacing(4),
+    marginTop: spacing(3),
+    gap: spacing(3),
+  },
+  rpcHead: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  rpcLabel: { flex: 1, color: colors.text, fontSize: font.body, fontWeight: "700" },
+  rpcPill: { paddingHorizontal: spacing(2.5), paddingVertical: spacing(1), borderRadius: radius.pill },
+  rpcPillText: { fontSize: font.tiny, fontWeight: "800" },
+  rpcInput: {
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(3),
+    color: colors.text,
+    fontSize: font.small,
+  },
+  rpcSave: { backgroundColor: colors.primary, borderRadius: radius.pill, alignItems: "center", paddingVertical: spacing(3) },
+  rpcSaveText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   notice: {
     flexDirection: "row",

@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useRef, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { LayoutAnimation, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +20,7 @@ import { haptics } from "../ui/haptics";
 import { Skeleton } from "../components/Skeleton";
 import { solscanAccount, IS_MAINNET } from "../solana/connection";
 import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
+import type { RootNav } from "../navigation";
 
 function StatTile({ label, value, delta, deltaUp }: { label: string; value: string; delta?: string; deltaUp?: boolean }) {
   return (
@@ -46,6 +47,7 @@ const ecoCache = new Map<string, EcoSnapshot>();
 
 export function EcosystemScreen() {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<RootNav>();
   const TREASURY_ADDRESS = treasuryAddress();
   const seed = ecoCache.get(TREASURY_ADDRESS);
   const [holdings, setHoldings] = useState<Holdings | null>(seed?.holdings ?? null);
@@ -265,7 +267,8 @@ export function EcosystemScreen() {
             icon="cloud-offline-outline"
             color={colors.warning}
             title="Couldn't load deposits"
-            subtitle="The public RPC is rate-limited or unreachable. Pull to refresh, or set a dedicated RPC (EXPO_PUBLIC_MAINNET_RPC) for reliable history."
+            subtitle="The public RPC is rate-limited or unreachable, so history can't load. Add a dedicated RPC (a free Helius key works) for reliable deposits, or pull to refresh."
+            cta={{ label: "Set a custom RPC", icon: "server-outline", onPress: () => nav.navigate("Settings") }}
           />
         ) : deposits.length === 0 ? (
           <EmptyState
