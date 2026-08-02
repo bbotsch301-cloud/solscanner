@@ -1,112 +1,52 @@
 /**
- * The Kingdom Key, pulled into place.
+ * The Kingdom Key turning upright.
  *
- * The key starts inverted and appears to resist, then gets yanked upright — overshooting slightly
- * and settling, the way something magnetic snaps to its pole. The feeling lives entirely in the
- * shape of the curve: a timing function can only ease toward its target and stop, so it always
- * reads as "animated". A spring can pass its target and come back, and that overshoot is the
- * difference between a rotation and a thing being pulled.
+ * This is deliberately the same shape as the crown animation that worked: one Animated.Value driven
+ * 0→1 by a single timing, interpolated straight to degrees. Earlier versions layered on a sequence,
+ * a spring, a value listener for haptics, a scale track and an async reduce-motion gate — and
+ * somewhere in all that the turn stopped happening at all.
  *
- * Everything is transform + opacity so it runs on the native driver. That matters more here than
- * anywhere else in the app: the splash is on screen precisely while the JS thread is busiest
- * (loading the vault, prefs, snapshots), and a JS-driven animation would stutter through it.
+ * Start from what works. Anything added back goes in one piece at a time, checked on a device.
  */
-import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Animated, Easing, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
-import { haptics } from "../ui/haptics";
 
 // Metro asset import; the ESM form would need a .png module declaration this project doesn't carry.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const KEY = require("../../assets/kingdom-key.png") as number;
 
-/** The artwork's true aspect (212×640) — the key is tall and narrow, so `size` is its HEIGHT. */
+/** The artwork is 212×640, so `size` is the key's HEIGHT and the width follows. */
 const ASPECT = 212 / 640;
-
-/** Starts inverted, drifts a little further before the pull takes hold. */
-const START_AT = 180;
-const RESIST_TO = 188;
-const RESIST_MS = 320;
-/** The snap itself. Deterministic: it must finish inside the splash window (see SPLASH_MIN_MS). */
-const SNAP_MS = 620;
-/** The rotation at which it reads as "landed" — where the haptic fires. */
-const LOCK_AT = 350;
+const TURN_MS = 1100;
 
 export function KeySplash({
   size = 320,
   animate = true,
 }: {
   size?: number;
-  /** False renders the key already upright and still — for a second mount that must not replay
-   *  the entrance the user has just watched. */
+  /** False renders the key already upright and still, for a second mount that must not replay it. */
   animate?: boolean;
 }) {
-  // One driver: scale is interpolated off the same value so it can't drift from the rotation.
-  const [turn] = useState(() => new Animated.Value(animate ? START_AT : 360));
-  const locked = useRef(false);
+  const [spin] = useState(() => new Animated.Value(animate ? 0 : 1));
 
   useEffect(() => {
     if (!animate) return;
-    // The haptic belongs to the landing, not the launch — fire it as the key crosses into place
-    // rather than on a timer, so it stays true if the spring is retuned.
-    const id = turn.addListener(({ value }) => {
-      if (!locked.current && value >= LOCK_AT) {
-        locked.current = true;
-        haptics.bump();
-      }
+    const anim = Animated.timing(spin, {
+      toValue: 1,
+      duration: TURN_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
     });
-
-    const anim = Animated.sequence([
-      // Resist: a slow drift the wrong way, as though straining against the pull.
-      Animated.timing(turn, {
-        toValue: RESIST_TO,
-        duration: RESIST_MS,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      // Snap: `back` overshoots past the target and eases home, which is the magnetic part.
-      //
-      // This was an Animated.spring, which was the bug: a spring's duration is emergent, and at
-      // `speed: 5` it needed well over a second to cover 170°. The splash unmounts on a fixed
-      // timer, so the turn was cut off after a few degrees. A timing curve lands in a duration we
-      // choose, so the whole motion is guaranteed to fit inside the window.
-      Animated.timing(turn, {
-        toValue: 360,
-        duration: SNAP_MS,
-        easing: Easing.out(Easing.back(2.2)),
-        useNativeDriver: true,
-      }),
-    ]);
-
-    // Start IMMEDIATELY. This used to wait on isReduceMotionEnabled(), a promise — and on a warm
-    // start the splash could come and go before it resolved, leaving the key frozen mid-turn.
-    // Reduce Motion is honoured by cutting the animation short once the answer arrives.
     anim.start();
-    let cancelled = false;
-    void AccessibilityInfo.isReduceMotionEnabled().then((on) => {
-      if (on && !cancelled) {
-        anim.stop();
-        turn.setValue(360);
-      }
-    });
+    return () => anim.stop();
+  }, [animate, spin]);
 
-    return () => {
-      cancelled = true;
-      anim.stop();
-      turn.removeListener(id);
-    };
-  }, [animate, turn]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
 
-  const rotate = turn.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] });
-  // Pulled toward the viewer as it rights itself, so the turn has depth rather than being flat.
-  const scale = turn.interpolate({
-    inputRange: [START_AT, LOCK_AT, 360],
-    outputRange: [0.9, 1.0, 1],
-    extrapolate: "clamp",
-  });
   return (
     <View style={styles.wrap}>
-      <Animated.View style={{ transform: [{ rotate }, { scale }] }}>
+      <Animated.View style={{ transform: [{ rotate }] }}>
         <Image
           source={KEY}
           alt="Kingdom Key"
