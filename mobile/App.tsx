@@ -147,16 +147,20 @@ const navTheme = {
 };
 
 function Splash() {
-  // Just the crown, centered, slowly spinning — no text, no other marks.
+  // Just the crown, centered — it turns up from upside down and settles upright. No endless
+  // spin: a crown shouldn't sit inverted, and the half turn gives it a single deliberate beat.
   const [spin] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    const anim = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 2400, easing: Easing.linear, useNativeDriver: true })
-    );
+    const anim = Animated.timing(spin, {
+      toValue: 1,
+      duration: 1100,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
     anim.start();
     return () => anim.stop();
   }, [spin]);
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
       <Animated.View style={{ transform: [{ rotate }] }}>

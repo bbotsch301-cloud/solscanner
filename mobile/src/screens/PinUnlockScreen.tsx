@@ -27,19 +27,22 @@ function formatWait(ms: number): string {
 }
 
 /** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a moment
- *  on-device). Just the Kingdom crown, centered and slowly spinning — no text, no other marks —
- *  matching the startup splash in App.tsx. */
+ *  on-device). Just the Kingdom crown, centered — it turns up from upside down and settles
+ *  upright, matching the startup splash in App.tsx. */
 function DecryptingSplash() {
   const insets = useSafeAreaInsets();
   const [spin] = useState(() => new Animated.Value(0)); // stable Animated value (not a ref)
   useEffect(() => {
-    const anim = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 2400, easing: Easing.linear, useNativeDriver: true })
-    );
+    const anim = Animated.timing(spin, {
+      toValue: 1,
+      duration: 1100,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
     anim.start();
     return () => anim.stop();
   }, [spin]);
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
   return (
     <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Animated.View style={{ transform: [{ rotate }] }}>
