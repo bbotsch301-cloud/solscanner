@@ -37,6 +37,9 @@ const MAX_TOKEN_ACCOUNTS_DEDICATED = 40;
 const PER_ACCOUNT_SIGS = 4;
 // The public path scans the wallet alone, so it can afford a deeper slice of its history.
 const PER_ACCOUNT_SIGS_PUBLIC = 10;
+// Concurrent signature lookups per wave. Helius' free tier allows ~10 requests/second, and the
+// dedicated path can span 40+ accounts — so these go out in waves instead of one burst.
+const SIG_WAVE = 5;
 
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
@@ -79,12 +82,20 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     }
     const accounts = [owner, ...tokenAccts];
 
-    // 2. Recent signatures across the wallet + token accounts, deduped, newest first. Sequential on
-    //    the public endpoint (one call) so there's no parallel burst to rate-limit.
+    // 2. Recent signatures across the wallet + token accounts, deduped, newest first.
+    //    Issued in small waves rather than all at once: with a dedicated RPC this can be 40+
+    //    accounts, and firing them in one parallel burst blows through a free tier's
+    //    requests-per-second limit — which failed the whole feed even though the key was fine.
     const perAccount = light ? PER_ACCOUNT_SIGS_PUBLIC : PER_ACCOUNT_SIGS;
-    const sigLists = await Promise.all(
-      accounts.map((a) => connection.getSignaturesForAddress(a, { limit: perAccount }).catch(() => []))
-    );
+    const sigLists: Awaited<ReturnType<typeof connection.getSignaturesForAddress>>[] = [];
+    for (let i = 0; i < accounts.length; i += SIG_WAVE) {
+      const wave = await Promise.all(
+        accounts
+          .slice(i, i + SIG_WAVE)
+          .map((a) => connection.getSignaturesForAddress(a, { limit: perAccount }).catch(() => []))
+      );
+      sigLists.push(...wave);
+    }
     const seen = new Set<string>();
     const sigs = sigLists
       .flat()
