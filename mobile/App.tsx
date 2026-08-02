@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Animated, Easing, LogBox, Platform, UIManager, View } from "react-native";
+import { Animated, Easing, LogBox, Platform, StyleSheet, UIManager, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -35,6 +35,7 @@ import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
 import { LockScreen } from "./src/screens/LockScreen";
 import { Fade } from "./src/components/Fade";
 import { Crown } from "./src/components/Crown";
+import { PrivacyCover } from "./src/components/PrivacyCover";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
@@ -210,14 +211,26 @@ function Root() {
       </>
     );
   if (!hasWallet) return <><StatusBar style="light" /><Fade><OnboardingScreen /></Fade></>;
-  // A PIN (which encrypts the seeds) gates ahead of the biometric lock; when set, it
-  // replaces the biometric lock so the user isn't gated twice.
-  if (locked) return <><StatusBar style="light" /><Fade><PinUnlockScreen /></Fade></>;
-  if (!pinEnabled && !unlocked) return <><StatusBar style="light" /><Fade><LockScreen /></Fade></>;
-  // New wallets must be backed up before entering the app.
-  if (needsBackup) return <><StatusBar style="light" /><Fade><BackupPrompt onDone={markBackedUp} /></Fade></>;
-  // Offer the PIN once, after setup (skippable). PIN is the primary lock.
-  if (shouldPromptPin) return <><StatusBar style="light" /><Fade><SetupPinPrompt /></Fade></>;
+
+  // Setup gates for a brand-new wallet. These replace the whole app rather than overlaying it,
+  // so the lock still has to win over them — there's no in-progress transaction to preserve on a
+  // wallet that hasn't been backed up yet, and neither prompt may be reachable while locked.
+  if (needsBackup || shouldPromptPin) {
+    if (locked) return <><StatusBar style="light" /><Fade><PinUnlockScreen /></Fade></>;
+    if (!pinEnabled && !unlocked) return <><StatusBar style="light" /><Fade><LockScreen /></Fade></>;
+    // New wallets must be backed up before entering the app.
+    if (needsBackup) return <><StatusBar style="light" /><Fade><BackupPrompt onDone={markBackedUp} /></Fade></>;
+    // Offer the PIN once, after setup (skippable). PIN is the primary lock.
+    return <><StatusBar style="light" /><Fade><SetupPinPrompt /></Fade></>;
+  }
+
+  // The lock renders as an OVERLAY over the navigator rather than replacing it. Replacing it
+  // unmounted every screen, so a lock mid-Send discarded the half-filled form and dropped the
+  // user back at the tab root on unlock. As an overlay the navigator stays mounted, and
+  // unlocking returns to the exact screen with its state intact. A PIN (which encrypts the
+  // seeds) gates ahead of the biometric lock; when set, it replaces the biometric lock so the
+  // user isn't gated twice.
+  const lockOverlay = locked ? <PinUnlockScreen /> : !pinEnabled && !unlocked ? <LockScreen /> : null;
 
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme}>
@@ -264,9 +277,22 @@ function Root() {
           <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>
+      {/* Opaque and above the navigator: nothing behind it is visible or touchable. */}
+      {lockOverlay && (
+        <View style={styles.lockOverlay}>
+          <Fade>{lockOverlay}</Fade>
+        </View>
+      )}
+      {/* Covers everything (including the lock) while the app isn't frontmost, so the
+          app-switcher snapshot never contains balances or addresses. */}
+      <PrivacyCover />
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  lockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bg, zIndex: 100 },
+});
 
 export default function App() {
   // Apply the saved network choice before anything uses the connection.

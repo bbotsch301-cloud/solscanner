@@ -75,6 +75,9 @@ const ACTIVE_CHAIN_KEY = "wallet.activeChain.v1";
 // Auto-lock the seeds after this long with no interaction, even while foregrounded, so an
 // unlocked wallet left open on an unattended phone re-locks itself.
 const INACTIVITY_MS = 5 * 60_000;
+// How long the app may sit backgrounded before it re-locks. Short enough that a lost phone is
+// still protected, long enough to step into another app for an address and come back mid-send.
+const BACKGROUND_GRACE_MS = 60_000;
 
 export interface SplToken {
   mint: string;
@@ -241,6 +244,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const activeEvmAddressRef = useRef<string | null>(null);
   const activeChainRef = useRef<ChainId>(DEFAULT_CHAIN);
   const lastActivityRef = useRef(0); // stamped on mount in the inactivity effect below
+  const backgroundedAtRef = useRef(0); // when the app last went to background (0 = foregrounded)
   // Receive-notification state: last-known per-asset balances for the active address, and the
   // time of the user's last send/swap (to suppress "received" for their own outgoing/swap moves).
   const balanceBaselineRef = useRef<{ addr: string; amounts: Record<string, number> } | null>(null);
@@ -545,11 +549,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })();
   }, [applyActive]);
 
-  // Auto-lock seed access whenever the app is backgrounded (only if a PIN is set).
+  // Auto-lock seed access when the app is backgrounded — but only after a short grace window, so
+  // stepping out to copy an address or scan a QR doesn't cost a PIN re-entry (and, because the
+  // lock renders as an overlay, doesn't discard a half-filled Send/Swap form either). Anything
+  // longer than the grace re-locks on return. Content is hidden in the app switcher separately,
+  // by the privacy cover at the root, so the grace window never exposes balances on screen.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background") lockNow();
-      else if (state === "active") lastActivityRef.current = Date.now(); // fresh clock on return
+      if (state === "background") {
+        backgroundedAtRef.current = Date.now();
+      } else if (state === "active") {
+        const away = backgroundedAtRef.current ? Date.now() - backgroundedAtRef.current : 0;
+        backgroundedAtRef.current = 0;
+        if (away > BACKGROUND_GRACE_MS) lockNow();
+        lastActivityRef.current = Date.now(); // fresh clock on return
+      }
     });
     return () => sub.remove();
   }, [lockNow]);
