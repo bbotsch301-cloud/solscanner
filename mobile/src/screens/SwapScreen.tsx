@@ -33,7 +33,7 @@ import { nativeLogo } from "../config/logos";
 import { SwapConfirmSheet, type SwapPhase } from "../components/SwapConfirmSheet";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
-import type { ChainDef } from "../chains/registry";
+import { assertNever, type ChainDef } from "../chains/registry";
 import type { RootNav } from "../navigation";
 
 const SLIPPAGE_OPTIONS = [50, 100, 200]; // bps: 0.5% / 1% / 2%
@@ -54,11 +54,20 @@ function gasReserve(chain: ChainDef, tokenIn: boolean): number {
 }
 
 function defaultsFor(chain: ChainDef): [SwapToken, SwapToken] {
-  // Solana defaults to SOL → XGO so the swapper opens ready to buy XGO.
-  if (chain.kind === "solana") return [SWAP_TOKENS[0], XGO_TOKEN];
-  const list = evmSwapTokens(chain.id);
-  const usdc = list.find((t) => t.symbol === "USDC") ?? list[1];
-  return [list[0], usdc];
+  switch (chain.kind) {
+    // Solana defaults to SOL → XGO so the swapper opens ready to buy XGO.
+    case "solana":
+      return [SWAP_TOKENS[0], XGO_TOKEN];
+    case "evm": {
+      const list = evmSwapTokens(chain.id);
+      const usdc = list.find((t) => t.symbol === "USDC") ?? list[1];
+      return [list[0], usdc];
+    }
+    default:
+      // A chain with no aggregator would previously reach `evmSwapTokens()` → `[]` → `list[0]`
+      // undefined, and crash on render. Swap has to opt a chain family IN, not assume it.
+      return assertNever(chain.kind, "chain kind in swap defaults");
+  }
 }
 
 /** The token chip that opens the full selector sheet. */

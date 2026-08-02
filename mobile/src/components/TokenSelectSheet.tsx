@@ -19,7 +19,7 @@ import { evmSwapTokens, resolveEvmToken } from "../evm/tokenList";
 import { useFeaturedTokens } from "../swap/featuredTokens";
 import { POPULAR_ANCHORS } from "../config/featuredTokens";
 import { isEvmAddress } from "../wallet/evm";
-import type { ChainDef } from "../chains/registry";
+import { assertNever, type ChainDef } from "../chains/registry";
 import { amount as fmtAmount, colors, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
 
 /** A token the wallet holds, with its balance, for the "Your tokens" section. */
@@ -77,6 +77,10 @@ export function TokenSelectSheet({
       }
       setLoading(true);
       let found: SwapToken[];
+      // Exhaustive so a new chain family can't silently inherit the EVM search path.
+      if (chain.kind !== "solana" && chain.kind !== "evm") {
+        assertNever(chain.kind, "chain kind in token search");
+      }
       if (chain.kind === "solana") {
         found = await searchTokens(q);
         if (!found.length && looksLikeMint(q)) {

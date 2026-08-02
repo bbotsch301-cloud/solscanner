@@ -7,7 +7,7 @@
  * rows can paint immediately; parsing the transactions is the expensive part, so it's layered on
  * top and any failure just leaves a row plain rather than blanking the feed.
  */
-import type { ChainDef } from "./chains/registry";
+import { assertNever, type ChainDef } from "./chains/registry";
 import { fetchHistory } from "./solana/history";
 import { solscanTx } from "./solana/connection";
 import { cachedTokenMetas, fetchTokenMetas } from "./solana/tokens";
@@ -108,6 +108,11 @@ export async function fetchActivity(
   limit = 25
 ): Promise<HistoryItem[]> {
   if (!address) return [];
+  // Exhaustive: the old `return fetchEvmHistory(...)` tail meant any non-Solana chain was asked
+  // for its history via Etherscan, which for a third family returns nothing and reports no error.
+  if (chain.kind !== "solana" && chain.kind !== "evm") {
+    return assertNever(chain.kind, "chain kind in fetchActivity");
+  }
   if (chain.kind === "solana") {
     const sigs = await fetchHistory(address, limit);
     // Anything parsed on a previous visit is applied immediately — `cachedTokenMetas` is

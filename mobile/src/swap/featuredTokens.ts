@@ -22,7 +22,7 @@ import { cachedTokenMetas, fetchTokenMetas } from "../solana/tokens";
 import { ethCall } from "../evm/rpc";
 import { isEvmAddress, toChecksumAddress } from "../wallet/evm";
 import { shortAddress } from "../theme";
-import type { ChainDef, ChainId } from "../chains/registry";
+import { assertNever, type ChainDef, type ChainId } from "../chains/registry";
 import type { SwapToken } from "./types";
 
 /** 30 days. The underlying facts don't change; this is really just a "re-check eventually". */
@@ -151,8 +151,16 @@ async function resolveEvm(chain: ChainDef, addresses: string[]): Promise<SwapTok
 export async function loadFeaturedTokens(chain: ChainDef): Promise<SwapToken[]> {
   const addresses = featuredFor(chain.id).map((t) => t.address);
   if (!addresses.length) return [];
-  const tokens =
-    chain.kind === "solana" ? await resolveSolana(addresses) : await resolveEvm(chain, addresses);
+  const tokens = await (async () => {
+    switch (chain.kind) {
+      case "solana":
+        return resolveSolana(addresses);
+      case "evm":
+        return resolveEvm(chain, addresses);
+      default:
+        return assertNever(chain.kind, "chain kind in loadFeaturedTokens");
+    }
+  })();
   // Don't persist a total failure over a good list — an outage would otherwise blank the section
   // until the cache aged out. Same rule as the treasury snapshot's `depositsLoaded`.
   if (tokens.length) cache.set(chain.id, tokens);

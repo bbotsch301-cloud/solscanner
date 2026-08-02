@@ -32,7 +32,7 @@ import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
 import { fetchPrices, cachedPrices, fetchDexPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, cachedTokenMetas } from "../solana/tokens";
-import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "../chains/registry";
+import { CHAINS, DEFAULT_CHAIN, getChain, assertNever, type ChainDef, type ChainId } from "../chains/registry";
 import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
 import { fetchEvmNativePrices, stableUsd, erc20Usd } from "../evm/prices";
@@ -477,12 +477,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setRefreshing(true);
       setError(null);
       try {
-        if (chain.kind === "solana") {
-          const a = activeSolAddressRef.current;
-          if (a) await fetchBalances(new PublicKey(a));
-        } else {
-          const a = activeEvmAddressRef.current;
-          if (a) await fetchEvm(chain, a);
+        switch (chain.kind) {
+          case "solana": {
+            const a = activeSolAddressRef.current;
+            if (a) await fetchBalances(new PublicKey(a));
+            break;
+          }
+          case "evm": {
+            const a = activeEvmAddressRef.current;
+            if (a) await fetchEvm(chain, a);
+            break;
+          }
+          default:
+            assertNever(chain.kind, "chain kind in loadChain");
         }
       } catch (e) {
         setError(humanizeError(e, { action: "load" }));
@@ -902,12 +909,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const sendNative = useCallback(
     async (to: string, uiAmount: number): Promise<string> => {
       const chain = getChain(activeChainRef.current);
-      if (chain.kind === "solana") return send(to, uiAmount);
-      const acct = evmAccountRef.current;
-      if (!acct) throw new Error("No EVM wallet on this device.");
-      const sig = await sendNativeEvm(chain, acct.privateKey, acct.address, to, uiAmount);
-      loadChain(chain.id);
-      return sig;
+      // Exhaustive on purpose: this signs and moves real funds, so an unhandled chain family has
+      // to stop here rather than fall into the EVM signer with an undefined chain id.
+      switch (chain.kind) {
+        case "solana":
+          return send(to, uiAmount);
+        case "evm": {
+          const acct = evmAccountRef.current;
+          if (!acct) throw new Error("No EVM wallet on this device.");
+          const sig = await sendNativeEvm(chain, acct.privateKey, acct.address, to, uiAmount);
+          loadChain(chain.id);
+          return sig;
+        }
+        default:
+          return assertNever(chain.kind, "chain kind in sendNative");
+      }
     },
     [send, loadChain]
   );
@@ -916,22 +932,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (asset: UnifiedAsset, to: string, uiAmount: number): Promise<string> => {
       lastActionRef.current = Date.now(); // suppress a "received" from our own balance change
       const chain = getChain(activeChainRef.current);
-      if (asset.kind === "native") return sendNative(to, uiAmount);
-      if (asset.kind === "spl") return sendToken(asset.mint!, to, uiAmount, asset.decimals);
-      // erc20
-      const acct = evmAccountRef.current;
-      if (!acct) throw new Error("No EVM wallet on this device.");
-      const sig = await sendTokenEvm(
-        chain,
-        acct.privateKey,
-        acct.address,
-        asset.address!,
-        asset.decimals,
-        to,
-        uiAmount
-      );
-      loadChain(chain.id);
-      return sig;
+      // Dispatches on the ASSET's kind, not the chain's. The old form ended in a bare `// erc20`
+      // fallthrough, so any future asset type would have been handed to the ERC-20 transfer path.
+      switch (asset.kind) {
+        case "native":
+          return sendNative(to, uiAmount);
+        case "spl":
+          return sendToken(asset.mint!, to, uiAmount, asset.decimals);
+        case "erc20": {
+          const acct = evmAccountRef.current;
+          if (!acct) throw new Error("No EVM wallet on this device.");
+          const sig = await sendTokenEvm(
+            chain,
+            acct.privateKey,
+            acct.address,
+            asset.address!,
+            asset.decimals,
+            to,
+            uiAmount
+          );
+          loadChain(chain.id);
+          return sig;
+        }
+        default:
+          return assertNever(asset.kind, "asset kind in sendAsset");
+      }
     },
     [sendNative, sendToken, loadChain]
   );
@@ -945,13 +970,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const previewSend = useCallback(
     async (asset: UnifiedAsset, to: string, uiAmount: number): Promise<{ feeNative: number; symbol: string }> => {
       const chain = getChain(activeChainRef.current);
-      if (chain.kind === "solana") return { feeNative: 0.000005, symbol: chain.symbol };
-      const acct = evmAccountRef.current;
-      if (!acct) throw new Error("No EVM wallet on this device.");
-      const token =
-        asset.kind === "erc20" && asset.address ? { address: asset.address, decimals: asset.decimals } : undefined;
-      const { feeWei } = await previewEvmSend(chain, acct.address, to, uiAmount, token);
-      return { feeNative: Number(feeWei) / 10 ** chain.decimals, symbol: chain.symbol };
+      switch (chain.kind) {
+        case "solana":
+          return { feeNative: 0.000005, symbol: chain.symbol };
+        case "evm": {
+          const acct = evmAccountRef.current;
+          if (!acct) throw new Error("No EVM wallet on this device.");
+          const token =
+            asset.kind === "erc20" && asset.address ? { address: asset.address, decimals: asset.decimals } : undefined;
+          const { feeWei } = await previewEvmSend(chain, acct.address, to, uiAmount, token);
+          return { feeNative: Number(feeWei) / 10 ** chain.decimals, symbol: chain.symbol };
+        }
+        default:
+          return assertNever(chain.kind, "chain kind in previewSend");
+      }
     },
     []
   );
@@ -975,7 +1007,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // arrived or didn't depending on when the balance poll happened to run. Sends still
       // suppress (that's an outflow you initiated); swap receipts now always notify.
       const chain = getChain(activeChainRef.current);
-      const signer = chain.kind === "solana" ? keypairRef.current : evmAccountRef.current;
+      // Picking the wrong signer here would hand one chain family's private key to another's
+      // signing code, so this is exhaustive rather than a ternary with an implied EVM default.
+      const signer = ((): Keypair | EvmAccount | null => {
+        switch (chain.kind) {
+          case "solana":
+            return keypairRef.current;
+          case "evm":
+            return evmAccountRef.current;
+          default:
+            return assertNever(chain.kind, "chain kind in swapExecute");
+        }
+      })();
       if (!signer) throw new Error("No wallet for this chain.");
       const sig = await executeUnifiedSwap(chain, quote, signer, onStatus);
       // Remember any ERC-20 router approval this swap relied on, so it shows up (and can be
@@ -1031,16 +1074,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }));
 
     const nativeFor = (chain: ChainDef): NativeBalance => {
-      if (chain.kind === "solana") {
-        return {
-          symbol: "SOL",
-          balance: solBalance,
-          usd: solBalance != null && solPrice != null ? solBalance * solPrice : null,
-        };
+      switch (chain.kind) {
+        case "solana":
+          return {
+            symbol: "SOL",
+            balance: solBalance,
+            usd: solBalance != null && solPrice != null ? solBalance * solPrice : null,
+          };
+        case "evm": {
+          const amt = evmNative[chain.id] ?? null;
+          const p = evmPrices[chain.symbol] ?? null;
+          return { symbol: chain.symbol, balance: amt, usd: amt != null && p != null ? amt * p : null };
+        }
+        default:
+          return assertNever(chain.kind, "chain kind in nativeFor");
       }
-      const amt = evmNative[chain.id] ?? null;
-      const p = evmPrices[chain.symbol] ?? null;
-      return { symbol: chain.symbol, balance: amt, usd: amt != null && p != null ? amt * p : null };
+    };
+
+    /** Non-native assets held on a given chain. */
+    const assetsFor = (chain: ChainDef): UnifiedAsset[] => {
+      switch (chain.kind) {
+        case "solana":
+          return solanaAssets();
+        case "evm":
+          return evmAssetsFor(chain);
+        default:
+          return assertNever(chain.kind, "chain kind in assetsFor");
+      }
     };
     // Public addresses come from the stored-address state (set instantly on switch), NOT the
     // keypair — so assets show before the signing key finishes deriving.
@@ -1049,18 +1109,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const activeChain = getChain(activeChainId);
 
     let activeAddress: string | null;
-    let native: NativeBalance;
-    let assets: UnifiedAsset[];
 
-    if (activeChain.kind === "solana") {
-      activeAddress = solanaAddress;
-      native = nativeFor(activeChain);
-      assets = solanaAssets();
-    } else {
-      activeAddress = evmAddress;
-      native = nativeFor(activeChain);
-      assets = evmAssetsFor(activeChain);
+    // `activeAddress` feeds the Receive QR, Send validation and Activity — an `else` that quietly
+    // meant "EVM" would show one chain family's address while the app believed it was on another.
+    switch (activeChain.kind) {
+      case "solana":
+        activeAddress = solanaAddress;
+        break;
+      case "evm":
+        activeAddress = evmAddress;
+        break;
+      default:
+        assertNever(activeChain.kind, "chain kind for activeAddress");
     }
+    const native = nativeFor(activeChain);
+    const assets = assetsFor(activeChain);
 
     // ---- The cross-chain list the Wallet tab shows. Natives are rows here (SOL, ETH, BNB)
     // ---- because the hero above them is a total, not one chain's balance.
@@ -1080,7 +1143,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           logoURI: chain.logoURI,
         });
       }
-      allAssets.push(...(chain.kind === "solana" ? solanaAssets() : evmAssetsFor(chain)));
+      allAssets.push(...assetsFor(chain));
     }
     // Most valuable first, with the unpriced (which sort as 0) after everything we can rank.
     allAssets.sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));

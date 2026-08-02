@@ -73,3 +73,21 @@ export const DEFAULT_CHAIN: ChainId = "solana";
 export function getChain(id: ChainId): ChainDef {
   return CHAINS.find((c) => c.id === id) ?? CHAINS[0];
 }
+
+/**
+ * Exhaustiveness guard for `switch (chain.kind)`.
+ *
+ * The app used to dispatch on chain kind with `kind === "solana" ? solanaThing : evmThing`, where
+ * the `else` silently meant "EVM". With two kinds that reads fine; the moment a third exists,
+ * every one of those becomes a bug that TypeScript is perfectly happy with — a send routed into
+ * the wrong signer, a balance read from the wrong map, an address shown for the wrong chain.
+ *
+ * Passing the narrowed value here fails to compile if any kind is unhandled, so adding a chain
+ * family produces a list of compile errors instead of a list of silent misbehaviours. The throw is
+ * only a runtime backstop for data that reached us from disk or the network.
+ *
+ * `switch (chain.kind) { case "solana": …; case "evm": …; default: return assertNever(chain.kind, "chain kind"); }`
+ */
+export function assertNever(value: never, context: string): never {
+  throw new Error(`Unhandled ${context}: ${String(value)}`);
+}

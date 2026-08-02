@@ -4,7 +4,7 @@
  * only talks to this module.
  */
 import type { Keypair } from "@solana/web3.js";
-import type { ChainDef } from "../chains/registry";
+import { assertNever, type ChainDef } from "../chains/registry";
 import type { EvmAccount } from "../wallet/evm";
 import { fetchQuote as jupFetchQuote, executeSwap as jupExecuteSwap } from "../solana/swap";
 import { fetchPrices } from "../solana/prices";
@@ -23,6 +23,11 @@ export async function quoteSwap(
   slippageBps: number,
   owner: string | null
 ): Promise<UnifiedQuote> {
+  // Exhaustive: the EVM meta-aggregator used to be the implicit tail, so a chain family neither
+  // Jupiter nor Kyber covers would have been quoted against the wrong network entirely.
+  if (chain.kind !== "solana" && chain.kind !== "evm") {
+    return assertNever(chain.kind, "chain kind in fetchUnifiedQuote");
+  }
   if (chain.kind === "solana") {
     // Price BOTH tokens off the same feed as the portfolio (Jupiter Price API), in parallel with
     // the quote so it adds no latency — the swap then shows a true dollar value on each side,
@@ -100,12 +105,19 @@ export async function executeUnifiedSwap(
   signer: Keypair | EvmAccount,
   onStatus?: (s: string) => void
 ): Promise<string> {
-  if (quote.kind === "solana")
-    return jupExecuteSwap(
-      quote.solanaRaw,
-      signer as Keypair,
-      { feeBps: quote.feeBps, outputDecimals: quote.output.decimals },
-      onStatus
-    );
-  return executeEvmSwap(chain, quote, signer as EvmAccount, onStatus);
+  switch (quote.kind) {
+    case "solana":
+      return jupExecuteSwap(
+        quote.solanaRaw,
+        signer as Keypair,
+        { feeBps: quote.feeBps, outputDecimals: quote.output.decimals },
+        onStatus
+      );
+    case "evm":
+      return executeEvmSwap(chain, quote, signer as EvmAccount, onStatus);
+    default:
+      // The `signer as X` casts below are only sound because this is exhaustive: an unhandled
+      // quote kind would otherwise be handed the wrong chain family's private key.
+      return assertNever(quote.kind, "quote kind in executeUnifiedSwap");
+  }
 }

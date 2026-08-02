@@ -38,11 +38,26 @@ export function getPubAddress(seedId: string, index: number): PubAddress | undef
   return store[mapKey(seedId, index)];
 }
 
+/**
+ * Compares every field rather than naming them.
+ *
+ * This used to read `cur.sol === addrs.sol && cur.evm === addrs.evm`. Add a third chain's address
+ * to `PubAddress` and that check keeps compiling while silently ignoring the new field — so the
+ * first derivation of that address would be judged "unchanged" and never persisted, and the
+ * account would re-derive it on every launch. A hardcoded field list in an equality check is the
+ * same failure shape as a hardcoded branch in a dispatch: fine until the type grows.
+ */
+function sameAddresses(a: PubAddress, b: PubAddress): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof PubAddress>;
+  for (const k of keys) if (a[k] !== b[k]) return false;
+  return true;
+}
+
 /** Remember an account's public addresses (write-through; no-op if unchanged). */
 export function putPubAddress(seedId: string, index: number, addrs: PubAddress): void {
   const k = mapKey(seedId, index);
   const cur = store[k];
-  if (cur && cur.sol === addrs.sol && cur.evm === addrs.evm) return;
+  if (cur && sameAddresses(cur, addrs)) return;
   store = { ...store, [k]: addrs };
   if (loaded) persist();
 }
