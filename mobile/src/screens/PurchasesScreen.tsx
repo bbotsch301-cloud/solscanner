@@ -3,7 +3,6 @@
  * memberships, books, art. Reached from the More tab. The grid itself lives in CollectionGallery;
  * this screen just supplies the header, the chain guard, and pull-to-refresh.
  */
-import { useNavigation } from "@react-navigation/native";
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { CollectionGallery } from "../components/CollectionGallery";
@@ -11,10 +10,8 @@ import { EmptyState } from "../components/EmptyState";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { useWallet } from "../wallet/WalletContext";
 import { colors, spacing } from "../theme";
-import type { RootNav } from "../navigation";
 
 export function PurchasesScreen() {
-  const nav = useNavigation<RootNav>();
   const { activeChain, activeAddress } = useWallet();
   const isSolana = activeChain.kind === "solana";
   const [refreshKey, setRefreshKey] = useState(0);
@@ -29,7 +26,8 @@ export function PurchasesScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Purchases" subtitle="Passes, tickets, and collectibles you own" onBack={() => nav.goBack()} />
+      {/* A tab root — no back affordance, nothing to pop to. */}
+      <ScreenHeader title="Purchases" subtitle="Passes, tickets, and collectibles you own" />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

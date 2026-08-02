@@ -82,17 +82,17 @@ const Tab = createBottomTabNavigator();
 
 // Filled icon when the tab is focused, outline when it isn't — the active tab reads at a glance.
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Home: "home",
   Wallet: "wallet",
-  "Buy/Swap": "swap-horizontal",
-  Browser: "compass",
+  Swap: "swap-horizontal",
+  Purchases: "bag-handle",
+  Ecosystem: "planet",
   More: "ellipsis-horizontal",
 };
 const TAB_ICON_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Home: "home-outline",
   Wallet: "wallet-outline",
-  "Buy/Swap": "swap-horizontal-outline",
-  Browser: "compass-outline",
+  Swap: "swap-horizontal-outline",
+  Purchases: "bag-handle-outline",
+  Ecosystem: "planet-outline",
   More: "ellipsis-horizontal-outline",
 };
 
@@ -128,12 +128,17 @@ function Tabs() {
       })}
       screenListeners={{ tabPress: () => haptics.select() }}
     >
-      <Tab.Screen name="Home" component={EcosystemScreen} />
+      {/* Wallet leads: it's the only tab that answers "what do I have and what can I do with it",
+          and it's where every session actually starts. Purchases earns a tab because the access
+          passes are the product, not a submenu. Ecosystem keeps its place — the treasury being
+          visible is the point of it — but no longer claims to be "Home". The Browser moved to
+          More; it's a power-user surface and was the weakest of the five. */}
       <Tab.Screen name="Wallet" component={HomeScreen} />
-      <Tab.Screen name="Buy/Swap" options={{ tabBarLabel: "Swap" }}>
+      <Tab.Screen name="Swap">
         {() => <SwapScreen asTab />}
       </Tab.Screen>
-      <Tab.Screen name="Browser" component={BrowserScreen} />
+      <Tab.Screen name="Purchases" component={PurchasesScreen} />
+      <Tab.Screen name="Ecosystem" component={EcosystemScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
@@ -254,7 +259,7 @@ function Root() {
           <Stack.Screen name="ConnectMultisig" component={ConnectMultisigScreen} />
           <Stack.Screen name="ManageSigners" component={ManageSignersScreen} />
           <Stack.Screen name="ProposeTransfer" component={ProposeTransferScreen} />
-          <Stack.Screen name="Purchases" component={PurchasesScreen} />
+          <Stack.Screen name="Browser" component={BrowserScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />

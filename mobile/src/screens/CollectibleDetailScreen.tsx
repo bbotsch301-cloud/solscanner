@@ -144,8 +144,7 @@ export function CollectibleDetailScreen() {
     if (access.route === "browser") {
       requestBrowserUrl(access.url);
       nav.goBack();
-      if (navigationRef.isReady())
-        navigationRef.navigate({ name: "Tabs", params: { screen: "Browser" } } as never);
+      if (navigationRef.isReady()) navigationRef.navigate("Browser" as never);
       return;
     }
     // If the vault is configured and publishes this asset, prove ownership and open the
