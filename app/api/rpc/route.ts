@@ -44,27 +44,72 @@ function parseChain(req: NextRequest): Chain {
   return CHAINS.has(c as Chain) ? (c as Chain) : "solana-mainnet";
 }
 
+/**
+ * Shared-data cache. Identical read queries from many users — the treasury's token accounts, XGO
+ * supply/fee, holdings — collapse to ONE upstream call instead of thousands. Keyed by (chain, method,
+ * params) so per-user queries (different addresses) never share an entry. OFF by default: set
+ * RPC_CACHE_TTL_MS (e.g. 5000) to enable. Only successful single-call reads are cached; mutating and
+ * freshness-sensitive methods are never cached. Note: this is per warm serverless instance — for a
+ * cross-instance cache at large scale, back it with Vercel KV / Redis.
+ */
+const CACHE_TTL_MS = Number(process.env.RPC_CACHE_TTL_MS ?? 0);
+const CACHE_MAX = 1000;
+const NO_CACHE = new Set([
+  "sendTransaction", "requestAirdrop", "simulateTransaction", "getLatestBlockhash", "getRecentBlockhash",
+  "getSignatureStatuses", "getFeeForMessage", "isBlockhashValid", "getSlot", "getBlockHeight",
+  "eth_sendRawTransaction", "eth_estimateGas", "eth_gasPrice", "eth_getTransactionCount", "eth_blockNumber",
+]);
+const cache = new Map<string, { result: unknown; expires: number }>();
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   // Only forward well-formed JSON-RPC (a single call or a batch array) — blocks casual scans/abuse
   // without a brittle method allowlist. Both Solana (batched getTransaction) and EVM payloads pass.
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(body);
+    parsed = JSON.parse(body);
     const ok = Array.isArray(parsed)
       ? parsed.every((x) => x && typeof x.method === "string")
-      : typeof parsed?.method === "string";
+      : typeof (parsed as { method?: unknown })?.method === "string";
     if (!ok) throw new Error("not json-rpc");
   } catch {
     return NextResponse.json({ error: "Expected a JSON-RPC request body." }, { status: 400 });
   }
 
+  const chain = parseChain(req);
+  // Cache key for a single cacheable read (batches and mutating/fresh methods pass straight through).
+  const single = Array.isArray(parsed) ? null : (parsed as { method: string; params?: unknown; id?: unknown });
+  const key =
+    CACHE_TTL_MS > 0 && single && !NO_CACHE.has(single.method)
+      ? `${chain}|${single.method}|${JSON.stringify(single.params ?? null)}`
+      : null;
+
+  if (key) {
+    const hit = cache.get(key);
+    if (hit && hit.expires > Date.now()) {
+      // Return the cached result under THIS request's id (JSON-RPC clients match responses by id).
+      return NextResponse.json({ jsonrpc: "2.0", id: single!.id ?? null, result: hit.result });
+    }
+  }
+
   try {
-    const res = await fetch(upstreamFor(parseChain(req)), {
+    const res = await fetch(upstreamFor(chain), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
     });
     const out = await res.text();
+    if (key && res.ok) {
+      try {
+        const j = JSON.parse(out) as { result?: unknown; error?: unknown };
+        if (j && j.result !== undefined && j.error === undefined) {
+          cache.set(key, { result: j.result, expires: Date.now() + CACHE_TTL_MS });
+          if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+        }
+      } catch {
+        /* uncacheable response — just pass it through */
+      }
+    }
     return new NextResponse(out, {
       status: res.status,
       headers: { "content-type": "application/json" },
