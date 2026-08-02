@@ -6,7 +6,7 @@
  * with nothing saying so. The list beneath is cross-chain now, so the hero is a total.
  */
 import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Skeleton } from "./Skeleton";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -16,7 +16,6 @@ export function BalanceCard({
   unpricedCount = 0,
   network,
   onTestNetwork,
-  refreshing,
 }: {
   /** Whole-wallet USD, or null when we can't know it yet — never render null as $0.00. */
   totalUsd: number | null;
@@ -28,7 +27,6 @@ export function BalanceCard({
   network: string;
   /** True on Solana's test network, where every number here is play money. */
   onTestNetwork?: boolean;
-  refreshing?: boolean;
 }) {
   const usd =
     totalUsd != null
@@ -63,11 +61,12 @@ export function BalanceCard({
           </>
         ) : (
           <>
+            {/* No spinner in here. Pull-to-refresh already shows one in the space it opens up
+                above, and a second one beside the balance was the same status said twice. */}
             <View style={styles.amountRow}>
               <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
                 {usd}
               </Text>
-              {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
             </View>
             <Text style={styles.sub}>
               {unpricedCount > 0
