@@ -22,6 +22,8 @@ import {
   type Collectible,
 } from "../solana/collectibles";
 import { requestBrowserUrl } from "../browser/openRequest";
+import { resolveAccess, accessVerb } from "../access/resolve";
+import { openContentUrl } from "../access/openContent";
 import { navigationRef } from "../navigationRef";
 import { useWallet } from "../wallet/WalletContext";
 import { solscanAccount } from "../solana/connection";
@@ -90,14 +92,24 @@ export function CollectibleDetailScreen() {
     );
   }
 
-  const openPortal = () => {
-    if (!item.externalUrl) return;
+  const access = resolveAccess(item);
+
+  const openContent = async () => {
+    if (!access) return;
     haptics.tap();
-    requestBrowserUrl(item.externalUrl);
-    nav.goBack();
-    // Jump to the Browser tab; its focus listener consumes the queued URL.
-    if (navigationRef.isReady())
-      navigationRef.navigate({ name: "Tabs", params: { screen: "Browser" } } as never);
+    // A portal may need to talk to the wallet, so it keeps the bridged in-app browser. Everything
+    // else goes to a custom tab, which is a real browser engine and can actually display files.
+    if (access.route === "browser") {
+      requestBrowserUrl(access.url);
+      nav.goBack();
+      if (navigationRef.isReady())
+        navigationRef.navigate({ name: "Tabs", params: { screen: "Browser" } } as never);
+      return;
+    }
+    const r = await openContentUrl(access.url);
+    if (r === "blocked")
+      Alert.alert("Blocked", "This link is on the phishing blocklist, so it wasn't opened.");
+    else if (r !== "opened") Alert.alert("Couldn't open", "This item's link could not be opened.");
   };
 
   const validRecipient = (() => {
@@ -170,7 +182,7 @@ export function CollectibleDetailScreen() {
         )}
 
         <View style={styles.actions}>
-          {item.externalUrl && <Button label="Open" icon="open-outline" onPress={openPortal} />}
+          {access && <Button label={accessVerb(item.kind)} icon="open-outline" onPress={openContent} />}
           {item.transferable ? (
             <Button label="Send" variant="secondary" icon="arrow-up" onPress={() => setSendOpen(true)} />
           ) : (

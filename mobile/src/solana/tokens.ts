@@ -7,6 +7,9 @@
 import { PublicKey } from "@solana/web3.js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { connection } from "./connection";
+// Content-URI normalization is shared with the Collection's artwork/content paths, and handles
+// ar:// as well as IPFS.
+import { toHttp } from "./uri";
 import { solLogo, LOGO_OVERRIDES } from "../config/logos";
 
 // Persistent metadata cache key prefix. Bump the version to invalidate all stored entries
@@ -93,28 +96,6 @@ const KNOWN: Record<string, TokenMeta> = {
 const cache = new Map<string, TokenMeta | null>();
 
 const TOKEN_METADATA_PROGRAM = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-
-/**
- * Normalize any IPFS reference to a reliable HTTPS gateway. Handles ipfs://, a bare CID, and
- * full /ipfs/<cid> URLs (so we can re-route a slow ipfs.io link). pump.fun pins its token
- * metadata + images on its own Pinata gateway, which is far more reliable on mobile than the
- * public ipfs.io — and the treasury's holdings are almost entirely pump.fun tokens. Non-IPFS
- * URLs (arweave, direct https) pass through unchanged.
- */
-function toHttp(uri: string, mint?: string): string {
-  const u = uri.trim();
-  const cid =
-    u.match(/^ipfs:\/\/(.+)$/i)?.[1] ??
-    u.match(/\/ipfs\/([A-Za-z0-9][^?#]*)/i)?.[1] ??
-    (/^[A-Za-z0-9]{46,}$/.test(u) ? u : null);
-  if (cid) {
-    // pump.fun tokens pin their content on pump's own gateway (reliable on mobile); keep the
-    // public gateway for everything else so non-pump tokens don't regress.
-    const gw = mint?.endsWith("pump") ? "https://pump.mypinata.cloud/ipfs/" : "https://ipfs.io/ipfs/";
-    return `${gw}${cid}`;
-  }
-  return u;
-}
 
 const utf8 = new TextDecoder();
 

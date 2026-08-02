@@ -18,6 +18,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { toHttp } from "./uri";
 import { connection, CLUSTER, isPublicRpc } from "./connection";
 import { fetchTokenMetas } from "./tokens";
 
@@ -32,6 +33,14 @@ export interface Collectible {
   collectionVerified: boolean;
   kind: CollectibleKind;
   externalUrl?: string;
+  /**
+   * Every file the asset carries, not just the artwork — this is what a pass actually grants
+   * access to (a PDF, an ePub, a video). `mime` comes from DAS where the indexer populated it,
+   * else it's sniffed from the extension; either can be missing.
+   */
+  files?: { uri: string; mime?: string }[];
+  /** Interactive/animated content (video, 3D, HTML) — DAS `content.links.animation_url`. */
+  animationUrl?: string;
   attributes?: { trait: string; value: string }[];
   compressed: boolean;
   /** Plain SPL transfer works (standard, non-compressed, non-programmable). */
@@ -145,6 +154,34 @@ function parseKind(attrs: { trait: string; value: string }[] | undefined): Colle
   return (KIND_VALUES as string[]).includes(t ?? "") ? (t as CollectibleKind) : "art";
 }
 
+/** Extension → mime, for the common case where the DAS indexer left `mime` empty. */
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  epub: "application/epub+zip",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  html: "text/html",
+  txt: "text/plain",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  zip: "application/zip",
+};
+
+function mimeFromUrl(url: string): string | undefined {
+  const ext = url.split(/[?#]/)[0].split(".").pop()?.toLowerCase();
+  return ext ? MIME_BY_EXT[ext] : undefined;
+}
+
 // Minimal shape of the DAS response parts we read.
 interface DasAsset {
   id: string;
@@ -154,8 +191,8 @@ interface DasAsset {
   grouping?: { group_key?: string; group_value?: string; verified?: boolean }[];
   content?: {
     metadata?: { name?: string; symbol?: string; description?: string; attributes?: { trait_type?: string; value?: unknown }[] };
-    links?: { image?: string; external_url?: string };
-    files?: { uri?: string }[];
+    links?: { image?: string; external_url?: string; animation_url?: string };
+    files?: { uri?: string; cdn_uri?: string; mime?: string }[];
   };
   token_info?: { balance?: number; decimals?: number };
 }
@@ -219,7 +256,16 @@ function mapDasAssets(items: DasAsset[]): Collectible[] {
         .filter((a) => a?.trait_type != null && a?.value != null)
         .map((a) => ({ trait: String(a.trait_type), value: String(a.value) }));
       const grouping = (it.grouping ?? []).find((g) => g.group_key === "collection");
-      const image = it.content?.links?.image ?? it.content?.files?.[0]?.uri;
+      const files = (it.content?.files ?? [])
+        .map((f) => {
+          const uri = f.cdn_uri || f.uri;
+          return uri ? { uri: toHttp(uri), mime: f.mime || mimeFromUrl(uri) } : null;
+        })
+        .filter((f): f is { uri: string; mime: string | undefined } => !!f);
+      // Prefer the first file that's actually an image over a blind files[0] — on an asset whose
+      // payload is a PDF or video, files[0] is the payload, not the cover art.
+      const image =
+        it.content?.links?.image ?? files.find((f) => f.mime?.startsWith("image/"))?.uri ?? files[0]?.uri;
       const compressed = !!it.compression?.compressed;
       const programmable = /programmable/i.test(iface);
       const collectionVerified = grouping ? grouping.verified !== false : false;
@@ -233,6 +279,8 @@ function mapDasAssets(items: DasAsset[]): Collectible[] {
         collectionVerified,
         kind: parseKind(attributes),
         externalUrl: it.content?.links?.external_url,
+        files: files.length ? files : undefined,
+        animationUrl: it.content?.links?.animation_url,
         attributes: attributes.length ? attributes : undefined,
         compressed,
         transferable: !compressed && !programmable,
