@@ -42,6 +42,8 @@ export interface UnifiedQuote {
   priceImpactPct: number;
   routeLabels: string[];
   feeBps: number;
+  /** Solana only: whether Jupiter charged the fee (else executeSwap self-collects it). */
+  platformFeeApplied?: boolean;
   /** Live USD value of the input amount and of the expected output, from a token price feed.
    *  Undefined when no price is available (the UI then estimates the output side). */
   inUsd?: number;

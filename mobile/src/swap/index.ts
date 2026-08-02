@@ -31,20 +31,25 @@ export async function quoteSwap(
       jupFetchQuote(input, output, uiAmount, slippageBps),
       fetchPrices([input.mint, output.mint]).catch(() => ({} as Record<string, { usdPrice: number }>)),
     ]);
+    // When Jupiter charged its platform fee, q.outAmount is already net; when it didn't, the fee is
+    // self-collected after the swap, so net the DISPLAYED output by feeBps to keep "you receive" true.
+    const selfCollect = !q.platformFeeApplied && q.feeBps > 0;
+    const netOut = selfCollect ? (q.outAmount * (10000 - q.feeBps)) / 10000 : q.outAmount;
     const inP = px[input.mint]?.usdPrice;
     const outP = px[output.mint]?.usdPrice;
     const inUsd = inP != null ? uiAmount * inP : undefined;
-    const outUsd = outP != null ? q.outAmount * outP : undefined;
+    const outUsd = outP != null ? netOut * outP : undefined;
     return {
       provider: "Jupiter",
       kind: "solana",
       input,
       output,
-      outUi: q.outAmount,
-      minReceivedUi: (q.outAmount * (10000 - slippageBps)) / 10000,
+      outUi: netOut,
+      minReceivedUi: (netOut * (10000 - slippageBps)) / 10000,
       priceImpactPct: q.priceImpactPct,
       routeLabels: q.routeLabels,
       feeBps: q.feeBps,
+      platformFeeApplied: q.platformFeeApplied,
       inUsd,
       outUsd,
       solanaRaw: q.raw,
@@ -95,6 +100,10 @@ export async function executeUnifiedSwap(
   signer: Keypair | EvmAccount,
   onStatus?: (s: string) => void
 ): Promise<string> {
-  if (quote.kind === "solana") return jupExecuteSwap(quote.solanaRaw, signer as Keypair);
+  if (quote.kind === "solana")
+    return jupExecuteSwap(quote.solanaRaw, signer as Keypair, {
+      feeBps: quote.feeBps,
+      outputDecimals: quote.output.decimals,
+    });
   return executeEvmSwap(chain, quote, signer as EvmAccount, onStatus);
 }

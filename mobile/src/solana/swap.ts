@@ -4,11 +4,12 @@
  * on devnet; executeSwap only does anything real once NETWORK is mainnet.
  */
 import { Buffer } from "buffer";
-import { Keypair, PublicKey, Transaction, VersionedTransaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, Transaction, VersionedTransaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { connection } from "./connection";
@@ -112,6 +113,10 @@ export interface Quote {
   gapBps: number | null;
   /** Community fee applied to this quote, in bps (0 for XGO trades / when uncollected). */
   feeBps: number;
+  /** True when Jupiter actually charged the platform fee on this quote. It returns platformFee:null
+   *  for SOL-output swaps (the SOL leg it unwraps) and sub-threshold amounts — in which case the fee
+   *  is self-collected by executeSwap instead, so the treasury is funded either way. */
+  platformFeeApplied: boolean;
   /** True when executing will also create the treasury's fee token account for the output mint —
    *  a one-time ~0.002 SOL rent the swapper pays. Disclosed in the UI. */
   feeAccountSetup: boolean;
@@ -226,6 +231,9 @@ export async function fetchQuote(
   }
 
   const j = chosen.json;
+  // Whether Jupiter actually charged the platform fee (it echoes a non-null platformFee only then).
+  const pfAmount = (j as { platformFee?: { amount?: string | number } | null }).platformFee?.amount;
+  const platformFeeApplied = Number(pfAmount ?? 0) > 0;
   const routeLabels = (j.routePlan ?? [])
     .map((r) => r.swapInfo?.label)
     .filter((l): l is string => !!l);
@@ -246,16 +254,49 @@ export async function fetchQuote(
     fellBack,
     gapBps,
     feeBps,
+    platformFeeApplied,
     feeAccountSetup,
   };
+}
+
+/** Community fee (output token) when Jupiter didn't take it — a best-effort SECOND transaction that
+ *  transfers `feeBase` of the output to the treasury. SOL output → a plain lamport transfer to the
+ *  treasury wallet; SPL output → a transferChecked into the treasury's (idempotently-created) ATA.
+ *  Throws are the caller's to swallow: the swap already succeeded, so a failed fee never fails it. */
+async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: number, feeBase: bigint): Promise<void> {
+  if (feeBase <= 0n || !TREASURY_FEE_OWNER) return;
+  const owner = new PublicKey(TREASURY_FEE_OWNER);
+  const tx = new Transaction();
+  if (outputMint === SOL_MINT) {
+    // The swap unwrapped wSOL, so the user holds native SOL; skim the fee to the treasury wallet.
+    tx.add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: owner, lamports: Number(feeBase) }));
+  } else {
+    const mintPk = new PublicKey(outputMint);
+    const mintInfo = await connection.getAccountInfo(mintPk);
+    const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
+    const userAta = getAssociatedTokenAddressSync(mintPk, keypair.publicKey, false, programId);
+    const treasuryAta = getAssociatedTokenAddressSync(mintPk, owner, true, programId);
+    if (!(await connection.getAccountInfo(treasuryAta))) {
+      tx.add(createAssociatedTokenAccountIdempotentInstruction(keypair.publicKey, treasuryAta, owner, mintPk, programId));
+    }
+    tx.add(createTransferCheckedInstruction(userAta, mintPk, treasuryAta, keypair.publicKey, feeBase, decimals, [], programId));
+  }
+  await sendAndConfirmTransaction(connection, tx, [keypair]);
 }
 
 /**
  * Execute a swap on the CURRENT network. Only meaningful on mainnet — Jupiter has
  * no devnet liquidity. Builds the swap transaction from the quote, signs it with
  * the wallet keypair, and submits it. Returns the transaction signature.
+ *
+ * `feeCtx` lets the community fee be self-collected when Jupiter declines to charge its platform fee
+ * (notably SOL-output swaps), so the treasury is funded on every non-XGO swap regardless.
  */
-export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<string> {
+export async function executeSwap(
+  rawQuote: unknown,
+  keypair: Keypair,
+  feeCtx?: { feeBps: number; outputDecimals: number }
+): Promise<string> {
   // The community fee (present on the quote as `platformFee`) is taken in the OUTPUT token and
   // paid to the treasury's associated token account for that mint. Jupiter won't create that
   // account, so create it idempotently first (a one-time ~0.002 SOL rent, only the first time
@@ -306,5 +347,19 @@ export async function executeSwap(rawQuote: unknown, keypair: Keypair): Promise<
       ? { signature: sig, blockhash: tx.message.recentBlockhash, lastValidBlockHeight }
       : { signature: sig, ...(await connection.getLatestBlockhash()) };
   await confirmWithRecovery(sig, strategy); // guard: a landed-but-slow confirm resolves as success
+
+  // If Jupiter didn't charge the platform fee (e.g. a SOL-output swap), skim the community fee
+  // ourselves so the treasury is still funded. Best-effort: the swap has already landed, so a
+  // failed fee transfer is logged, never surfaced as a swap failure.
+  const feeBps = feeCtx?.feeBps ?? 0;
+  if (!q.platformFee && feeBps > 0 && q.outputMint) {
+    try {
+      const outAmount = BigInt((rawQuote as { outAmount?: string }).outAmount ?? "0");
+      const feeBase = (outAmount * BigInt(feeBps)) / 10000n;
+      await selfCollectFee(keypair, q.outputMint, feeCtx?.outputDecimals ?? 0, feeBase);
+    } catch (e) {
+      console.warn("Community fee self-collect failed (swap succeeded):", e);
+    }
+  }
   return sig;
 }
