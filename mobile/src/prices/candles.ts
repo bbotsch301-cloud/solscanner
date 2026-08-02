@@ -14,8 +14,8 @@
  */
 import type { ChainId } from "../chains/registry";
 
-export type ChartRange = "1D" | "1W" | "1M" | "1Y";
-export const CHART_RANGES: ChartRange[] = ["1D", "1W", "1M", "1Y"];
+export type ChartRange = "4H" | "1D" | "1W" | "1M" | "1Y";
+export const CHART_RANGES: ChartRange[] = ["4H", "1D", "1W", "1M", "1Y"];
 
 export interface Candle {
   /** Unix seconds (candle open time). */
@@ -37,10 +37,12 @@ const GT_NET: Partial<Record<ChainId, string>> = { solana: "solana", ethereum: "
 const DS_CHAIN: Partial<Record<ChainId, string>> = { solana: "solana", ethereum: "ethereum", bsc: "bsc" };
 
 // CoinGecko /ohlc only accepts specific `days` values; map each range to the closest.
-const CG_DAYS: Record<ChartRange, number> = { "1D": 1, "1W": 7, "1M": 30, "1Y": 365 };
+// CoinGecko has no sub-day window; 4H reuses the 1-day series and is trimmed by the caller.
+const CG_DAYS: Record<ChartRange, number> = { "4H": 1, "1D": 1, "1W": 7, "1M": 30, "1Y": 365 };
 
 // GeckoTerminal timeframe/aggregate/limit per range (candle granularity that fills the window).
 const GT_TF: Record<ChartRange, { timeframe: "minute" | "hour" | "day"; aggregate: number; limit: number }> = {
+  "4H": { timeframe: "minute", aggregate: 1, limit: 240 },
   "1D": { timeframe: "minute", aggregate: 15, limit: 96 },
   "1W": { timeframe: "hour", aggregate: 1, limit: 168 },
   "1M": { timeframe: "hour", aggregate: 4, limit: 180 },
@@ -50,6 +52,7 @@ const GT_TF: Record<ChartRange, { timeframe: "minute" | "hour" | "day"; aggregat
 // pump.fun candlesticks take a timeframe in MINUTES; pick a granularity that fills each window
 // without blowing past their per-request limit.
 const PUMP_TF: Record<ChartRange, { minutes: number; limit: number }> = {
+  "4H": { minutes: 1, limit: 240 },
   "1D": { minutes: 15, limit: 96 },
   "1W": { minutes: 60, limit: 168 },
   "1M": { minutes: 240, limit: 180 },

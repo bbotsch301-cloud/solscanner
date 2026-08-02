@@ -4,7 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
-import { CandleChart } from "../components/CandleChart";
+import { TradingViewChart } from "../components/chart/TradingViewChart";
 import { ChartFullScreen } from "../components/ChartFullScreen";
 import { PressableScale } from "../components/PressableScale";
 import { Skeleton } from "../components/Skeleton";
@@ -164,7 +164,7 @@ export function TokenDetailScreen() {
           <Skeleton width="100%" height={200} round={radius.md} />
         ) : candles.length >= 2 ? (
           <>
-            <CandleChart candles={candles} height={220} onScrub={setScrub} />
+            <TradingViewChart candles={candles} height={240} onScrub={setScrub} />
             <PressableScale
               haptic={null}
               onPress={() => {
