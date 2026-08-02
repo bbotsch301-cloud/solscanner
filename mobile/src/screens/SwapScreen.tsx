@@ -18,6 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
 import { SWAP_TOKENS, XGO_TOKEN, type SwapToken } from "../solana/swap";
 import { evmSwapTokens } from "../evm/tokenList";
@@ -286,14 +289,11 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.title}>Swap · {activeChain.name}</Text>
-        {!asTab && (
-          <Pressable onPress={() => nav.goBack()} hitSlop={12}>
-            <Ionicons name="close" size={26} color={colors.textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <ScreenHeader
+        title={`Swap · ${activeChain.name}`}
+        size="modal"
+        onClose={asTab ? undefined : () => nav.goBack()}
+      />
 
       <ScrollView
         contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }}
@@ -376,7 +376,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
           </View>
         </View>
 
-        <View style={styles.slippageRow}>
+        <Card style={styles.slippageRow}>
           <Text style={styles.detailLabel}>Slippage tolerance</Text>
           <View style={styles.slipChips}>
             {SLIPPAGE_OPTIONS.map((bps) => (
@@ -389,7 +389,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
               </Pressable>
             ))}
           </View>
-        </View>
+        </Card>
 
         {error && <Text style={styles.error}>{error}</Text>}
 
@@ -442,25 +442,20 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
-        {canSwap ? (
-          <Pressable
-            disabled={!quote || swapping}
-            onPress={doSwap}
-            style={[styles.primaryBtn, styles.primaryEnabled, (!quote || swapping) && styles.primaryDim]}
-          >
-            {swapping ? (
-              <View style={styles.swappingRow}>
-                <ActivityIndicator color={colors.bg} />
-                {status && <Text style={styles.swappingText}>{status}</Text>}
-              </View>
-            ) : (
-              <Text style={styles.primaryTextEnabled}>{quote ? "Swap" : "Enter an amount"}</Text>
-            )}
-          </Pressable>
-        ) : (
+        {!canSwap ? (
           <View style={[styles.primaryBtn, styles.primaryDisabled]}>
             <Text style={styles.primaryTextDisabled}>Swap · available on mainnet</Text>
           </View>
+        ) : swapping ? (
+          // Keep the live status ("Approving…", "Submitting…") beside the spinner while swapping.
+          <View style={[styles.primaryBtn, styles.primaryEnabled]}>
+            <View style={styles.swappingRow}>
+              <ActivityIndicator color={colors.bg} />
+              {status && <Text style={styles.swappingText}>{status}</Text>}
+            </View>
+          </View>
+        ) : (
+          <Button label={quote ? "Swap" : "Enter an amount"} onPress={doSwap} disabled={!quote} />
         )}
       </View>
 
@@ -495,8 +490,6 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
-  title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   panel: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, padding: spacing(4), gap: spacing(3) },
   panelLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   panelTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -566,8 +559,6 @@ const styles = StyleSheet.create({
   primaryDisabled: { backgroundColor: colors.card },
   primaryTextDisabled: { color: colors.textMuted, fontSize: font.h3, fontWeight: "800" },
   primaryEnabled: { backgroundColor: colors.primary },
-  primaryDim: { opacity: 0.5 },
-  primaryTextEnabled: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
   swappingRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   swappingText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
 });

@@ -11,6 +11,7 @@ import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, type Network } from ".
 import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled } from "../security/prefs";
 import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
+import { IconChip } from "../components/IconChip";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 
 function Row({
@@ -28,7 +29,7 @@ function Row({
 }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
-      <Ionicons name={icon} size={20} color={danger ? colors.negative : colors.primary} />
+      <IconChip icon={icon} color={danger ? colors.negative : colors.primary} size={36} />
       <Text style={[styles.rowLabel, danger && { color: colors.negative }]}>{label}</Text>
       <View style={styles.rowRight}>
         {value && <Text style={styles.rowValue}>{value}</Text>}

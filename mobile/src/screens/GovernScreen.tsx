@@ -1,10 +1,12 @@
-import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PublicKey } from "@solana/web3.js";
+import { HeroCard } from "../components/HeroCard";
+import { EmptyState } from "../components/EmptyState";
+import { Card } from "../components/Card";
 import { useWallet, useWalletStatus } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { connection } from "../solana/connection";
@@ -74,29 +76,27 @@ export function GovernScreen() {
       </View>
 
       {/* Voting power */}
-      <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
-        <View style={styles.cardInner}>
-          <View style={styles.heroTop}>
-            <Text style={styles.cardLabel}>Your voting power</Text>
-            {tier.current && (
-              <View style={styles.tierChip}>
-                <Ionicons name="ribbon" size={12} color="#0A0A0C" />
-                <Text style={styles.tierText}>{tier.current.name}</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.powerRow}>
-            <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
-              {fmtCompact(power)}
-            </Text>
-            <Text style={styles.powerUnit}>votes</Text>
-          </View>
-          <Text style={styles.cardSub}>
-            {fmtCompact(held)} XGO × {loyalty.mult}× loyalty
-            {share != null ? ` · ${(share * 100).toFixed(2)}% of all` : ""}
-          </Text>
+      <HeroCard gap={spacing(2)}>
+        <View style={styles.heroTop}>
+          <Text style={styles.cardLabel}>Your voting power</Text>
+          {tier.current && (
+            <View style={styles.tierChip}>
+              <Ionicons name="ribbon" size={12} color="#0A0A0C" />
+              <Text style={styles.tierText}>{tier.current.name}</Text>
+            </View>
+          )}
         </View>
-      </LinearGradient>
+        <View style={styles.powerRow}>
+          <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
+            {fmtCompact(power)}
+          </Text>
+          <Text style={styles.powerUnit}>votes</Text>
+        </View>
+        <Text style={styles.cardSub}>
+          {fmtCompact(held)} XGO × {loyalty.mult}× loyalty
+          {share != null ? ` · ${(share * 100).toFixed(2)}% of all` : ""}
+        </Text>
+      </HeroCard>
 
       <View style={styles.noteRow}>
         <Ionicons name="lock-open-outline" size={15} color={colors.primary} />
@@ -152,14 +152,13 @@ export function GovernScreen() {
 
       {/* Proposals */}
       <Text style={styles.sectionTitle}>Proposals</Text>
-      <View style={styles.emptyCard}>
-        <Ionicons name="documents-outline" size={22} color={colors.textFaint} />
-        <Text style={styles.emptyTitle}>No proposals yet</Text>
-        <Text style={styles.emptyText}>
-          On-chain voting opens when the governance program ships at launch. Your voting
-          power above is ready to use the moment it does.
-        </Text>
-      </View>
+      <Card padding={0}>
+        <EmptyState
+          icon="documents-outline"
+          title="No proposals yet"
+          subtitle="On-chain voting opens when the governance program ships at launch. Your voting power above is ready to use the moment it does."
+        />
+      </Card>
     </ScrollView>
   );
 }
@@ -168,8 +167,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   header: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
-  card: { borderRadius: radius.lg, padding: 1 },
-  cardInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(2) },
   cardLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   powerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing(2) },
   power: { color: "#0A0A0C", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
@@ -196,7 +193,4 @@ const styles = StyleSheet.create({
   rewardLabel: { color: colors.textMuted, fontSize: font.body },
   rewardValue: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
   rewardNote: { color: colors.textFaint, fontSize: font.small, lineHeight: 18 },
-  emptyCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(5), alignItems: "center", gap: spacing(2) },
-  emptyTitle: { color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  emptyText: { color: colors.textMuted, fontSize: font.small, lineHeight: 19, textAlign: "center" },
 });

@@ -13,7 +13,7 @@ import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
-import { amount as fmtAmount, compact, colors, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
+import { compact, colors, font, radius, shortAddress, spacing, timeAgo, tracking, usd as fmtUsd, weight } from "../theme";
 import type { RootNav } from "../navigation";
 
 /** One token row in the Wallet list. Memoized + a stable `onOpen` so it skips re-render when
@@ -25,28 +25,24 @@ const WalletTokenRow = memo(function WalletTokenRow({
   asset: UnifiedAsset;
   onOpen: (key: string) => void;
 }) {
+  // Lead the value column with what the holding is worth (USD); the token amount rides underneath.
+  // Unpriced tokens fall back to showing the amount as the headline so the row never reads blank.
+  const priced = asset.usd != null && asset.usd > 0;
+  const held = `${compact(asset.balance)} ${asset.symbol}`;
   return (
     <PressableScale onPress={() => onOpen(asset.key)} style={styles.tokenRow}>
       <TokenAvatar symbol={asset.symbol} color={colors.primary} logoURI={asset.logoURI} />
       <View style={styles.mid}>
-        <Text style={styles.symbol}>{asset.name ?? asset.symbol}</Text>
-        <Text style={styles.sub}>{compact(asset.balance)} {asset.symbol}</Text>
+        <Text style={styles.symbol} numberOfLines={1}>{asset.name ?? asset.symbol}</Text>
+        <Text style={styles.sub}>{asset.symbol}</Text>
       </View>
       <View style={styles.right}>
-        <Text style={styles.value}>{compact(asset.balance)}</Text>
-        {asset.usd != null && asset.usd > 0 && <Text style={styles.subUsd}>{fmtUsd(asset.usd)}</Text>}
+        <Text style={styles.value}>{priced ? fmtUsd(asset.usd!) : held}</Text>
+        <Text style={styles.subUsd}>{priced ? held : "—"}</Text>
       </View>
     </PressableScale>
   );
 });
-
-function timeAgo(ts: number | null): string {
-  if (!ts) return "";
-  const s = Math.floor(Date.now() / 1000) - ts;
-  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
-  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86_400)}d ago`;
-}
 
 export function HomeScreen() {
   const nav = useNavigation<RootNav>();
@@ -65,7 +61,8 @@ export function HomeScreen() {
 
   const isSolana = activeChain.kind === "solana";
   const empty = (native.balance ?? 0) === 0 && assets.length === 0;
-  const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
   const openToken = useCallback((key: string) => nav.navigate("TokenDetail", { asset: key }), [nav]);
 
@@ -104,6 +101,7 @@ export function HomeScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
+      <Text style={styles.greeting}>{greeting}</Text>
       <View style={styles.headerRow}>
         <WalletSwitcher />
         <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
@@ -149,39 +147,28 @@ export function HomeScreen() {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Tokens</Text>
-      <View style={styles.card}>
-        <PressableScale
-          onPress={() => nav.navigate("TokenDetail", { asset: "native" })}
-          style={styles.tokenRow}
-        >
-          <TokenAvatar symbol={native.symbol} color={activeChain.color} logoURI={activeChain.logoURI} />
-          <View style={styles.mid}>
-            <Text style={styles.symbol}>{activeChain.name}</Text>
-            <Text style={styles.sub}>{native.symbol}</Text>
+      {/* The native asset is the hero above; this lists the SPL/ERC-20 tokens the wallet holds.
+          Hidden entirely for a native-only wallet so it never renders an empty bordered box. */}
+      {!empty && (assets.length > 0 || native.balance == null) && (
+        <>
+          <Text style={styles.sectionTitle}>Tokens</Text>
+          <View style={styles.card}>
+            {native.balance == null && assets.length === 0
+              ? [0, 1, 2].map((k) => (
+                  <View key={`sk${k}`}>
+                    {k > 0 && <View style={styles.divider} />}
+                    <SkeletonRow />
+                  </View>
+                ))
+              : assets.map((a, i) => (
+                  <View key={a.key}>
+                    {i > 0 && <View style={styles.divider} />}
+                    <WalletTokenRow asset={a} onOpen={openToken} />
+                  </View>
+                ))}
           </View>
-          <View style={styles.right}>
-            <Text style={styles.value}>
-              {native.balance == null ? "—" : fmtAmount(native.balance)} {native.symbol}
-            </Text>
-            {native.usd != null && <Text style={styles.subUsd}>{usd(native.usd)}</Text>}
-          </View>
-        </PressableScale>
-
-        {native.balance == null && assets.length === 0
-          ? [0, 1, 2].map((k) => (
-              <View key={`sk${k}`}>
-                <View style={styles.divider} />
-                <SkeletonRow />
-              </View>
-            ))
-          : assets.map((a) => (
-              <View key={a.key}>
-                <View style={styles.divider} />
-                <WalletTokenRow asset={a} onOpen={openToken} />
-              </View>
-            ))}
-      </View>
+        </>
+      )}
 
       {recent.length > 0 && (
         <>
@@ -240,6 +227,7 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  greeting: { color: colors.accent, fontSize: font.small, fontWeight: weight.bold, textTransform: "uppercase", letterSpacing: tracking.wide, marginBottom: spacing(1) },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   actions: {
     flexDirection: "row",

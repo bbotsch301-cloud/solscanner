@@ -1,5 +1,4 @@
 import * as Clipboard from "expo-clipboard";
-import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -7,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PieChart } from "../components/PieChart";
 import { Holding } from "../components/Holding";
+import { HeroCard } from "../components/HeroCard";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
 import { fetchHoldings, type Holdings } from "../solana/treasury";
@@ -79,31 +79,29 @@ export function MultisigWalletScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-          <View style={styles.heroInner}>
-            <Text style={styles.heroLabel}>
-              Multisig vault{info ? ` · ${info.threshold} of ${info.members.length}` : ""}
-            </Text>
-            <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
-              {holdings ? usd(total) : "—"}
-            </Text>
-            {info && (
-              <View style={styles.addrRow}>
-                <Text style={styles.addr}>{shortAddress(info.vault, 4, 4)}</Text>
-                <Pressable
-                  onPress={async () => {
-                    await Clipboard.setStringAsync(info.vault);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
-                  hitSlop={10}
-                >
-                  <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color="#0A0A0C" />
-                </Pressable>
-              </View>
-            )}
-          </View>
-        </LinearGradient>
+        <HeroCard gap={spacing(1)}>
+          <Text style={styles.heroLabel}>
+            Multisig vault{info ? ` · ${info.threshold} of ${info.members.length}` : ""}
+          </Text>
+          <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+            {holdings ? usd(total) : "—"}
+          </Text>
+          {info && (
+            <View style={styles.addrRow}>
+              <Text style={styles.addr}>{shortAddress(info.vault, 4, 4)}</Text>
+              <Pressable
+                onPress={async () => {
+                  await Clipboard.setStringAsync(info.vault);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                hitSlop={10}
+              >
+                <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color="#0A0A0C" />
+              </Pressable>
+            </View>
+          )}
+        </HeroCard>
 
         {info && (
           <Pressable onPress={() => Linking.openURL(solscanAccount(info.vault))} style={styles.verify}>
@@ -181,8 +179,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
   topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(3) },
   title: { flex: 1, textAlign: "center", color: colors.text, fontSize: font.h3, fontWeight: "800" },
-  hero: { borderRadius: radius.lg, padding: 1 },
-  heroInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(1) },
   heroLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
   heroValue: { color: "#0A0A0C", fontSize: 38, fontWeight: "900", letterSpacing: -1 },
   addrRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), marginTop: spacing(1) },

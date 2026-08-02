@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { IconChip } from "../components/IconChip";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -21,7 +22,7 @@ function Row({
       onPress={soon ? undefined : onPress}
       style={({ pressed }) => [styles.row, pressed && !soon && { opacity: 0.6 }]}
     >
-      <Ionicons name={icon} size={20} color={soon ? colors.textFaint : colors.primary} />
+      <IconChip icon={icon} color={soon ? colors.textFaint : colors.primary} size={36} />
       <Text style={[styles.rowLabel, soon && { color: colors.textFaint }]}>{label}</Text>
       {soon ? (
         <Text style={styles.soon}>Coming soon</Text>

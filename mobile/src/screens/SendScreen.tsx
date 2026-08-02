@@ -3,7 +3,6 @@ import { useNavigation, useRoute, type RouteProp } from "@react-navigation/nativ
 import { useEffect, useMemo, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -20,7 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { RiskCard } from "../components/RiskCard";
-import { PressableScale } from "../components/PressableScale";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { Button } from "../components/Button";
 import { SuccessCheck } from "../components/SuccessCheck";
 import { haptics } from "../ui/haptics";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
@@ -317,13 +317,13 @@ export function SendScreen() {
         </View>
 
         <View style={[styles.successFooter, { paddingBottom: insets.bottom + spacing(3) }]}>
-          <PressableScale onPress={() => Linking.openURL(activeChain.explorerTx(signature))} style={styles.secondaryBtn}>
-            <Ionicons name="open-outline" size={18} color={colors.text} />
-            <Text style={styles.secondaryText}>View on explorer</Text>
-          </PressableScale>
-          <PressableScale onPress={() => nav.goBack()} style={styles.primaryBtn}>
-            <Text style={styles.primaryText}>Done</Text>
-          </PressableScale>
+          <Button
+            label="View on explorer"
+            variant="secondary"
+            icon="open-outline"
+            onPress={() => Linking.openURL(activeChain.explorerTx(signature))}
+          />
+          <Button label="Done" onPress={() => nav.goBack()} />
         </View>
       </View>
     );
@@ -331,12 +331,7 @@ export function SendScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.title}>Send · {activeChain.name}</Text>
-        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
-          <Ionicons name="close" size={26} color={colors.textMuted} />
-        </Pressable>
-      </View>
+      <ScreenHeader title={`Send · ${activeChain.name}`} size="modal" onClose={() => nav.goBack()} />
 
       <ScrollView
         contentContainerStyle={{ padding: spacing(4), gap: spacing(5) }}
@@ -482,17 +477,7 @@ export function SendScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
-        <PressableScale
-          disabled={!valid || sending || previewing}
-          onPress={doSend}
-          style={[styles.primaryBtn, (!valid || sending || previewing) && styles.primaryDisabled]}
-        >
-          {sending || previewing ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.primaryText}>Send</Text>
-          )}
-        </PressableScale>
+        <Button label="Send" onPress={doSend} disabled={!valid} loading={sending || previewing} />
       </View>
 
       <ContactPicker
@@ -513,8 +498,6 @@ export function SendScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing(4), paddingBottom: spacing(2) },
-  title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   label: { color: colors.textMuted, fontSize: font.small, fontWeight: "700", marginBottom: spacing(2) },
   labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   contactsBtn: { flexDirection: "row", alignItems: "center", gap: spacing(1), paddingBottom: spacing(2) },
@@ -587,14 +570,9 @@ const styles = StyleSheet.create({
   ackRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), paddingVertical: spacing(1) },
   ackText: { flex: 1, color: colors.negative, fontSize: font.small, fontWeight: "600" },
   footer: { paddingHorizontal: spacing(4), paddingTop: spacing(3), borderTopWidth: 1, borderTopColor: colors.cardBorder },
-  primaryBtn: { backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill, alignItems: "center", minHeight: 52, justifyContent: "center" },
-  primaryDisabled: { backgroundColor: colors.card },
-  primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
 
   // Success state
   successBody: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing(6) },
-  successRing: { width: 120, height: 120, borderRadius: 60, backgroundColor: colors.primary + "1F", alignItems: "center", justifyContent: "center", marginBottom: spacing(4) },
-  successCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   successTitle: { color: colors.text, fontSize: font.h1, fontWeight: "900" },
   successAmount: { color: colors.textMuted, fontSize: font.h3, fontWeight: "700", marginTop: spacing(1), marginBottom: spacing(6) },
   detailCard: { alignSelf: "stretch", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing(4) },
@@ -604,6 +582,4 @@ const styles = StyleSheet.create({
   detailValue: { color: colors.text, fontSize: font.body, fontWeight: "700" },
   detailDivider: { height: 1, backgroundColor: colors.cardBorder },
   successFooter: { paddingHorizontal: spacing(4), paddingTop: spacing(3), gap: spacing(2) },
-  secondaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3.5), borderRadius: radius.pill, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.card },
-  secondaryText: { color: colors.text, fontSize: font.body, fontWeight: "800" },
 });

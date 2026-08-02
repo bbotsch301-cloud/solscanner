@@ -5,7 +5,9 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ContactFormModal } from "../components/ContactFormModal";
-import { PressableScale } from "../components/PressableScale";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { EmptyState } from "../components/EmptyState";
+import { Button } from "../components/Button";
 import { listContacts, removeContact, type Contact } from "../contacts/contacts";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
@@ -39,27 +41,20 @@ export function ContactsScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing(2) }]}>
-        <Text style={styles.header}>Address book</Text>
-        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
-          <Ionicons name="close" size={26} color={colors.textMuted} />
-        </Pressable>
-      </View>
+      <ScreenHeader title="Address book" size="modal" onClose={() => nav.goBack()} paddingHorizontal={0} />
 
       <ScrollView
-        contentContainerStyle={{ padding: spacing(4), paddingBottom: insets.bottom + spacing(6) }}
+        contentContainerStyle={{ paddingVertical: spacing(4), paddingBottom: insets.bottom + spacing(6) }}
         showsVerticalScrollIndicator={false}
       >
-        <PressableScale onPress={() => setAdding(true)} style={styles.addBtn}>
-          <Ionicons name="person-add" size={18} color={colors.bg} />
-          <Text style={styles.addText}>Add contact</Text>
-        </PressableScale>
+        <Button label="Add contact" icon="person-add" onPress={() => setAdding(true)} style={styles.addBtn} />
 
         {contacts.length === 0 ? (
-          <Text style={styles.empty}>
-            No contacts yet. Save the people and wallets you send to often — they’ll show up by name on
-            the Send screen and count as trusted for scam checks.
-          </Text>
+          <EmptyState
+            icon="people-outline"
+            title="No contacts yet"
+            subtitle="Save the people and wallets you send to often — they'll show up by name on the Send screen and count as trusted for scam checks."
+          />
         ) : (
           <View style={styles.list}>
             {contacts.map((c, i) => (
@@ -102,11 +97,7 @@ export function ContactsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(2) },
-  header: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), backgroundColor: colors.primary, paddingVertical: spacing(3.5), borderRadius: radius.pill, marginBottom: spacing(4) },
-  addText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
-  empty: { color: colors.textMuted, fontSize: font.body, lineHeight: 22, textAlign: "center", paddingHorizontal: spacing(4), marginTop: spacing(6) },
+  addBtn: { marginBottom: spacing(4) },
   list: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radius.md, paddingHorizontal: spacing(4) },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3.5) },

@@ -27,6 +27,20 @@ export const colors = {
 /** Text/icon color that reads well on gold surfaces and primary buttons. */
 export const onPrimary = "#0A0A0C";
 
+/**
+ * Semantic aliases layered over `colors`. Prefer these in new code so intent reads clearly
+ * (a border is a `border`, text on a gold hero is `heroText`) without inventing new hex values.
+ */
+export const semantic = {
+  onGold: onPrimary, // text/icon on a gold surface — same as onPrimary
+  heroText: "#0A0A0C", // primary text on the gold gradient hero
+  heroTextDim: "#0A0A0CAA", // secondary text on the gold hero
+  heroOverlay: "#0A0A0C22", // subtle chip/dot fill on the gold hero
+  border: colors.cardBorder,
+  overlay: "#000000AA", // dim backdrop behind modals/sheets
+  info: "#38bdf8", // informational blue (routes, notes)
+} as const;
+
 export const spacing = (n: number) => n * 4;
 
 export const radius = {
@@ -44,6 +58,49 @@ export const font = {
   small: 13,
   tiny: 11,
 } as const;
+
+/** Font weights, named by role — replaces scattered raw "600"…"900" literals. */
+export const weight = {
+  medium: "600",
+  semibold: "700",
+  bold: "800",
+  black: "900",
+} as const;
+
+/** Letter-spacing tokens (RN points). Negative tightens big display type. */
+export const tracking = {
+  tight: -0.5,
+  normal: 0,
+  wide: 0.5,
+  wider: 1,
+} as const;
+
+/** Line-height multipliers for body copy. */
+export const leading = {
+  tight: 1.2,
+  normal: 1.4,
+  relaxed: 1.6,
+} as const;
+
+/**
+ * Soft near-black shadow for raised surfaces (heroes, modals, the tab bar). Levels 1–3 go
+ * from a subtle lift to a pronounced float. Returns a spreadable RN style (iOS shadow* +
+ * Android elevation). Keep depth restrained — this is a refinement, not a drop-shadow reskin.
+ */
+export function elevation(level: 1 | 2 | 3 = 1) {
+  const spec = {
+    1: { radius: 6, offset: 2, opacity: 0.2 },
+    2: { radius: 12, offset: 5, opacity: 0.28 },
+    3: { radius: 22, offset: 10, opacity: 0.36 },
+  }[level];
+  return {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: spec.offset },
+    shadowOpacity: spec.opacity,
+    shadowRadius: spec.radius,
+    elevation: level * 4,
+  } as const;
+}
 
 /** Short-form an address for display: AbCd…WxYz */
 export function shortAddress(addr: string, lead = 4, tail = 4): string {

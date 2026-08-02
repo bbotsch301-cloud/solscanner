@@ -1,5 +1,4 @@
 import * as Clipboard from "expo-clipboard";
-import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { LayoutAnimation, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -7,6 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { PieChart } from "../components/PieChart";
 import { Holding } from "../components/Holding";
+import { HeroCard } from "../components/HeroCard";
+import { EmptyState } from "../components/EmptyState";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
@@ -133,31 +134,29 @@ export function EcosystemScreen() {
       )}
 
       {/* Treasury value hero */}
-      <LinearGradient colors={[colors.gradA, colors.gradB]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-        <View style={styles.heroInner}>
-          <Text style={styles.heroLabel}>XGO Treasury Value</Text>
-          {holdings ? (
-            <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
-              {usd(treasuryValue)}
-            </Text>
-          ) : (
-            <Skeleton width={200} height={40} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
-          )}
-          <View style={styles.addrRow}>
-            <Text style={styles.addr}>{shortAddress(TREASURY_ADDRESS, 4, 4)}</Text>
-            <Pressable
-              onPress={async () => {
-                await Clipboard.setStringAsync(TREASURY_ADDRESS);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              }}
-              hitSlop={10}
-            >
-              <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color="#0A0A0C" />
-            </Pressable>
-          </View>
+      <HeroCard gap={spacing(1)}>
+        <Text style={styles.heroLabel}>XGO Treasury Value</Text>
+        {holdings ? (
+          <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+            {usd(treasuryValue)}
+          </Text>
+        ) : (
+          <Skeleton width={200} height={40} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
+        )}
+        <View style={styles.addrRow}>
+          <Text style={styles.addr}>{shortAddress(TREASURY_ADDRESS, 4, 4)}</Text>
+          <Pressable
+            onPress={async () => {
+              await Clipboard.setStringAsync(TREASURY_ADDRESS);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            hitSlop={10}
+          >
+            <Ionicons name={copied ? "checkmark" : "copy-outline"} size={14} color="#0A0A0C" />
+          </Pressable>
         </View>
-      </LinearGradient>
+      </HeroCard>
 
       <Pressable onPress={() => Linking.openURL(solscanAccount(TREASURY_ADDRESS))} style={styles.verify}>
         <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
@@ -257,7 +256,11 @@ export function EcosystemScreen() {
       </View>
       <View style={[styles.list, { marginTop: spacing(3) }]}>
         {deposits.length === 0 ? (
-          <Text style={styles.empty}>No deposits yet. Fees and inflows show up here.</Text>
+          <EmptyState
+            icon="arrow-down-circle-outline"
+            title="No deposits yet"
+            subtitle="Fees and inflows to the treasury show up here."
+          />
         ) : (
           (depositsExpanded ? deposits : deposits.slice(0, 4)).map((d, i) => (
             <View key={`${d.signature}:${d.mint ?? "sol"}`}>
@@ -314,8 +317,6 @@ const styles = StyleSheet.create({
   greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, marginBottom: spacing(4), fontWeight: "600" },
   soonBanner: { flexDirection: "row", gap: spacing(2), alignItems: "flex-start", backgroundColor: colors.primary + "14", borderRadius: radius.md, padding: spacing(3.5), marginBottom: spacing(4) },
   soonText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
-  hero: { borderRadius: radius.lg, padding: 1 },
-  heroInner: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(1) },
   heroLabel: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
   heroValue: { color: "#0A0A0C", fontSize: 40, fontWeight: "900", letterSpacing: -1 },
   addrRow: { flexDirection: "row", alignItems: "center", gap: spacing(2), marginTop: spacing(1) },
@@ -340,7 +341,6 @@ const styles = StyleSheet.create({
   list: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: spacing(4) },
   divider: { height: 1, backgroundColor: colors.cardBorder },
   nested: { marginLeft: spacing(3), paddingLeft: spacing(3), borderLeftWidth: 2, borderLeftColor: colors.cardBorder, marginBottom: spacing(2) },
-  empty: { color: colors.textMuted, fontSize: font.small, paddingVertical: spacing(4), textAlign: "center" },
   depositRow: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
   inBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.positive + "22", alignItems: "center", justifyContent: "center" },
   depMid: { flex: 1, gap: 2 },

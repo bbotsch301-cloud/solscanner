@@ -19,6 +19,8 @@ import { erc20AllowanceData } from "../evm/tx";
 import { resolveEvmToken } from "../evm/tokenList";
 import { listApprovals } from "../safety/approvals";
 import { humanizeError } from "../solana/errors";
+import { ScreenHeader } from "../components/ScreenHeader";
+import { EmptyState } from "../components/EmptyState";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -121,13 +123,8 @@ export function TokenApprovalsScreen() {
   };
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
-      <View style={styles.topBar}>
-        <Text style={styles.title}>Token approvals</Text>
-        <Pressable onPress={() => nav.goBack()} hitSlop={12}>
-          <Ionicons name="close" size={26} color={colors.textMuted} />
-        </Pressable>
-      </View>
+    <View style={styles.screen}>
+      <ScreenHeader title="Token approvals" size="modal" onClose={() => nav.goBack()} paddingHorizontal={0} />
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + spacing(6) }}
@@ -140,22 +137,22 @@ export function TokenApprovalsScreen() {
         </Text>
 
         {!isEvm ? (
-          <View style={styles.empty}>
-            <Ionicons name="swap-horizontal" size={22} color={colors.textMuted} />
-            <Text style={styles.emptyText}>
-              Token approvals apply to Ethereum and BNB Smart Chain. Switch to an EVM network to
-              view them.
-            </Text>
-          </View>
+          <EmptyState
+            icon="swap-horizontal"
+            title="EVM networks only"
+            subtitle="Token approvals apply to Ethereum and BNB Smart Chain. Switch to an EVM network to view them."
+          />
         ) : loading ? (
           <View style={styles.empty}>
             <ActivityIndicator color={colors.primary} />
           </View>
         ) : rows.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={colors.positive} />
-            <Text style={styles.emptyText}>No active approvals on {activeChain.name}.</Text>
-          </View>
+          <EmptyState
+            icon="shield-checkmark-outline"
+            color={colors.positive}
+            title="No active approvals"
+            subtitle={`Nothing to revoke on ${activeChain.name}.`}
+          />
         ) : (
           rows.map((row) => {
             const id = `${row.token}:${row.spender}`;
@@ -198,8 +195,6 @@ export function TokenApprovalsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
-  title: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   intro: { color: colors.textMuted, fontSize: font.small, lineHeight: 19, marginBottom: spacing(4) },
   empty: {
     alignItems: "center",
@@ -210,7 +205,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing(6),
   },
-  emptyText: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 21 },
   card: {
     flexDirection: "row",
     alignItems: "center",

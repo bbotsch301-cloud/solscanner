@@ -59,7 +59,7 @@ import { configureNotifications, onNotificationTap } from "./src/ui/notification
 import { navigationRef, navigate } from "./src/navigationRef";
 import { BackupPrompt } from "./src/screens/BackupPrompt";
 import type { RootStackParamList } from "./src/navigation";
-import { colors } from "./src/theme";
+import { colors, elevation } from "./src/theme";
 
 // Dev-only: our RPC layer already retries 429s quietly, but hide the LogBox bar in case any
 // other path logs one — it's transient and self-healing, not an actionable error.
@@ -71,12 +71,20 @@ if (Platform.OS === "android") UIManager.setLayoutAnimationEnabledExperimental?.
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
+// Filled icon when the tab is focused, outline when it isn't — the active tab reads at a glance.
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home",
   Wallet: "wallet",
   "Buy/Swap": "swap-horizontal",
   Browser: "compass",
   More: "ellipsis-horizontal",
+};
+const TAB_ICON_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Home: "home-outline",
+  Wallet: "wallet-outline",
+  "Buy/Swap": "swap-horizontal-outline",
+  Browser: "compass-outline",
+  More: "ellipsis-horizontal-outline",
 };
 
 function Tabs() {
@@ -91,10 +99,22 @@ function Tabs() {
           borderTopColor: colors.cardBorder,
           height: 88,
           paddingTop: 8,
+          ...elevation(2),
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: "700" },
-        tabBarIcon: ({ color, size }) => (
-          <Ionicons name={TAB_ICON[route.name]} size={size} color={color} />
+        tabBarIcon: ({ color, size, focused }) => (
+          // A slim gold indicator caps the active tab, above its (filled) icon.
+          <View style={{ alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <View
+              style={{
+                height: 3,
+                width: 18,
+                borderRadius: 2,
+                backgroundColor: focused ? colors.primary : "transparent",
+              }}
+            />
+            <Ionicons name={focused ? TAB_ICON[route.name] : TAB_ICON_OUTLINE[route.name]} size={size} color={color} />
+          </View>
         ),
       })}
       screenListeners={{ tabPress: () => haptics.select() }}
