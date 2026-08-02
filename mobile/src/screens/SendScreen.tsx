@@ -93,6 +93,7 @@ export function SendScreen() {
     () => [
       {
         key: "native",
+        chainId: activeChain.id,
         kind: "native",
         symbol: native.symbol,
         decimals: activeChain.decimals,

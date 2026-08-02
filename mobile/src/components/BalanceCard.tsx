@@ -1,37 +1,40 @@
+/**
+ * The wallet hero: what everything you hold is worth, across every chain.
+ *
+ * It used to lead with one chain's native balance ("0.219 SOL") and show the USD underneath —
+ * which meant someone holding SOL and ETH read a headline that was a fraction of their wallet,
+ * with nothing saying so. The list beneath is cross-chain now, so the hero is a total.
+ */
 import { LinearGradient } from "expo-linear-gradient";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Skeleton } from "./Skeleton";
-import { colors, font, radius, shortAddress, spacing } from "../theme";
+import { colors, font, radius, spacing } from "../theme";
 
 export function BalanceCard({
-  solBalance,
-  address,
+  totalUsd,
+  loaded,
+  unpricedCount = 0,
   network,
   onTestNetwork,
   refreshing,
-  usdValue,
-  change24h,
-  symbol = "SOL",
 }: {
-  solBalance: number | null;
-  address: string;
-  /** The chain's name — "Solana", "Ethereum", "BNB Smart Chain". Not the network. */
+  /** Whole-wallet USD, or null when we can't know it yet — never render null as $0.00. */
+  totalUsd: number | null;
+  /** True once at least one chain has answered. Before that: skeletons, not zeros. */
+  loaded: boolean;
+  /** Held assets with no price. The total is then a floor, and says so with a "+". */
+  unpricedCount?: number;
+  /** The active chain's name, for the pill. Which chain Send/Swap will act on. */
   network: string;
-  /** True on Solana's test network, where every number above is play money. */
+  /** True on Solana's test network, where every number here is play money. */
   onTestNetwork?: boolean;
   refreshing?: boolean;
-  usdValue?: number | null;
-  change24h?: number | null;
-  symbol?: string;
 }) {
   const usd =
-    usdValue != null
-      ? usdValue.toLocaleString("en-US", { style: "currency", currency: "USD" })
+    totalUsd != null
+      ? totalUsd.toLocaleString("en-US", { style: "currency", currency: "USD" })
       : null;
-  const change =
-    change24h != null
-      ? `${change24h >= 0 ? "▲" : "▼"} ${Math.abs(change24h).toFixed(2)}%`
-      : null;
+
   return (
     <LinearGradient
       colors={[colors.gradA, colors.gradB]}
@@ -41,10 +44,10 @@ export function BalanceCard({
     >
       <View style={styles.overlay}>
         <View style={styles.row}>
-          <Text style={styles.label}>Balance</Text>
-          {/* Silent about the network in the normal case — the pill just names the chain. On the
-              test network the balances above are fake, and that IS worth shouting about, so the
-              pill becomes a warning instead. Solana-only: the EVM chains have no test mode here. */}
+          <Text style={styles.label}>Total balance</Text>
+          {/* Silent about the network in the normal case — the pill just names the active chain,
+              which is the one Send and Swap will use. On the test network the numbers here are
+              fake, and that IS worth shouting about, so the pill becomes a warning instead. */}
           <View style={[styles.netPill, onTestNetwork && styles.netPillWarn]}>
             <View style={[styles.dot, onTestNetwork && { backgroundColor: colors.warning }]} />
             <Text style={[styles.netText, onTestNetwork && { color: colors.warning }]}>
@@ -53,34 +56,26 @@ export function BalanceCard({
           </View>
         </View>
 
-        {solBalance == null ? (
+        {!loaded || usd == null ? (
           <>
-            <Skeleton width={180} height={44} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
-            <Skeleton width={110} height={16} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
+            <Skeleton width={200} height={44} round={radius.sm} style={{ backgroundColor: "#0A0A0C33", marginVertical: spacing(1) }} />
+            <Skeleton width={120} height={16} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
           </>
         ) : (
           <>
             <View style={styles.amountRow}>
-              <Text style={styles.total}>{solBalance.toLocaleString("en-US", { maximumFractionDigits: 5 })}</Text>
-              <Text style={styles.unit}>{symbol}</Text>
+              <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
+                {usd}
+              </Text>
               {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
             </View>
-
-            {usd != null ? (
-              <View style={styles.usdRow}>
-                <Text style={styles.usd}>≈ {usd}</Text>
-                {change != null && <Text style={styles.change}>{change} 24h</Text>}
-              </View>
-            ) : (
-              // Balance known, value not (prices still in flight). Holding the row's space with a
-              // placeholder keeps the card from reflowing when the figure lands — and, unlike the
-              // old behaviour of hiding the row entirely, admits that a number is coming.
-              <Skeleton width={130} height={18} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
-            )}
+            <Text style={styles.sub}>
+              {unpricedCount > 0
+                ? `Across your networks · ${unpricedCount} ${unpricedCount === 1 ? "asset" : "assets"} unpriced`
+                : "Across your networks"}
+            </Text>
           </>
         )}
-
-        <Text style={styles.address}>{shortAddress(address, 4, 4)}</Text>
       </View>
     </LinearGradient>
   );
@@ -91,13 +86,9 @@ const styles = StyleSheet.create({
   overlay: { borderRadius: radius.lg - 1, padding: spacing(5), gap: spacing(3) },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   label: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
-  amountRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing(2) },
+  amountRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   total: { color: "#0A0A0C", fontSize: 44, fontWeight: "900", letterSpacing: -1 },
-  unit: { color: "#0A0A0C", fontSize: font.h2, fontWeight: "800", marginBottom: spacing(1.5) },
-  usdRow: { flexDirection: "row", alignItems: "center", gap: spacing(3) },
-  usd: { color: "#0A0A0C", fontSize: font.body, fontWeight: "800" },
-  change: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
-  address: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
+  sub: { color: "#0A0A0CAA", fontSize: font.small, fontWeight: "700" },
   netPill: {
     flexDirection: "row",
     alignItems: "center",

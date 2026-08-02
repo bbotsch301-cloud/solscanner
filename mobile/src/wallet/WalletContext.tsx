@@ -35,7 +35,7 @@ import { fetchTokenMetas, cachedTokenMetas } from "../solana/tokens";
 import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "../chains/registry";
 import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
-import { fetchEvmNativePrices, stableUsd } from "../evm/prices";
+import { fetchEvmNativePrices, stableUsd, erc20Usd } from "../evm/prices";
 import { sendNativeEvm, sendTokenEvm, previewEvmSend, approveEvm } from "../evm/send";
 import { executeUnifiedSwap } from "../swap";
 import type { UnifiedQuote } from "../swap/types";
@@ -92,7 +92,11 @@ export interface SplToken {
 
 /** A chain-agnostic asset for the Home/Send lists. */
 export interface UnifiedAsset {
+  /** Chain-LOCAL id: "native", an SPL mint, or an ERC-20 address. Unique within a chain, not
+   *  across them — pair it with `chainId` for a list key. It's what Send/TokenDetail navigate by. */
   key: string;
+  /** Which chain this is held on. Set on every asset, including the active-chain list. */
+  chainId: ChainId;
   kind: "native" | "spl" | "erc20";
   symbol: string;
   name?: string;
@@ -183,8 +187,12 @@ interface WalletState {
   activeAddress: string | null;
   /** Native asset of the active chain. */
   native: NativeBalance;
-  /** Non-native assets held on the active chain. */
+  /** Non-native assets held on the active chain (Send, Swap, TokenDetail work from this). */
   assets: UnifiedAsset[];
+  /** Everything held on EVERY chain, natives included, richest first — the Wallet tab's list. */
+  allAssets: UnifiedAsset[];
+  /** Held assets we couldn't put a price on, so `totalUsd` can be shown as a lower bound. */
+  unpricedCount: number;
   /** Send the active chain's native asset. */
   sendNative: (to: string, uiAmount: number) => Promise<string>;
   /** Send any asset (native or token) on its chain. */
@@ -230,8 +238,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [tokens, setTokens] = useState<SplToken[]>([]);
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [activeChainId, setActiveChainId] = useState<ChainId>(DEFAULT_CHAIN);
-  const [evmNative, setEvmNative] = useState<number | null>(null);
-  const [evmTokens, setEvmTokens] = useState<EvmTokenBalance[]>([]);
+  // Keyed BY CHAIN, not just the active one. The wallet list is cross-chain now, so every EVM
+  // chain's balances have to be held at once — a single slot could only ever describe whichever
+  // chain you last looked at.
+  const [evmNative, setEvmNative] = useState<Partial<Record<ChainId, number | null>>>({});
+  const [evmTokens, setEvmTokens] = useState<Partial<Record<ChainId, EvmTokenBalance[]>>>({});
+  // Native prices are symbol-keyed and global (ETH is ETH on either chain), so one map serves all.
   const [evmPrices, setEvmPrices] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -421,9 +433,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       fetchEvmNativePrices(),
     ]);
     const nativeAmt = Number(nativeWei) / 10 ** chain.decimals;
-    setEvmNative(nativeAmt);
-    setEvmTokens(toks);
-    setEvmPrices(evPrices);
+    setEvmNative((prev) => ({ ...prev, [chain.id]: nativeAmt }));
+    setEvmTokens((prev) => ({ ...prev, [chain.id]: toks }));
+    setEvmPrices((prev) => ({ ...prev, ...evPrices }));
     saveWalletSnapshot(`${chain.id}:${address}`, { evmNative: nativeAmt, evmTokens: toks, evmPrices: evPrices });
 
     detectReceipts(address, [
@@ -437,21 +449,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   /** Load balances for a specific chain (used by refresh + chain switch). */
   // Paint the last-known balances/tokens/prices from disk immediately (before the RPC round-trip),
   // so switching accounts/chains and cold opens feel instant. The live load then refreshes them.
-  const seedFromSnapshot = useCallback((id: ChainId, sol: string | null, evm: string | null) => {
-    const chain = getChain(id);
-    if (chain.kind === "solana" && sol) {
+  // Seeds EVERY chain, not just the active one: the wallet list shows them all, so a cold open
+  // that painted only one chain would still look half-empty for a beat.
+  const seedFromSnapshot = useCallback((sol: string | null, evm: string | null) => {
+    if (sol) {
       const s = getWalletSnapshot(`sol:${CLUSTER}:${sol}`);
       if (s) {
         setSolBalance(s.solBalance ?? null);
         setTokens(s.tokens ?? []);
         if (s.prices) setPrices(s.prices);
       }
-    } else if (chain.kind === "evm" && evm) {
-      const s = getWalletSnapshot(`${id}:${evm}`);
-      if (s) {
-        setEvmNative(s.evmNative ?? null);
-        setEvmTokens(s.evmTokens ?? []);
-        if (s.evmPrices) setEvmPrices(s.evmPrices);
+    }
+    if (evm) {
+      for (const chain of CHAINS.filter((c) => c.kind === "evm")) {
+        const s = getWalletSnapshot(`${chain.id}:${evm}`);
+        if (!s) continue;
+        setEvmNative((prev) => ({ ...prev, [chain.id]: s.evmNative ?? null }));
+        setEvmTokens((prev) => ({ ...prev, [chain.id]: s.evmTokens ?? [] }));
+        if (s.evmPrices) setEvmPrices((prev) => ({ ...prev, ...s.evmPrices }));
       }
     }
   }, []);
@@ -478,15 +493,44 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [fetchBalances, fetchEvm]
   );
 
+  /**
+   * Load every chain. The wallet list is cross-chain, so a refresh that only touched the active
+   * chain would leave the other two showing whatever the disk snapshot last knew.
+   *
+   * Solana goes first and alone — it's the heaviest and shares a throttle with the rest of the
+   * app. The EVM chains then go together: different hosts, so they don't contend.
+   */
+  const loadAll = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const sol = activeSolAddressRef.current;
+      if (sol) await fetchBalances(new PublicKey(sol));
+    } catch (e) {
+      setError(humanizeError(e, { action: "load" }));
+    }
+    try {
+      const evm = activeEvmAddressRef.current;
+      if (evm) {
+        // Each chain fails on its own — one dead RPC shouldn't cost the other chain's balances.
+        await Promise.all(
+          CHAINS.filter((c) => c.kind === "evm").map((c) => fetchEvm(c, evm).catch(() => {}))
+        );
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchBalances, fetchEvm]);
+
   const refresh = useCallback(async () => {
-    await loadChain(activeChainRef.current);
-  }, [loadChain]);
+    await loadAll();
+  }, [loadAll]);
 
   const setActiveChain = useCallback(
     async (id: ChainId) => {
       activeChainRef.current = id;
       setActiveChainId(id);
-      seedFromSnapshot(id, activeSolAddressRef.current, activeEvmAddressRef.current); // instant paint
+      seedFromSnapshot(activeSolAddressRef.current, activeEvmAddressRef.current); // instant paint
       await SecureStore.setItemAsync(ACTIVE_CHAIN_KEY, id).catch(() => {});
       await loadChain(id);
     },
@@ -513,15 +557,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       evmAccountRef.current = null;
       setSolBalance(null);
       setTokens([]);
-      setEvmNative(null);
-      setEvmTokens([]);
+      setEvmNative({});
+      setEvmTokens({});
 
       // Instant view: known address → render + load balances now, without waiting on derivation.
       const stored = getPubAddress(ref.seedId, ref.index);
       if (stored) {
         setActiveAddresses(stored.sol, stored.evm);
-        seedFromSnapshot(activeChainRef.current, stored.sol, stored.evm); // instant paint from disk
-        loadChain(activeChainRef.current);
+        seedFromSnapshot(stored.sol, stored.evm); // instant paint from disk, every chain
+        loadAll();
       } else {
         setActiveAddresses(null, null);
       }
@@ -542,10 +586,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const evm = acct?.address ?? null;
         setActiveAddresses(sol, evm);
         if (sol) putPubAddress(ref.seedId, ref.index, { sol, evm });
-        loadChain(activeChainRef.current);
+        loadAll();
       }
     },
-    [loadChain, setActiveAddresses, seedFromSnapshot]
+    [loadAll, setActiveAddresses, seedFromSnapshot]
   );
 
   // Load the vault (migrating a v1 single wallet) on startup.
@@ -747,8 +791,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setNeedsBackupState(false);
         setSolBalance(null);
         setTokens([]);
-        setEvmNative(null);
-        setEvmTokens([]);
+        setEvmNative({});
+        setEvmTokens({});
       } else {
         syncBackupFlag(v);
         await applyActive(v.active);
@@ -784,8 +828,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setNeedsBackupState(false);
     setSolBalance(null);
     setTokens([]);
-    setEvmNative(null);
-    setEvmTokens([]);
+    setEvmNative({});
+    setEvmTokens({});
   }, []);
 
   const airdrop = useCallback(async () => {
@@ -949,6 +993,55 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const solPrice = prices[WSOL_MINT]?.usdPrice ?? null;
     const solChange24h = prices[WSOL_MINT]?.priceChange24h ?? null;
     const priceOf = (mint: string) => prices[mint]?.usdPrice;
+
+    // ---- Per-chain asset builders, so the active-chain lists and the cross-chain list can't
+    // ---- drift apart: both are built from these.
+    const solanaAssets = (): UnifiedAsset[] =>
+      tokens.map((t) => {
+        const p = priceOf(t.mint);
+        return {
+          key: t.mint,
+          chainId: "solana" as ChainId,
+          kind: "spl",
+          symbol: t.symbol ?? t.mint.slice(0, 4),
+          name: t.name,
+          decimals: t.decimals,
+          balance: t.amount,
+          usd: p != null ? t.amount * p : null,
+          logoURI: t.logoURI,
+          mint: t.mint,
+          program: t.program,
+        };
+      });
+
+    const evmAssetsFor = (chain: ChainDef): UnifiedAsset[] =>
+      (evmTokens[chain.id] ?? [])
+        .filter((tb) => tb.balance > 0)
+        .map((tb) => ({
+          key: tb.token.address,
+          chainId: chain.id,
+          kind: "erc20" as const,
+          symbol: tb.token.symbol,
+          name: tb.token.name,
+          decimals: tb.token.decimals,
+          balance: tb.balance,
+          usd: erc20Usd(tb.token.symbol, tb.balance),
+          logoURI: tb.token.logoURI,
+          address: tb.token.address,
+        }));
+
+    const nativeFor = (chain: ChainDef): NativeBalance => {
+      if (chain.kind === "solana") {
+        return {
+          symbol: "SOL",
+          balance: solBalance,
+          usd: solBalance != null && solPrice != null ? solBalance * solPrice : null,
+        };
+      }
+      const amt = evmNative[chain.id] ?? null;
+      const p = evmPrices[chain.symbol] ?? null;
+      return { symbol: chain.symbol, balance: amt, usd: amt != null && p != null ? amt * p : null };
+    };
     // Public addresses come from the stored-address state (set instantly on switch), NOT the
     // keypair — so assets show before the signing key finishes deriving.
     const solanaAddress = activeSolAddress;
@@ -961,48 +1054,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     if (activeChain.kind === "solana") {
       activeAddress = solanaAddress;
-      native = {
-        symbol: "SOL",
-        balance: solBalance,
-        usd: solBalance != null && solPrice != null ? solBalance * solPrice : null,
-      };
-      assets = tokens.map((t) => {
-        const p = priceOf(t.mint);
-        return {
-          key: t.mint,
-          kind: "spl",
-          symbol: t.symbol ?? t.mint.slice(0, 4),
-          name: t.name,
-          decimals: t.decimals,
-          balance: t.amount,
-          usd: p != null ? t.amount * p : null,
-          logoURI: t.logoURI,
-          mint: t.mint,
-          program: t.program,
-        };
-      });
+      native = nativeFor(activeChain);
+      assets = solanaAssets();
     } else {
       activeAddress = evmAddress;
-      const nUsd = evmPrices[activeChain.symbol] ?? null;
-      native = {
-        symbol: activeChain.symbol,
-        balance: evmNative,
-        usd: evmNative != null && nUsd != null ? evmNative * nUsd : null,
-      };
-      assets = evmTokens
-        .filter((tb) => tb.balance > 0)
-        .map((tb) => ({
-          key: tb.token.address,
-          kind: "erc20",
-          symbol: tb.token.symbol,
-          name: tb.token.name,
-          decimals: tb.token.decimals,
-          balance: tb.balance,
-          usd: tb.balance * stableUsd(tb.token.symbol),
-          logoURI: tb.token.logoURI,
-          address: tb.token.address,
-        }));
+      native = nativeFor(activeChain);
+      assets = evmAssetsFor(activeChain);
     }
+
+    // ---- The cross-chain list the Wallet tab shows. Natives are rows here (SOL, ETH, BNB)
+    // ---- because the hero above them is a total, not one chain's balance.
+    const allAssets: UnifiedAsset[] = [];
+    for (const chain of CHAINS) {
+      const n = nativeFor(chain);
+      if (n.balance != null && n.balance > 0) {
+        allAssets.push({
+          key: "native",
+          chainId: chain.id,
+          kind: "native",
+          symbol: chain.symbol,
+          name: chain.name,
+          decimals: chain.decimals,
+          balance: n.balance,
+          usd: n.usd,
+          logoURI: chain.logoURI,
+        });
+      }
+      allAssets.push(...(chain.kind === "solana" ? solanaAssets() : evmAssetsFor(chain)));
+    }
+    // Most valuable first, with the unpriced (which sort as 0) after everything we can rank.
+    allAssets.sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
 
     // `null` means "we don't know", and the UI must render it as such — never as $0.00. Two
     // ways not to know: balances haven't arrived, or they have but nothing could be priced yet
@@ -1011,14 +1092,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // A PARTIAL sum is still a real figure — plenty of small tokens genuinely have no market
     // price and never will — so we only give up when nothing at all is priced. Zero-balance
     // holdings are ignored either way: they contribute nothing whether or not we know the price.
-    const heldAssets = assets.filter((a) => a.balance > 0);
-    const heldNative = (native.balance ?? 0) > 0;
-    const anythingHeld = heldNative || heldAssets.length > 0;
-    const anythingPriced = (heldNative && native.usd != null) || heldAssets.some((a) => a.usd != null);
+    //
+    // This now spans EVERY chain, because the Wallet tab's hero is a whole-wallet total. Showing
+    // one chain's balance as "Balance" was its own quiet misstatement for anyone holding on two.
+    const held = allAssets.filter((a) => a.balance > 0);
+    const anythingPriced = held.some((a) => a.usd != null);
+    // "Loaded" means at least one chain answered — Solana's balance is the reliable signal, since
+    // an EVM chain the user has never touched legitimately holds nothing.
+    const anyLoaded = solBalance != null || CHAINS.some((c) => evmNative[c.id] != null);
     const totalUsd =
-      native.balance == null || (anythingHeld && !anythingPriced)
+      !anyLoaded || (held.length > 0 && !anythingPriced)
         ? null
-        : (native.usd ?? 0) + assets.reduce((s, a) => s + (a.usd ?? 0), 0);
+        : held.reduce((s, a) => s + (a.usd ?? 0), 0);
+    /** How many held assets we couldn't price — lets the UI mark the total as a lower bound. */
+    const unpricedCount = held.filter((a) => a.usd == null).length;
 
     return {
       initializing,
@@ -1069,6 +1156,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       activeAddress,
       native,
       assets,
+      allAssets,
+      unpricedCount,
       sendNative,
       sendAsset,
       previewSend,

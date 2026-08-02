@@ -9,6 +9,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { PressableScale } from "../components/PressableScale";
 import { TokenAvatar } from "../components/TokenAvatar";
+import { ChainSwitcher } from "../components/ChainSwitcher";
 import { useWallet } from "../wallet/WalletContext";
 import { IS_MAINNET } from "../solana/connection";
 import { haptics } from "../ui/haptics";
@@ -39,6 +40,14 @@ export function ReceiveScreen() {
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Receive" size="modal" onClose={() => nav.goBack()} paddingHorizontal={0} />
+
+      {/* Also here, and not only on Swap: a Solana address and an EVM address are different
+          strings, so without this there'd be no way to reach your Ethereum one from a wallet
+          list that no longer has a chain mode. "Which network do you want paying?" is the
+          question this screen exists to answer. */}
+      <View style={styles.switcher}>
+        <ChainSwitcher />
+      </View>
 
       <View style={styles.body}>
         <View style={styles.qrWrap}>
@@ -86,6 +95,7 @@ export function ReceiveScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing(4) },
+  switcher: { paddingHorizontal: spacing(4) },
   body: { alignItems: "center", marginTop: spacing(6), gap: spacing(3) },
   qrWrap: { alignItems: "center", justifyContent: "center" },
   qrCard: { backgroundColor: "#fff", padding: spacing(5), borderRadius: radius.lg, minWidth: 236, minHeight: 236, alignItems: "center", justifyContent: "center" },

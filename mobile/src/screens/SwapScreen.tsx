@@ -18,6 +18,7 @@ import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { ChainSwitcher } from "../components/ChainSwitcher";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
@@ -316,7 +317,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <ScreenHeader
-        title={`Swap · ${activeChain.name}`}
+        title="Swap"
         size="modal"
         onClose={asTab ? undefined : () => nav.goBack()}
       />
@@ -326,6 +327,10 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
+        {/* The chain switcher lives here rather than on the Wallet tab. The wallet is the whole
+            picture across every network; a swap happens on exactly one, so this is where choosing
+            it is the actual job. The title dropped its chain suffix since these pills say it. */}
+        <ChainSwitcher />
         <View style={styles.panel}>
           <View style={styles.panelTop}>
             <Text style={styles.panelLabel}>You pay</Text>
