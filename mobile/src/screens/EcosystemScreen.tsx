@@ -13,12 +13,15 @@ import { fetchHoldings, treasuryAddress, type Holdings } from "../solana/treasur
 import { buildAllocation } from "../solana/allocation";
 import { fetchDeposits, type Deposit } from "../solana/deposits";
 import { getSupply, getTransferFee, XGO_MINT, type TransferFee } from "../solana/token2022";
+// The fee economics drive the swap flow but were displayed nowhere until now.
+import { SWAP_FEE_BPS } from "../config/swapFee";
+import { XGO_FEES } from "../config/xgo";
 import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, cachedTokenMetas, type TokenMeta } from "../solana/tokens";
 import { fetchOffchainPrices, type OffchainPrices } from "../prices/offchain";
 import { haptics } from "../ui/haptics";
 import { Skeleton } from "../components/Skeleton";
-import { solscanAccount, IS_MAINNET } from "../solana/connection";
+import { solscanAccount } from "../solana/connection";
 import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -113,12 +116,13 @@ export function EcosystemScreen() {
 
   // The full Global Goshens treasury: on-chain holdings + off-chain silver + dinar, with the
   // long tail of crypto lumped into one "Other holdings" row so the list stays short.
-  const { slices, rows, total: treasuryValue } = buildAllocation(holdings, prices, metas, ocPrices, { topN: 5 });
+  const { slices, rows, total: treasuryValue, solUsd, tokensUsd, offchainUsd } =
+    buildAllocation(holdings, prices, metas, ocPrices, { topN: 5 });
+  // The distinction that matters on a page whose job is proof: what anyone can check on-chain
+  // versus what we simply state. buildAllocation already computes both; the screen just never used them.
+  const onchainUsd = solUsd + tokensUsd;
 
   const depositsTotal = deposits.reduce((s, d) => s + (d.usd ?? 0), 0);
-
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
     <ScrollView
@@ -127,10 +131,14 @@ export function EcosystemScreen() {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.greet}>{greeting}</Text>
+      {/* No greeting: this stopped being the front door when Wallet took the first tab. You arrive
+          here deliberately, to check something. */}
+      <Text style={styles.greet}>Treasury</Text>
       <Text style={styles.greetSub}>Building the Kingdom Economy</Text>
 
-      {IS_MAINNET && (
+      {/* Gated on the supply being unreadable — i.e. XGO isn't listed yet. Previously this was
+          gated on IS_MAINNET, so it would have kept promising a launch after launch. */}
+      {supply == null && (
         <View style={styles.soonBanner}>
           <Ionicons name="rocket-outline" size={16} color={colors.primary} />
           <Text style={styles.soonText}>
@@ -170,15 +178,61 @@ export function EcosystemScreen() {
         <Text style={styles.verifyText}>Public & verifiable on-chain — view on Solscan ↗</Text>
       </Pressable>
 
-      {/* Stat tiles — live on-chain only */}
-      <View style={styles.tiles}>
-        <StatTile label="Total Supply" value={supply != null ? compact(supply) : "—"} delta="XGO" />
-        <StatTile
-          label="Transfer Fee"
-          value={fee ? `${(fee.bps / 100).toFixed(2)}%` : "—"}
-          delta="on every transfer"
-        />
+      {/* What's verifiable versus what's merely stated. Off-chain holdings are a manual figure —
+          on a page about proof, that line must not blur. */}
+      {holdings && treasuryValue > 0 && (
+        <View style={styles.tiles}>
+          <StatTile label="On-chain" value={usd(onchainUsd)} delta="anyone can verify" />
+          <StatTile label="Stated off-chain" value={usd(offchainUsd)} delta="silver + dinar" />
+        </View>
+      )}
+
+      {/* Supply and transfer fee are read live from the mint, which doesn't exist until XGO is
+          listed — so pre-launch they'd render as two bare "—" tiles that read as broken. */}
+      {supply != null || fee ? (
+        <View style={styles.tiles}>
+          <StatTile label="Total Supply" value={supply != null ? compact(supply) : "—"} delta="XGO" />
+          <StatTile
+            label="Transfer Fee"
+            value={fee ? `${(fee.bps / 100).toFixed(2)}%` : "—"}
+            delta="on every transfer"
+          />
+        </View>
+      ) : (
+        <Text style={styles.pending}>
+          XGO supply and its transfer fee are read live from the chain, and appear here once XGO is
+          listed.
+        </Text>
+      )}
+
+      {/* The fee policy, stated as policy — never as measured income. These constants drive the
+          actual swap flow but were displayed nowhere. */}
+      <Text style={styles.sectionTitle}>How the treasury is funded</Text>
+      <View style={styles.list}>
+        <View style={styles.policyRow}>
+          <Text style={styles.policyLabel}>Community fee on swaps</Text>
+          <Text style={styles.policyValue}>{(SWAP_FEE_BPS / 100).toFixed(2)}%</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.policyRow}>
+          <Text style={styles.policyLabel}>Swaps involving XGO</Text>
+          <Text style={styles.policyValue}>Free</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.policyRow}>
+          <Text style={styles.policyLabel}>XGO transfer fee → treasury</Text>
+          <Text style={styles.policyValue}>{XGO_FEES.treasuryAllocation.toFixed(2)}%</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.policyRow}>
+          <Text style={styles.policyLabel}>XGO transfer fee → permanent burn</Text>
+          <Text style={styles.policyValue}>{XGO_FEES.permanentBurn.toFixed(2)}%</Text>
+        </View>
       </View>
+      <Text style={styles.policyNote}>
+        Stated protocol policy. The deposits below are the actual arrivals, each one checkable on
+        Solscan.
+      </Text>
 
       {/* Allocation */}
       {holdings && slices.length > 0 && (
@@ -329,6 +383,28 @@ export function EcosystemScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
+  pending: {
+    color: colors.textMuted,
+    fontSize: font.small,
+    lineHeight: font.small * 1.5,
+    marginTop: spacing(4),
+  },
+  policyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing(3),
+    paddingVertical: spacing(3),
+    paddingHorizontal: spacing(4),
+  },
+  policyLabel: { color: colors.textMuted, fontSize: font.small, flexShrink: 1 },
+  policyValue: { color: colors.text, fontSize: font.small, fontWeight: "700" },
+  policyNote: {
+    color: colors.textFaint,
+    fontSize: font.tiny,
+    lineHeight: font.tiny * 1.5,
+    marginTop: spacing(2),
+  },
   greetSub: { color: colors.accent, fontSize: font.small, marginTop: 2, marginBottom: spacing(4), fontWeight: "600" },
   soonBanner: { flexDirection: "row", gap: spacing(2), alignItems: "flex-start", backgroundColor: colors.primary + "14", borderRadius: radius.md, padding: spacing(3.5), marginBottom: spacing(4) },
   soonText: { flex: 1, color: colors.primary, fontSize: font.small, lineHeight: 18 },
