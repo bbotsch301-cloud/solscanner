@@ -50,6 +50,7 @@ const KIND_VALUES: CollectibleKind[] = ["ticket", "membership", "book", "portal"
 // Spam-looking items default to hidden; an explicit user choice (either way) wins. ----
 
 let hiddenOverrides = new Map<string, boolean>();
+const hiddenListeners = new Set<() => void>();
 
 export async function loadCollectiblePrefs(): Promise<void> {
   try {
@@ -68,6 +69,15 @@ export function isHiddenItem(c: Collectible): boolean {
 export function setHidden(mint: string, v: boolean): void {
   hiddenOverrides.set(mint, v);
   AsyncStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(hiddenOverrides))).catch(() => {});
+  hiddenListeners.forEach((fn) => fn());
+}
+
+/** Subscribe to hide/unhide changes so an open gallery re-splits its sections. Returns unsubscribe. */
+export function onHiddenChange(fn: () => void): () => void {
+  hiddenListeners.add(fn);
+  return () => {
+    hiddenListeners.delete(fn);
+  };
 }
 
 // ---- Persistent last-good snapshot (instant gallery paint on cold open) ----
@@ -108,6 +118,26 @@ function saveSnapshot(owner: string, items: Collectible[]): void {
   AsyncStorage.setItem(SNAP_KEY + scope, JSON.stringify({ items, ts: Date.now() })).catch(() => {});
 }
 
+const itemsListeners = new Set<() => void>();
+
+/** Subscribe to local list changes (e.g. an item sent away). Returns unsubscribe. */
+export function onCollectiblesChange(fn: () => void): () => void {
+  itemsListeners.add(fn);
+  return () => {
+    itemsListeners.delete(fn);
+  };
+}
+
+/**
+ * Drop an item locally right after it's transferred away, so it disappears from the gallery
+ * immediately instead of lingering until the next refetch (the chain takes a moment to reflect it).
+ */
+export function removeCollectible(owner: string, mint: string): void {
+  const s = warmSnap.get(scopeFor(owner));
+  if (s) saveSnapshot(owner, s.items.filter((c) => c.mint !== mint));
+  itemsListeners.forEach((fn) => fn());
+}
+
 // ---- Fetching ----
 
 function parseKind(attrs: { trait: string; value: string }[] | undefined): CollectibleKind {
@@ -130,29 +160,51 @@ interface DasAsset {
   token_info?: { balance?: number; decimals?: number };
 }
 
-/** DAS path — full metadata/artwork in one call. Returns null to signal "use the fallback". */
+const DAS_PAGE_SIZE = 500;
+const DAS_MAX_PAGES = 5; // 2500 items — far beyond any real wallet, but bounds a runaway loop
+
+/** One page of `getAssetsByOwner`. Returns null on any failure (caller falls back). */
+async function fetchDasPage(owner: string, page: number): Promise<DasAsset[] | null> {
+  const res = await fetch(connection.rpcEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "collectibles",
+      method: "getAssetsByOwner",
+      params: {
+        ownerAddress: owner,
+        page,
+        limit: DAS_PAGE_SIZE,
+        displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
+      },
+    }),
+  });
+  if (!res.ok) return null;
+  const json = (await res.json()) as { result?: { items?: DasAsset[] } };
+  return Array.isArray(json.result?.items) ? json.result.items : null;
+}
+
+/** DAS path — full metadata/artwork, paged so large wallets aren't silently truncated.
+ *  Returns null to signal "use the fallback". */
 async function fetchViaDas(owner: string): Promise<Collectible[] | null> {
   try {
-    const res = await fetch(connection.rpcEndpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "collectibles",
-        method: "getAssetsByOwner",
-        params: {
-          ownerAddress: owner,
-          page: 1,
-          limit: 1000,
-          displayOptions: { showUnverifiedCollections: true, showCollectionMetadata: false },
-        },
-      }),
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { result?: { items?: DasAsset[] } };
-    const items = json.result?.items;
-    if (!Array.isArray(items)) return null;
+    const items: DasAsset[] = [];
+    for (let page = 1; page <= DAS_MAX_PAGES; page++) {
+      const batch = await fetchDasPage(owner, page);
+      if (batch === null) return page === 1 ? null : items.length ? mapDasAssets(items) : null;
+      items.push(...batch);
+      if (batch.length < DAS_PAGE_SIZE) break; // short page = last page
+    }
+    return mapDasAssets(items);
+  } catch {
+    return null;
+  }
+}
 
+/** Map raw DAS assets to Collectibles, dropping fungibles and burnt items. */
+function mapDasAssets(items: DasAsset[]): Collectible[] {
+  {
     const out: Collectible[] = [];
     for (const it of items) {
       if (!it?.id || it.burnt) continue;
@@ -188,8 +240,6 @@ async function fetchViaDas(owner: string): Promise<Collectible[] | null> {
       });
     }
     return out;
-  } catch {
-    return null;
   }
 }
 
@@ -206,6 +256,8 @@ async function fetchViaTokenAccounts(owner: string): Promise<Collectible[]> {
     if (info.tokenAmount.decimals === 0 && info.tokenAmount.uiAmount === 1) mints.push(info.mint as string);
   }
   if (!mints.length) return [];
+  // Metadata lookups are the expensive part, so cap them — but still LIST every item (the
+  // remainder just render with a short-mint name until a dedicated RPC fills them in).
   const metas = await fetchTokenMetas(mints.slice(0, 50)).catch(() => ({}) as Awaited<ReturnType<typeof fetchTokenMetas>>);
   return mints.map((mint) => {
     const m = metas[mint];
@@ -234,5 +286,26 @@ export async function fetchCollectibles(owner: string): Promise<Collectible[]> {
     return items;
   } catch {
     return cachedCollectibles(owner) ?? [];
+  }
+}
+
+/**
+ * Resolve ONE item by mint — for the detail screen when the snapshot doesn't have it (a deep link,
+ * a cleared cache, or an item received since the last refresh). DAS `getAsset`; null when unknown.
+ */
+export async function fetchCollectible(mint: string): Promise<Collectible | null> {
+  if (isPublicRpc()) return null;
+  try {
+    const res = await fetch(connection.rpcEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "collectible", method: "getAsset", params: { id: mint } }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { result?: DasAsset };
+    if (!json.result?.id) return null;
+    return mapDasAssets([json.result])[0] ?? null;
+  } catch {
+    return null;
   }
 }

@@ -3,7 +3,7 @@
  * in-app Browser), Send (standard NFTs only), View on Solscan, Hide. The item is read from the
  * collectibles snapshot (saved on every fetch), so this screen needs no loading state of its own.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,7 +13,14 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { Artwork } from "../components/Artwork";
 import { Button } from "../components/Button";
 import { ContactPicker } from "../components/ContactPicker";
-import { cachedCollectibles, isHiddenItem, setHidden, type Collectible } from "../solana/collectibles";
+import {
+  cachedCollectibles,
+  fetchCollectible,
+  isHiddenItem,
+  removeCollectible,
+  setHidden,
+  type Collectible,
+} from "../solana/collectibles";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { navigationRef } from "../navigationRef";
 import { useWallet } from "../wallet/WalletContext";
@@ -40,11 +47,33 @@ export function CollectibleDetailScreen() {
   const owner = solanaAddress ?? activeAddress;
   const mint = route.params.mint;
 
-  const item = useMemo(
+  const cached = useMemo(
     () => (owner ? cachedCollectibles(owner)?.find((c) => c.mint === mint) : undefined),
     [owner, mint]
   );
-  const [hiddenNow, setHiddenNow] = useState(() => (item ? isHiddenItem(item) : false));
+  // The snapshot usually has it (the gallery just fetched); resolve it directly when it doesn't —
+  // a deep link, a cleared cache, or an item received since the last refresh.
+  const [fetched, setFetched] = useState<Collectible | null>(null);
+  const [resolving, setResolving] = useState(!cached);
+  useEffect(() => {
+    if (cached) return;
+    let cancelled = false;
+    void (async () => {
+      const found = await fetchCollectible(mint);
+      if (!cancelled) {
+        setFetched(found);
+        setResolving(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cached, mint]);
+
+  const item = cached ?? fetched ?? undefined;
+  // Derived from the item (so a freshly-fetched one is right too), with the user's tap taking over.
+  const [override, setOverride] = useState<boolean | null>(null);
+  const hiddenNow = override ?? (item ? isHiddenItem(item) : false);
   const [sendOpen, setSendOpen] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -52,9 +81,11 @@ export function CollectibleDetailScreen() {
 
   if (!item) {
     return (
-      <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.screen}>
         <ScreenHeader title="Collection" size="modal" onClose={() => nav.goBack()} />
-        <Text style={styles.missing}>This item is no longer in your collection.</Text>
+        <Text style={styles.missing}>
+          {resolving ? "Loading…" : "This item is no longer in your collection."}
+        </Text>
       </View>
     );
   }
@@ -93,6 +124,8 @@ export function CollectibleDetailScreen() {
               await sendToken(item.mint, to, 1, 0);
               haptics.success();
               setSendOpen(false);
+              // Drop it locally so it leaves the gallery at once (the chain lags a moment).
+              if (owner) removeCollectible(owner, item.mint);
               Alert.alert("Sent", `"${item.name}" was sent to ${shortAddress(to, 6, 6)}.`, [
                 { text: "Done", onPress: () => nav.goBack() },
               ]);
@@ -157,7 +190,7 @@ export function CollectibleDetailScreen() {
             icon={hiddenNow ? "eye-outline" : "eye-off-outline"}
             onPress={() => {
               setHidden(mint, !hiddenNow);
-              setHiddenNow(!hiddenNow);
+              setOverride(!hiddenNow);
               haptics.tap();
             }}
           />
