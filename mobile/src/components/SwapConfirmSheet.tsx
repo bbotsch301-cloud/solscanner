@@ -223,11 +223,13 @@ export function SwapConfirmSheet({
                 <Row label="Slippage" value={`${slippageBps / 100}%`} />
                 <Row
                   label="Community fee"
+                  // Names the token now that it's variable — the fee comes out of whichever side
+                  // is more liquid, so "0.44%" alone no longer tells you what you're paying it in.
                   value={
                     quote.isTreasuryPair
                       ? "Free (XGO)"
                       : quote.feeBps > 0
-                        ? `${(quote.feeBps / 100).toFixed(2)}% → treasury`
+                        ? `${(quote.feeBps / 100).toFixed(2)}% in ${quote.feeSide === "input" ? inSym : outSym}`
                         : "None"
                   }
                 />

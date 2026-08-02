@@ -8,6 +8,7 @@
  * for DISPLAY ONLY — never quote or swap against it; those paths always call `fetchPrices`.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createDiskSnapshot } from "../cache/diskSnapshot";
 
 export const WSOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -132,13 +133,19 @@ interface DexPair {
   priceChange?: { h24?: number };
 }
 
+/** The deepest pool DexScreener knows about for a mint: its price and how much sits in it. */
+interface DexInfo {
+  usdPrice: number;
+  liquidityUsd: number;
+  priceChange24h?: number;
+}
+
 /**
- * Prices for mints another source couldn't cover. Exported so the Helius fast-balances path —
- * which brings its own prices and never calls `fetchPrices` — can fill the same gaps.
- * Never throws; an empty result just means nothing extra was found.
+ * One DexScreener round-trip, reduced to the deepest Solana pool per requested mint. Shared by the
+ * price fallback and the liquidity signal, so both agree on which pool is authoritative.
  */
-export async function fetchDexPrices(mints: string[]): Promise<Record<string, PriceInfo>> {
-  const out: Record<string, PriceInfo> = {};
+async function fetchDexInfo(mints: string[]): Promise<Record<string, DexInfo>> {
+  const out: Record<string, DexInfo> = {};
   // Base58 is case-sensitive and DexScreener echoes its own casing, so map back to the exact
   // string the caller asked for — the returned record's keys have to match the mints given.
   const byLower = new Map(mints.map((m) => [m.toLowerCase(), m]));
@@ -162,13 +169,62 @@ export async function fetchDexPrices(mints: string[]): Promise<Record<string, Pr
 
       for (const [mint, p] of deepest) {
         const usdPrice = Number(p.priceUsd);
-        if (!Number.isFinite(usdPrice) || usdPrice <= 0) continue;
-        if ((p.liquidity?.usd ?? 0) < MIN_LIQUIDITY_USD) continue;
-        out[mint] = { usdPrice, priceChange24h: p.priceChange?.h24 };
+        out[mint] = {
+          usdPrice: Number.isFinite(usdPrice) && usdPrice > 0 ? usdPrice : 0,
+          liquidityUsd: p.liquidity?.usd ?? 0,
+          priceChange24h: p.priceChange?.h24,
+        };
       }
     } catch {
       /* best-effort: these are the tokens Jupiter already couldn't price */
     }
+  }
+  return out;
+}
+
+// --- Liquidity, for deciding which side of a swap the community fee comes out of ---------------
+//
+// Read SYNCHRONOUSLY at quote time, so it can't add latency to a swap. A mint we've never measured
+// simply has no answer, and the fee policy falls back to a safe default — then `warmLiquidity`
+// fills it in behind the quote so the next swap of that pair decides correctly.
+const liquidityCache = createDiskSnapshot<number>("liq.v1:", 24 * 60 * 60 * 1000);
+
+/** Warm the liquidity cache at startup (registered in cache/screens.ts). */
+export function preloadLiquidityCache(): Promise<void> {
+  return liquidityCache.preload();
+}
+
+/** Last-measured pooled USD liquidity for a mint, or undefined if we've never looked. */
+export function cachedLiquidity(mint: string): number | undefined {
+  return liquidityCache.get(mint);
+}
+
+/** Measure and persist liquidity for these mints. Fire-and-forget; never throws. */
+export async function warmLiquidity(mints: string[]): Promise<void> {
+  const need = [...new Set(mints)].filter((m) => m && cachedLiquidity(m) == null);
+  if (!need.length) return;
+  try {
+    const info = await fetchDexInfo(need);
+    for (const [mint, i] of Object.entries(info)) liquidityCache.set(mint, i.liquidityUsd);
+  } catch {
+    /* the fee policy has a fallback; a missed measurement is not an error */
+  }
+}
+
+/**
+ * Prices for mints another source couldn't cover. Exported so the Helius fast-balances path —
+ * which brings its own prices and never calls `fetchPrices` — can fill the same gaps.
+ * Never throws; an empty result just means nothing extra was found.
+ */
+export async function fetchDexPrices(mints: string[]): Promise<Record<string, PriceInfo>> {
+  const out: Record<string, PriceInfo> = {};
+  const info = await fetchDexInfo(mints);
+  for (const [mint, i] of Object.entries(info)) {
+    // Record liquidity while we have it — this call and the fee policy want the same number.
+    liquidityCache.set(mint, i.liquidityUsd);
+    if (i.usdPrice <= 0) continue;
+    if (i.liquidityUsd < MIN_LIQUIDITY_USD) continue;
+    out[mint] = { usdPrice: i.usdPrice, priceChange24h: i.priceChange24h };
   }
   // Persist here as well as in fetchPrices, since the fast-balances path calls this directly.
   // Writing twice on the combined path is harmless — the later write just re-stamps.

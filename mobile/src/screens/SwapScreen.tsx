@@ -447,7 +447,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
                 quote.isTreasuryPair
                   ? "Free (XGO)"
                   : quote.feeBps > 0
-                    ? `${(quote.feeBps / 100).toFixed(2)}% → treasury`
+                    ? `${(quote.feeBps / 100).toFixed(2)}% in ${quote.feeSide === "input" ? from.symbol : to.symbol}`
                     : "None"
               }
             />

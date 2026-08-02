@@ -59,6 +59,13 @@ export interface UnifiedQuote {
   gapBps?: number | null;
   /** Solana only: executing also creates the treasury's fee account (one-time ~0.002 SOL rent). */
   feeAccountSetup?: boolean;
+  /** Solana only: which token the fee is charged in — the one sold or the one bought. Chosen by
+   *  liquidity so the treasury collects the more liquid side. Shown in the confirm sheet. */
+  feeSide?: "input" | "output";
+  /** Solana only: input-side fee in base units, carried through to execution. */
+  feeBase?: bigint;
+  /** Solana only: the input token's decimals, so the fee transfer can be built at execution. */
+  inputDecimals?: number;
 }
 
 export type { SwapToken };

@@ -125,7 +125,9 @@ liquidity or is fraudulent. **You are responsible for your own decisions.**
 
 ## 5. Fees
 - A community swap fee of **0.44%** applies to non-XGO swaps and flows to the Global Goshens
-  treasury. Swaps involving XGO are exempt (XGO's own on-chain transfer fee applies instead).
+  treasury. It is charged in whichever of the two swapped tokens has deeper liquidity, and the
+  token and amount are shown before you confirm. Swaps involving XGO are exempt (XGO's own
+  on-chain transfer fee applies instead).
 - The XGO token carries an on-chain transfer fee (currently **1.11%**) set by its token program.
 - Network ("gas") fees and any third-party aggregator fees also apply.
 

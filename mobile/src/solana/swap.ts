@@ -14,7 +14,8 @@ import {
 } from "@solana/spl-token";
 import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
-import { feeBpsFor, TREASURY_FEE_OWNER } from "../config/swapFee";
+import { feeBpsFor, feeSideFor, TREASURY_FEE_OWNER } from "../config/swapFee";
+import { warmLiquidity } from "./prices";
 import { recordFeeAttempt } from "./feeDiagnostics";
 import { solLogo } from "../config/logos";
 import { toBaseUnits } from "../units";
@@ -119,8 +120,15 @@ export interface Quote {
    *  is self-collected by executeSwap instead, so the treasury is funded either way. */
   platformFeeApplied: boolean;
   /** True when executing will also create the treasury's fee token account for the output mint —
-   *  a one-time ~0.002 SOL rent the swapper pays. Disclosed in the UI. */
+   *  a one-time ~0.002 SOL rent the swapper pays. Disclosed in the UI. Never true on the input
+   *  path, which touches no output-token account. */
   feeAccountSetup: boolean;
+  /** Which token the fee is charged in: the one being sold, or the one being bought. Decided by
+   *  liquidity (see config/swapFee.ts) so the treasury collects the more liquid of the two. */
+  feeSide: "input" | "output";
+  /** Input-side only: the exact base-unit amount held back from the trade and owed to the
+   *  treasury. Zero on the output path, where Jupiter takes its own cut. */
+  feeBase: bigint;
 }
 
 interface RawQuote {
@@ -198,16 +206,37 @@ export async function fetchQuote(
   const directlyPoolable = isTreasuryPair && otherMint === TREASURY_QUOTE_MINT;
 
   // Community fee: 0.44% on non-XGO trades (0 for XGO, which its own transfer fee already taxes),
-  // collected to the treasury. executeSwap deposits it into the treasury's output-token account.
+  // collected to the treasury.
   const feeBps = TREASURY_FEE_OWNER ? feeBpsFor(input.mint, output.mint) : 0;
-  // A one-time ~0.002 SOL rent applies when executing will create the treasury's fee account for
-  // this output mint (the first swapper into a token pays it). Disclose it in the quote.
-  const feeAccountSetup = feeBps > 0 && !(await treasuryFeeAtaExists(output.mint));
+
+  // WHICH SIDE it comes out of. Jupiter can only skim the output, so an input-side fee means we
+  // trade slightly less and transfer the difference ourselves — which is how the treasury ends up
+  // holding SOL and stablecoins rather than whatever memecoin the trade happened to produce.
+  const feeSide = feeBps > 0 ? feeSideFor(input.mint, output.mint) : "output";
+  const feeOnInput = feeSide === "input";
+
+  // Measure both mints for NEXT time. `feeSideFor` reads this cache synchronously so it can't slow
+  // a quote down; an unmeasured pair just takes the output side this once.
+  void warmLiquidity([input.mint, output.mint]);
+
+  // Input-side: quote the amount MINUS the fee, and don't let Jupiter charge as well. The user
+  // keeps the fee portion in their wallet until executeSwap transfers it after the swap lands.
+  const feeBase = feeOnInput ? (rawAmount * BigInt(feeBps)) / 10000n : 0n;
+  const tradeAmount = rawAmount - feeBase;
+  if (tradeAmount <= 0n) throw new Error("Enter an amount");
+  const jupFeeBps = feeOnInput ? 0 : feeBps;
+
+  // A one-time ~0.002 SOL rent applies when executing will create the treasury's token account for
+  // whichever mint the fee is charged in (the first swapper into it pays). Disclose it. Native SOL
+  // needs no account at all, so the common input-side case costs nothing — which is most of the
+  // point: the old behaviour created a treasury account for every memecoin anyone ever bought.
+  const feeMint = feeOnInput ? input.mint : output.mint;
+  const feeAccountSetup = feeBps > 0 && feeMint !== SOL_MINT && !(await treasuryFeeAtaExists(feeMint));
 
   const [market, pinned] = await Promise.all([
-    requestQuote(input.mint, output.mint, rawAmount, slippageBps, false, feeBps),
+    requestQuote(input.mint, output.mint, tradeAmount, slippageBps, false, jupFeeBps),
     directlyPoolable
-      ? requestQuote(input.mint, output.mint, rawAmount, slippageBps, true, feeBps)
+      ? requestQuote(input.mint, output.mint, tradeAmount, slippageBps, true, jupFeeBps)
       : Promise.resolve(null),
   ]);
 
@@ -257,23 +286,28 @@ export async function fetchQuote(
     feeBps,
     platformFeeApplied,
     feeAccountSetup,
+    feeSide,
+    feeBase: feeOnInput ? feeBase : 0n,
   };
 }
 
-/** Community fee (output token) when Jupiter didn't take it — a best-effort SECOND transaction that
- *  transfers `feeBase` of the output to the treasury. SOL output → a plain lamport transfer to the
- *  treasury wallet; SPL output → a transferChecked into the treasury's (idempotently-created) ATA.
- *  Throws are the caller's to swallow: the swap already succeeded, so a failed fee never fails it. */
-async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: number, feeBase: bigint): Promise<string> {
-  if (feeBase <= 0n) throw new Error("computed fee was zero (check the quote's outAmount)");
+/** Community fee as a best-effort SECOND transaction transferring `feeBase` of `mint` to the
+ *  treasury. Used two ways: for an INPUT-side fee (the amount held back from the trade, which the
+ *  user still holds), and for an output-side fee Jupiter declined to take. SOL → a plain lamport
+ *  transfer to the treasury wallet; SPL → a transferChecked into the treasury's (idempotently-
+ *  created) ATA. Throws are the caller's to swallow: the swap already succeeded, so a failed fee
+ *  must never report it as failed. */
+async function selfCollectFee(keypair: Keypair, mint: string, decimals: number, feeBase: bigint): Promise<string> {
+  if (feeBase <= 0n) throw new Error("computed fee was zero");
   if (!TREASURY_FEE_OWNER) throw new Error("no TREASURY_FEE_OWNER configured");
   const owner = new PublicKey(TREASURY_FEE_OWNER);
   const tx = new Transaction();
-  if (outputMint === SOL_MINT) {
-    // The swap unwrapped wSOL, so the user holds native SOL; skim the fee to the treasury wallet.
+  if (mint === SOL_MINT) {
+    // Native SOL either way: on the input path the user never wrapped this portion, and on the
+    // output path Jupiter already unwrapped it. Skim it straight to the treasury wallet.
     tx.add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: owner, lamports: Number(feeBase) }));
   } else {
-    const mintPk = new PublicKey(outputMint);
+    const mintPk = new PublicKey(mint);
     const mintInfo = await connection.getAccountInfo(mintPk);
     const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
     const userAta = getAssociatedTokenAddressSync(mintPk, keypair.publicKey, false, programId);
@@ -297,7 +331,16 @@ async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: nu
 export async function executeSwap(
   rawQuote: unknown,
   keypair: Keypair,
-  feeCtx?: { feeBps: number; outputDecimals: number },
+  feeCtx?: {
+    feeBps: number;
+    outputDecimals: number;
+    /** Which side the fee is charged on (see config/swapFee.ts). Defaults to output. */
+    feeSide?: "input" | "output";
+    /** Input-side only: the base-unit amount held back from the trade, owed to the treasury. */
+    feeBase?: bigint;
+    inputMint?: string;
+    inputDecimals?: number;
+  },
   onStatus?: (s: string) => void
 ): Promise<string> {
   // Progress reporting: a swap is several round-trips (fee-account setup, build, sign, confirm,
@@ -360,11 +403,34 @@ export async function executeSwap(
   say("Confirming on-chain…");
   await confirmWithRecovery(sig, strategy); // guard: a landed-but-slow confirm resolves as success
 
-  // If Jupiter didn't charge the platform fee (e.g. a SOL-output swap), skim the community fee
-  // ourselves so the treasury is still funded. Best-effort: the swap has already landed, so a
+  // Collect the community fee. Three cases, in order below: Jupiter already took it inline; we
+  // held it back from the INPUT and now owe it to the treasury; or Jupiter declined an output-side
+  // fee and we skim it from the output. Best-effort throughout — the swap has already landed, so a
   // failed fee transfer is logged, never surfaced as a swap failure.
   const feeBps = feeCtx?.feeBps ?? 0;
-  if (q.platformFee && feeAccount) {
+  if (feeCtx?.feeSide === "input" && (feeCtx.feeBase ?? 0n) > 0n) {
+    // The user still holds this — it was never sent to Jupiter — so the transfer can't be
+    // defeated by slippage the way an output-side skim can.
+    const base = {
+      at: Date.now(),
+      swapSignature: sig,
+      outputMint: feeCtx.inputMint ?? "",
+      feeBase: String(feeCtx.feeBase),
+      route: "self" as const,
+    };
+    try {
+      say("Collecting the community fee…");
+      const feeSig = await selfCollectFee(
+        keypair,
+        feeCtx.inputMint ?? "",
+        feeCtx.inputDecimals ?? 0,
+        feeCtx.feeBase ?? 0n
+      );
+      recordFeeAttempt({ ...base, ok: true, detail: `input-side → ${feeSig}` });
+    } catch (e) {
+      recordFeeAttempt({ ...base, ok: false, detail: e instanceof Error ? e.message : String(e) });
+    }
+  } else if (q.platformFee && feeAccount) {
     // Jupiter charged it inline as part of the swap itself — nothing more to send.
     recordFeeAttempt({
       at: Date.now(),

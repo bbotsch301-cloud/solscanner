@@ -21,7 +21,7 @@ export const EDU: Record<string, HelpTopic> = {
     title: "How the treasury is funded",
     body: [
       "Two things pay into the community treasury, and both are automatic — nobody decides case by case.",
-      "Swaps: a 0.44% community fee on trades, taken in the token you receive. Trades involving XGO pay nothing, because XGO already carries its own fee and taxing both would be double-charging.",
+      "Swaps: a 0.44% community fee on trades, taken in whichever of the two tokens is more liquid — usually SOL. That keeps the treasury in assets it can actually use, instead of a pile of small holdings it can't. Trades involving XGO pay nothing, because XGO already carries its own fee and taxing both would be double-charging.",
       "XGO transfers: every XGO transfer carries a 1.11% fee. 1.00% goes to the treasury and 0.11% is burned — destroyed permanently, which permanently reduces the supply.",
       "These percentages are stated policy. What actually arrived is the deposits list further down, and every entry there can be checked on Solscan.",
     ],

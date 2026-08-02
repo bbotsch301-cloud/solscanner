@@ -36,9 +36,11 @@ export async function quoteSwap(
       jupFetchQuote(input, output, uiAmount, slippageBps),
       fetchPrices([input.mint, output.mint]).catch(() => ({} as Record<string, { usdPrice: number }>)),
     ]);
-    // When Jupiter charged its platform fee, q.outAmount is already net; when it didn't, the fee is
-    // self-collected after the swap, so net the DISPLAYED output by feeBps to keep "you receive" true.
-    const selfCollect = !q.platformFeeApplied && q.feeBps > 0;
+    // Netting applies only when the fee comes out of the OUTPUT and Jupiter didn't already take
+    // it — then we skim it afterwards, so the displayed receive must be net to stay true. On the
+    // INPUT path nothing is skimmed from the output: the quote was already for the reduced trade
+    // amount, so `outAmount` is exactly what lands.
+    const selfCollect = q.feeSide === "output" && !q.platformFeeApplied && q.feeBps > 0;
     const netOut = selfCollect ? (q.outAmount * (10000 - q.feeBps)) / 10000 : q.outAmount;
     const inP = px[input.mint]?.usdPrice;
     const outP = px[output.mint]?.usdPrice;
@@ -63,6 +65,9 @@ export async function quoteSwap(
       fellBack: q.fellBack,
       gapBps: q.gapBps,
       feeAccountSetup: q.feeAccountSetup,
+      feeSide: q.feeSide,
+      feeBase: q.feeBase,
+      inputDecimals: input.decimals,
     };
   }
 
@@ -110,7 +115,14 @@ export async function executeUnifiedSwap(
       return jupExecuteSwap(
         quote.solanaRaw,
         signer as Keypair,
-        { feeBps: quote.feeBps, outputDecimals: quote.output.decimals },
+        {
+          feeBps: quote.feeBps,
+          outputDecimals: quote.output.decimals,
+          feeSide: quote.feeSide,
+          feeBase: quote.feeBase,
+          inputMint: quote.input.mint,
+          inputDecimals: quote.inputDecimals ?? quote.input.decimals,
+        },
         onStatus
       );
     case "evm":
