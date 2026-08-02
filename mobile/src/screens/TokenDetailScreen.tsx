@@ -14,8 +14,9 @@ import { nativeLogo } from "../config/logos";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
 import { candleSnapshots } from "../cache/screens";
+import { cachedLiquidity, MIN_LIQUIDITY_USD } from "../solana/prices";
 import { haptics } from "../ui/haptics";
-import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
+import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
 // Last-loaded candles per (chain, asset, range), so switching timeframes / revisiting is instant —
@@ -151,6 +152,25 @@ export function TokenDetailScreen() {
   // under a screen that's displaying a price at the top.
   const balanceUsd =
     view.usd ?? (view.balance != null && latestClose != null ? view.balance * latestClose : null);
+  // Why there's no dollar value, said precisely enough to act on — and to debug.
+  //
+  // "we measured the pool and it holds $312" and "we never found a pool at all" are completely
+  // different situations: the first means the holding is real but unsellable, the second means our
+  // price lookup came up empty and may itself be at fault. Both used to render as the same dash,
+  // which is how a diagnosis becomes a guessing game.
+  const poolLiquidity = view.contract ? cachedLiquidity(view.contract) : undefined;
+  const noPriceLabel =
+    balanceUsd != null
+      ? null
+      : poolLiquidity != null && poolLiquidity < MIN_LIQUIDITY_USD
+        ? `No market · only $${compact(poolLiquidity)} pooled liquidity`
+        : poolLiquidity != null
+          // A deep pool with no price is OUR gap, not the token's. Calling that "no market" would
+          // be a confidently wrong statement about a token that plainly has one.
+          ? `Price unavailable · $${compact(poolLiquidity)} pooled liquidity`
+          : view.contract
+            ? "No price source found for this token"
+            : null; // native asset with no price yet — that's still just loading
   const change =
     candles.length >= 2 && candles[0].open > 0
       ? ((candles[candles.length - 1].close - candles[0].open) / candles[0].open) * 100
@@ -240,6 +260,10 @@ export function TokenDetailScreen() {
         )}
         {balanceUsd != null ? (
           <Text style={styles.balUsd}>{fmtUsd(balanceUsd)}</Text>
+        ) : noPriceLabel ? (
+          // Not "still loading" — we looked and came back with an answer, just not a price. A
+          // skeleton here would pulse forever promising a number that is never going to arrive.
+          <Text style={styles.balNoMarket}>{noPriceLabel}</Text>
         ) : (
           <Skeleton width={80} height={15} />
         )}
@@ -357,6 +381,7 @@ const styles = StyleSheet.create({
   balLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   balAmount: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   balUsd: { color: colors.textMuted, fontSize: font.body },
+  balNoMarket: { color: colors.warning, fontSize: font.small },
   contractRow: {
     flexDirection: "row",
     alignItems: "center",

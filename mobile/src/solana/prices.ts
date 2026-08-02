@@ -123,7 +123,7 @@ const DEX_BATCH = 30;
  * get. Multiplying it by a multi-billion token balance would print a confident, badly wrong
  * dollar figure — worse than the dash it replaced. Under the floor we keep saying "unknown".
  */
-const MIN_LIQUIDITY_USD = 1000;
+export const MIN_LIQUIDITY_USD = 1000;
 
 interface DexPair {
   chainId?: string;
@@ -208,6 +208,18 @@ export function preloadLiquidityCache(): Promise<void> {
 /** Last-measured pooled USD liquidity for a mint, or undefined if we've never looked. */
 export function cachedLiquidity(mint: string): number | undefined {
   return liquidityCache.get(mint);
+}
+
+/**
+ * Why a holding has no dollar value — so the UI can say something useful instead of a bare dash.
+ *
+ * "illiquid" is a real finding, not a gap: we DID look, found the deepest pool, and it holds less
+ * than the floor. That's worth telling a holder plainly, because it means the position can't be
+ * sold at any quoted price either. "unknown" means we genuinely haven't managed to look yet.
+ */
+export function priceUnavailableReason(mint: string): "unknown" | "illiquid" {
+  const liq = cachedLiquidity(mint);
+  return liq != null && liq < MIN_LIQUIDITY_USD ? "illiquid" : "unknown";
 }
 
 /** Measure and persist liquidity for these mints. Fire-and-forget; never throws. */

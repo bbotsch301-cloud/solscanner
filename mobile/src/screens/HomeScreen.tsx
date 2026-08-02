@@ -14,6 +14,7 @@ import { Updating } from "../components/Updating";
 import { ActivityRow } from "../components/ActivityRow";
 import { activitySnapshots } from "../cache/screens";
 import { getChain } from "../chains/registry";
+import { priceUnavailableReason } from "../solana/prices";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { IS_MAINNET } from "../solana/connection";
 import { compact, colors, font, radius, spacing, tracking, usd as fmtUsd, weight } from "../theme";
@@ -36,6 +37,10 @@ const WalletTokenRow = memo(function WalletTokenRow({
   const priced = asset.usd != null && asset.usd > 0;
   const held = `${compact(asset.balance)} ${asset.symbol}`;
   const chain = getChain(asset.chainId);
+  // A dash says "we don't know". When we DO know — we found the pool and it's nearly empty —
+  // saying so is far more useful, because it means the holding can't be sold either.
+  const noValue =
+    asset.mint && priceUnavailableReason(asset.mint) === "illiquid" ? "No market" : "—";
   return (
     <PressableScale onPress={() => onOpen(asset)} style={styles.tokenRow}>
       {/* The list is cross-chain now, so the avatar carries a small chain mark — without it a
@@ -52,7 +57,7 @@ const WalletTokenRow = memo(function WalletTokenRow({
       </View>
       <View style={styles.right}>
         <Text style={styles.value}>{priced ? fmtUsd(asset.usd!) : held}</Text>
-        <Text style={styles.subUsd}>{priced ? held : "—"}</Text>
+        <Text style={styles.subUsd}>{priced ? held : noValue}</Text>
       </View>
     </PressableScale>
   );
