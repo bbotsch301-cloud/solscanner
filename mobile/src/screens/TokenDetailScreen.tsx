@@ -1,6 +1,7 @@
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
@@ -8,6 +9,7 @@ import { TradingViewChart } from "../components/chart/TradingViewChart";
 import { ChartFullScreen } from "../components/ChartFullScreen";
 import { PressableScale } from "../components/PressableScale";
 import { Skeleton } from "../components/Skeleton";
+import { ReceiveSheet } from "../components/ReceiveSheet";
 import { nativeLogo } from "../config/logos";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
@@ -25,7 +27,7 @@ export function TokenDetailScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "TokenDetail">>();
   const insets = useSafeAreaInsets();
-  const { activeChain, native, assets, refresh: refreshWallet } = useWallet();
+  const { activeChain, activeAddress, native, assets, refresh: refreshWallet } = useWallet();
   const assetKey = route.params.asset;
 
   // Resolve the asset from live wallet state (balances stay fresh).
@@ -56,6 +58,19 @@ export function TokenDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [scrub, setScrub] = useState<Candle | null>(null); // candle under the crosshair, if any
   const [fullscreen, setFullscreen] = useState(false);
+  const [receiving, setReceiving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Hoisted out of the callback's dep array: an optional chain in there defeats the compiler's
+  // memoization check.
+  const contract = view?.contract ?? null;
+  const copyContract = useCallback(async () => {
+    if (!contract) return;
+    await Clipboard.setStringAsync(contract);
+    haptics.tap();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [contract]);
 
   const loadCandles = useCallback(async (): Promise<Candle[]> => {
     if (!view) return [];
@@ -131,6 +146,11 @@ export function TokenDetailScreen() {
   const livePrice =
     view.balance != null && view.balance > 0 && view.usd != null ? view.usd / view.balance : latestClose;
   const displayPrice = scrub ? scrub.close : livePrice;
+  // The wallet's price map doesn't cover every token, but the chart's latest close is a price for
+  // exactly this asset — so use it rather than leave "Your balance" showing a permanent skeleton
+  // under a screen that's displaying a price at the top.
+  const balanceUsd =
+    view.usd ?? (view.balance != null && latestClose != null ? view.balance * latestClose : null);
   const change =
     candles.length >= 2 && candles[0].open > 0
       ? ((candles[candles.length - 1].close - candles[0].open) / candles[0].open) * 100
@@ -218,23 +238,52 @@ export function TokenDetailScreen() {
         ) : (
           <Text style={styles.balAmount}>{fmtAmount(view.balance)} {view.symbol}</Text>
         )}
-        {view.usd != null ? (
-          <Text style={styles.balUsd}>{fmtUsd(view.usd)}</Text>
+        {balanceUsd != null ? (
+          <Text style={styles.balUsd}>{fmtUsd(balanceUsd)}</Text>
         ) : (
           <Skeleton width={80} height={15} />
         )}
       </View>
+
+      {/* The contract address, one tap to copy. Anyone sharing a token needs this, and hunting
+          for it in an explorer to paste it back into the app was absurd. */}
+      {view.contract && (
+        <PressableScale haptic={null} onPress={copyContract} style={styles.contractRow}>
+          <Ionicons name="document-text-outline" size={16} color={colors.textMuted} />
+          <View style={styles.contractMid}>
+            <Text style={styles.contractLabel}>Contract address</Text>
+            <Text style={styles.contractValue} numberOfLines={1}>{view.contract}</Text>
+          </View>
+          <Ionicons
+            name={copied ? "checkmark" : "copy-outline"}
+            size={18}
+            color={copied ? colors.positive : colors.textMuted}
+          />
+        </PressableScale>
+      )}
 
       <View style={styles.actions}>
         <Pressable style={styles.primaryBtn} onPress={() => nav.navigate("Send", { asset: assetKey })}>
           <Ionicons name="arrow-up" size={18} color={colors.bg} />
           <Text style={styles.primaryText}>Send</Text>
         </Pressable>
+        <Pressable style={styles.secondaryBtn} onPress={() => setReceiving(true)}>
+          <Ionicons name="arrow-down" size={18} color={colors.primary} />
+          <Text style={styles.secondaryText}>Receive</Text>
+        </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={() => nav.navigate("Swap")}>
           <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
           <Text style={styles.secondaryText}>Swap</Text>
         </Pressable>
       </View>
+
+      <ReceiveSheet
+        visible={receiving}
+        onClose={() => setReceiving(false)}
+        address={activeAddress ?? ""}
+        chainName={activeChain.name}
+        symbol={view.symbol}
+      />
 
       <ChartFullScreen
         visible={fullscreen}
@@ -308,11 +357,27 @@ const styles = StyleSheet.create({
   balLabel: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
   balAmount: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   balUsd: { color: colors.textMuted, fontSize: font.body },
-  actions: { flexDirection: "row", gap: spacing(3), marginTop: spacing(5) },
-  primaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), backgroundColor: colors.primary, paddingVertical: spacing(4), borderRadius: radius.pill },
-  primaryText: { color: colors.bg, fontSize: font.h3, fontWeight: "800" },
-  secondaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, paddingVertical: spacing(4), borderRadius: radius.pill },
-  secondaryText: { color: colors.primary, fontSize: font.h3, fontWeight: "800" },
+  contractRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing(3),
+    marginTop: spacing(3),
+    padding: spacing(4),
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+  },
+  contractMid: { flex: 1, gap: 2 },
+  contractLabel: { color: colors.textMuted, fontSize: font.tiny, fontWeight: "700" },
+  contractValue: { color: colors.text, fontSize: font.small, fontWeight: "600" },
+  // Three across now (Send / Receive / Swap), so the labels drop a size and the gaps tighten —
+  // at h3 with icons they wrapped on a narrow phone.
+  actions: { flexDirection: "row", gap: spacing(2), marginTop: spacing(5) },
+  primaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(1.5), backgroundColor: colors.primary, paddingVertical: spacing(3.5), borderRadius: radius.pill },
+  primaryText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
+  secondaryBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(1.5), backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, paddingVertical: spacing(3.5), borderRadius: radius.pill },
+  secondaryText: { color: colors.primary, fontSize: font.body, fontWeight: "800" },
   sub: { color: colors.textMuted, fontSize: font.body, textAlign: "center" },
   ghostBtn: { paddingVertical: spacing(3), paddingHorizontal: spacing(6), borderRadius: radius.pill, borderWidth: 1, borderColor: colors.cardBorder },
   ghostText: { color: colors.text, fontSize: font.body, fontWeight: "700" },

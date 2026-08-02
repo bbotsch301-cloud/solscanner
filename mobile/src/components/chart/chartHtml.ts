@@ -90,10 +90,16 @@ export function chartHtml(theme: ChartTheme = CHART_THEME): string {
 
   window.__chart = {
     setData: function (data) {
-      applyPrecision(data);
-      series.setData(data);
-      chart.timeScale().fitContent();
-      post({ type: 'ready', count: data.length });
+      // Anything thrown in here used to vanish — injectJavaScript swallows it — and the user was
+      // left looking at an empty rectangle with no way to tell a bug from a token with no market.
+      try {
+        applyPrecision(data);
+        series.setData(data);
+        chart.timeScale().fitContent();
+        post({ type: 'ready', count: data.length });
+      } catch (e) {
+        post({ type: 'error', message: String((e && e.message) || e) });
+      }
     },
     fit: function () { chart.timeScale().fitContent(); },
     resetScale: function () { chart.priceScale('right').applyOptions({ autoScale: true }); chart.timeScale().fitContent(); }
@@ -110,6 +116,9 @@ export function chartHtml(theme: ChartTheme = CHART_THEME): string {
 
   post({ type: 'boot' });
 })();
+window.onerror = function (msg) {
+  try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', message: String(msg) })); } catch (e) {}
+};
 </script>
 </body>
 </html>`;

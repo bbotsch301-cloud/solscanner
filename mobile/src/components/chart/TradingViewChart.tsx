@@ -11,11 +11,11 @@
  * a string, so there's no rebuild and no network fetch.
  */
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { chartHtml } from "./chartHtml";
 import { haptics } from "../../ui/haptics";
-import { colors } from "../../theme";
+import { colors, font } from "../../theme";
 import type { Candle } from "../../prices/candles";
 
 /** The candle under the crosshair, or null when the user isn't scrubbing. */
@@ -50,7 +50,10 @@ export const TradingViewChart = memo(function TradingViewChart({
 }) {
   const ref = useRef<WebView | null>(null);
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const scrubbing = useRef(false);
+  // The WebView's first (and only legitimate) document load. See onShouldStartLoadWithRequest.
+  const allowedFirstLoad = useRef(false);
 
   // The page is static; only the data changes, so the HTML is built once and kept out of the
   // WebView's `source` dependency (changing source remounts and loses the user's zoom).
@@ -75,6 +78,12 @@ export const TradingViewChart = memo(function TradingViewChart({
       setReady(true);
       return;
     }
+    // The chart library threw on this data (or the page did). Say so rather than leave an empty
+    // rectangle behind, which is indistinguishable from a broken screen.
+    if (m.type === "error") {
+      setFailed(true);
+      return;
+    }
     if (m.type !== "cross" || !onScrub) return;
     if (m.active && m.time != null) {
       // A tick as the crosshair enters a candle, matching the old chart's feel.
@@ -89,6 +98,16 @@ export const TradingViewChart = memo(function TradingViewChart({
     }
   };
 
+  if (failed) {
+    // A blank rectangle is the one thing this must never be: it reads as a broken app rather
+    // than as a chart that couldn't draw.
+    return (
+      <View style={[styles.wrap, styles.center, { height }]}>
+        <Text style={styles.failText}>Chart couldn&apos;t load for this token.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.wrap, { height }]}>
       <WebView
@@ -96,8 +115,15 @@ export const TradingViewChart = memo(function TradingViewChart({
         source={{ html }}
         onMessage={onMessage}
         originWhitelist={["*"]}
-        // Local content only — no navigation should ever happen from this page.
-        onShouldStartLoadWithRequest={() => false}
+        // Local content only — block NAVIGATION, but let the first load through. Returning false
+        // unconditionally also refuses the initial document on some platforms/versions, and the
+        // result is a permanently empty chart with nothing logged.
+        onShouldStartLoadWithRequest={() => {
+          if (allowedFirstLoad.current) return false;
+          allowedFirstLoad.current = true;
+          return true;
+        }}
+        onError={() => setFailed(true)}
         scrollEnabled={false}
         bounces={false}
         overScrollMode="never"
@@ -113,4 +139,6 @@ export const TradingViewChart = memo(function TradingViewChart({
 const styles = StyleSheet.create({
   wrap: { width: "100%", overflow: "hidden", backgroundColor: colors.bg },
   web: { flex: 1, backgroundColor: "transparent" },
+  center: { alignItems: "center", justifyContent: "center" },
+  failText: { color: colors.textMuted, fontSize: font.small, textAlign: "center" },
 });
