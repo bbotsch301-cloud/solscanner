@@ -43,6 +43,7 @@ import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
 import { BrowserScreen } from "./src/browser/BrowserScreen";
 import { loadBrowserData } from "./src/browser/dapps";
+import { loadConnections } from "./src/browser/connections";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref, getAcceptedLegalVersion, setAcceptedLegalVersion } from "./src/security/prefs";
 import { LEGAL_VERSION } from "./src/legal/content";
@@ -241,6 +242,7 @@ export default function App() {
       loadContacts(),
       loadPubAddresses(),
       loadBrowserData(),
+      loadConnections(),
       preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);

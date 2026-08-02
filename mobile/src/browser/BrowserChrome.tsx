@@ -12,7 +12,6 @@ import type { TabState } from "./types";
 
 export function BrowserChrome({
   tab,
-  isFav,
   tabCount,
   onNavigate,
   onBack,
@@ -20,11 +19,10 @@ export function BrowserChrome({
   onReload,
   onStop,
   onHome,
-  onToggleFav,
   onTabs,
+  onMenu,
 }: {
   tab: TabState;
-  isFav: boolean;
   tabCount: number;
   onNavigate: (input: string) => void;
   onBack: () => void;
@@ -32,8 +30,8 @@ export function BrowserChrome({
   onReload: () => void;
   onStop: () => void;
   onHome: () => void;
-  onToggleFav: () => void;
   onTabs: () => void;
+  onMenu: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
@@ -84,11 +82,11 @@ export function BrowserChrome({
         <NavBtn icon="chevron-back" disabled={!tab.canGoBack} onPress={onBack} />
         <NavBtn icon="chevron-forward" disabled={!tab.canGoForward} onPress={onForward} />
         <NavBtn icon="home-outline" onPress={onHome} />
-        <NavBtn icon={isFav ? "star" : "star-outline"} onPress={onToggleFav} disabled={blank} color={isFav ? colors.primary : undefined} />
         <PressableScale onPress={onTabs} style={styles.tabsBtn} hitSlop={8}>
           <Ionicons name="copy-outline" size={16} color={colors.text} />
           <Text style={styles.tabsCount}>{tabCount}</Text>
         </PressableScale>
+        <NavBtn icon="ellipsis-horizontal" onPress={onMenu} />
       </View>
 
       {tab.loading && tab.progress < 1 && (

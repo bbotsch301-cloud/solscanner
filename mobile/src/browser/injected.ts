@@ -147,9 +147,11 @@ export function buildInjectedProvider(seed: InjectedSeed): string {
   var sol = new Emitter();
   sol.isPhantom = true; sol.isXGO = true; sol.publicKey = null; sol.isConnected = false;
 
-  sol.connect = function () {
+  sol.connect = function (opts) {
     if (!state.solAddress) return Promise.reject(new Error("No Solana account"));
     if (sol.isConnected && sol.publicKey) return Promise.resolve({ publicKey: sol.publicKey });
+    // Eager-connect contract: resolve only if already trusted, otherwise reject without a prompt.
+    if (opts && opts.onlyIfTrusted) return Promise.reject(new Error("Not trusted"));
     return send("solana", "connect", {}).then(function (addr) {
       state.solAddress = addr; sol.publicKey = new PubKey(addr); sol.isConnected = true;
       sol.emit("connect", sol.publicKey); return { publicKey: sol.publicKey };
@@ -243,6 +245,23 @@ export function buildInjectedProvider(seed: InjectedSeed): string {
     try { window.addEventListener("wallet-standard:app-ready", function (e) { cb(e.detail); }); } catch (e) {}
   }
   registerWalletStandard();
+
+  /* Silent reconnect: the app injects this on load for an origin the user previously connected. */
+  xgo.setTrusted = function (t) {
+    if (t.evm && t.evmAddress) {
+      connectedEvm = true; state.evmAddress = t.evmAddress; eth.selectedAddress = t.evmAddress;
+      eth.emit("accountsChanged", [t.evmAddress]); eth.emit("connect", { chainId: eth.chainId });
+    }
+    if (t.solana && t.solAddress) {
+      state.solAddress = t.solAddress; sol.publicKey = new PubKey(t.solAddress); sol.isConnected = true;
+      wsAccount = makeAccount(t.solAddress); wsEmit("change", { accounts: [wsAccount] }); sol.emit("connect", sol.publicKey);
+    }
+  };
+  /* Revoke: the app injects this when the user disconnects the site. */
+  xgo.setUntrusted = function () {
+    connectedEvm = false; eth.selectedAddress = null; eth.emit("accountsChanged", []); eth.emit("disconnect", { code: 4900, message: "Disconnected" });
+    sol.isConnected = false; sol.publicKey = null; wsAccount = null; wsEmit("change", { accounts: [] }); sol.emit("disconnect");
+  };
 
   /* Apply account/chain updates pushed from the app after a switch. */
   xgo.update = function (next) {

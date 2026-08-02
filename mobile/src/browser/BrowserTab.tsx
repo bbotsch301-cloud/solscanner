@@ -17,7 +17,9 @@ export const BrowserTab = forwardRef<WebView, {
   onNav: (patch: Partial<TabState>) => void;
   onRequest: (msg: BridgeMessage) => void;
   onWcUri: (uri: string) => void;
-}>(function BrowserTab({ tab, active, injectedJS, onNav, onRequest, onWcUri }, ref) {
+  /** Return true to block this URL (phishing list); the screen shows the interstitial. */
+  isBlocked: (url: string) => boolean;
+}>(function BrowserTab({ tab, active, injectedJS, onNav, onRequest, onWcUri, isBlocked }, ref) {
   const onMessage = (e: WebViewMessageEvent) => {
     try {
       const m = JSON.parse(e.nativeEvent.data) as BridgeMessage;
@@ -35,7 +37,13 @@ export const BrowserTab = forwardRef<WebView, {
   // other app schemes (mailto:, tel:, etc.) with the OS instead of failing inside the WebView.
   const onShouldStart = (req: { url: string }): boolean => {
     const url = req.url;
-    if (/^https?:/i.test(url) || url === "about:blank") return true;
+    if (/^https?:/i.test(url) || url === "about:blank") {
+      if (isBlocked(url)) {
+        onNav({ blocked: url });
+        return false;
+      }
+      return true;
+    }
     if (/^wc:/i.test(url)) {
       onWcUri(url);
       return false;
@@ -47,6 +55,7 @@ export const BrowserTab = forwardRef<WebView, {
   return (
     <View style={[styles.fill, !active && styles.hidden]} pointerEvents={active ? "auto" : "none"}>
       <WebView
+        key={tab.remountKey ?? 0}
         ref={ref}
         source={{ uri: tab.uri }}
         injectedJavaScriptBeforeContentLoaded={injectedJS}

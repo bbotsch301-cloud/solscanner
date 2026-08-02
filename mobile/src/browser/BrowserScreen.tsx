@@ -4,13 +4,15 @@
  * sign pipeline WalletConnect uses (see ./signer + walletconnect/handlers).
  */
 import { useCallback, useMemo, useRef, useState } from "react";
-import { BackHandler, Platform, StyleSheet, View } from "react-native";
+import { Alert, BackHandler, Platform, Share, StyleSheet, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import type { WebView } from "react-native-webview";
 import { useWallet } from "../wallet/WalletContext";
 import { useWalletConnect } from "../walletconnect/WalletConnectContext";
 import { requireReauth } from "../security/reauth";
+import { isBlockedDomain } from "../safety/blocklist";
 import { CHAINS } from "../chains/registry";
 import { colors } from "../theme";
 import { BrowserTab } from "./BrowserTab";
@@ -18,10 +20,21 @@ import { BrowserChrome } from "./BrowserChrome";
 import { DiscoverHome } from "./DiscoverHome";
 import { TabSwitcher } from "./TabSwitcher";
 import { ConnectSheet, SignSheet } from "./RequestSheets";
+import { BlockInterstitial } from "./BlockInterstitial";
+import { BrowserMenu, ConnectedSitesModal } from "./BrowserMenu";
 import { buildInjectedProvider } from "./injected";
-import { addHistory, isFavorite, toggleFavorite, toUrl } from "./dapps";
+import { addHistory, clearHistory, hostOf, isFavorite, toggleFavorite, toUrl } from "./dapps";
+import { disconnectAll, disconnectOrigin, isConnected, listConnections, setConnected } from "./connections";
 import { evmChainForHex, evmRpcPassthrough, runEvmRequest, runSolanaRequest, summarizeDappRequest } from "./signer";
 import type { BridgeMessage, PendingRequest, Responder, TabState } from "./types";
+
+const originOf = (url: string): string => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+};
 
 const EVM_SIGN = new Set([
   "personal_sign",
@@ -33,7 +46,7 @@ const EVM_SIGN = new Set([
   "eth_signTransaction",
 ]);
 
-const blankTab = (id: string): TabState => ({ id, uri: "", currentUrl: "", title: "New tab", canGoBack: false, canGoForward: false, loading: false, progress: 0 });
+const blankTab = (id: string): TabState => ({ id, uri: "", currentUrl: "", title: "New tab", canGoBack: false, canGoForward: false, loading: false, progress: 0, blocked: undefined, remountKey: 0 });
 
 export function BrowserScreen() {
   const insets = useSafeAreaInsets();
@@ -46,10 +59,15 @@ export function BrowserScreen() {
   const [homeRev, setHomeRev] = useState(0);
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sitesOpen, setSitesOpen] = useState(false);
+  const [connRev, setConnRev] = useState(0);
 
   const idRef = useRef(1);
   const webviews = useRef<Record<string, WebView | null>>({});
   const queue = useRef<PendingRequest[]>([]);
+  const overrides = useRef<Set<string>>(new Set()); // origins the user chose to proceed to
+  const trustedFor = useRef<Record<string, string>>({}); // tabId → origin already eager-connected
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
@@ -69,8 +87,28 @@ export function BrowserScreen() {
 
   const onNav = useCallback((id: string, patch: Partial<TabState>) => {
     if (patch.currentUrl && patch.title !== undefined) addHistory(patch.currentUrl, patch.title, Date.now());
+    // Silent reconnect: on landing on a new origin the user previously connected, push the trusted
+    // state into the page so it reconnects without a prompt.
+    if (patch.currentUrl) {
+      const origin = originOf(patch.currentUrl);
+      if (origin && trustedFor.current[id] !== origin) {
+        trustedFor.current[id] = origin;
+        const evm = isConnected(origin, "evm");
+        const solana = isConnected(origin, "solana");
+        if (evm || solana) {
+          webviews.current[id]?.injectJavaScript(
+            `window.__xgo&&window.__xgo.setTrusted(${JSON.stringify({ evm, solana, evmAddress, solAddress: solanaAddress })});true;`
+          );
+        }
+      }
+    }
     patchTab(id, patch);
-  }, [patchTab]);
+  }, [patchTab, evmAddress, solanaAddress]);
+
+  const checkBlocked = useCallback((url: string): boolean => {
+    if (!isBlockedDomain(hostOf(url))) return false;
+    return !overrides.current.has(originOf(url));
+  }, []);
 
   const navigate = useCallback((input: string) => {
     const url = toUrl(input);
@@ -139,6 +177,15 @@ export function BrowserScreen() {
       return;
     }
 
+    // Silent reconnect for an already-approved origin (user-initiated connect call).
+    if (msg.method === "connect") {
+      const addr = msg.kind === "solana" ? solanaAddress : evmAddress;
+      if (addr && isConnected(msg.origin, msg.kind)) {
+        respond(addr, null);
+        return;
+      }
+    }
+
     const type = msg.method === "connect" ? "connect" : "sign";
     const summary = type === "sign" ? summarizeDappRequest(msg.kind, msg.method, msg.params, evmChainIdHex) : null;
     const req: PendingRequest = { msg, respond, type, summary };
@@ -149,7 +196,7 @@ export function BrowserScreen() {
       }
       return req;
     });
-  }, [respondFor, evmChainIdHex, setActiveChain]);
+  }, [respondFor, evmChainIdHex, setActiveChain, solanaAddress, evmAddress]);
 
   const closePending = useCallback(() => {
     setBusy(false);
@@ -164,6 +211,8 @@ export function BrowserScreen() {
       if (type === "connect") {
         const addr = msg.kind === "solana" ? solanaAddress : evmAddress;
         if (!addr) throw new Error("No account for this chain.");
+        setConnected(msg.origin, msg.kind, Date.now());
+        setConnRev((r) => r + 1);
         respond(addr, null);
       } else {
         const ok = await requireReauth("Confirm this dApp request");
@@ -206,6 +255,39 @@ export function BrowserScreen() {
     setHomeRev((r) => r + 1);
   };
 
+  // --- phishing interstitial ---
+  const proceedBlocked = () => {
+    const url = activeTab?.blocked;
+    if (!url) return;
+    overrides.current.add(originOf(url));
+    setTabs((ts) => ts.map((t) => (t.id === activeId ? { ...t, blocked: undefined, uri: url, remountKey: (t.remountKey ?? 0) + 1 } : t)));
+  };
+
+  // --- ••• menu + connected sites ---
+  const copyLink = async () => { setMenuOpen(false); if (activeTab?.currentUrl) await Clipboard.setStringAsync(activeTab.currentUrl); };
+  const shareLink = () => { setMenuOpen(false); if (activeTab?.currentUrl) Share.share({ message: activeTab.currentUrl, url: activeTab.currentUrl }).catch(() => {}); };
+  const clearData = () => {
+    setMenuOpen(false);
+    Alert.alert("Clear browsing data", "This clears your recent browsing history. Connected sites are managed separately.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Clear", style: "destructive", onPress: () => { clearHistory().then(() => setHomeRev((r) => r + 1)); } },
+    ]);
+  };
+  const disconnectSite = (origin: string) => {
+    disconnectOrigin(origin);
+    tabs.forEach((t) => { if (originOf(t.currentUrl) === origin) webviews.current[t.id]?.injectJavaScript("window.__xgo&&window.__xgo.setUntrusted();true;"); });
+    Object.keys(trustedFor.current).forEach((k) => { if (trustedFor.current[k] === origin) delete trustedFor.current[k]; });
+    setConnRev((r) => r + 1);
+  };
+  const disconnectEverything = () => {
+    disconnectAll().then(() => {
+      tabs.forEach((t) => webviews.current[t.id]?.injectJavaScript("window.__xgo&&window.__xgo.setUntrusted();true;"));
+      trustedFor.current = {};
+      setConnRev((r) => r + 1);
+    });
+  };
+  const connections = useMemo(() => { void connRev; return listConnections(); }, [connRev]);
+
   // Android hardware back navigates the page's history first; only falls through (leaving the
   // browser) when there's nowhere left to go back to.
   useFocusEffect(
@@ -232,7 +314,6 @@ export function BrowserScreen() {
       <View style={{ paddingTop: insets.top }}>
         <BrowserChrome
           tab={activeTab}
-          isFav={favNow}
           tabCount={tabs.length}
           onNavigate={navigate}
           onBack={goBack}
@@ -240,8 +321,8 @@ export function BrowserScreen() {
           onReload={reload}
           onStop={stop}
           onHome={goHome}
-          onToggleFav={toggleFav}
           onTabs={() => setSwitcherOpen(true)}
+          onMenu={() => setMenuOpen(true)}
         />
       </View>
 
@@ -256,9 +337,11 @@ export function BrowserScreen() {
             onNav={(patch) => onNav(t.id, patch)}
             onRequest={(msg) => handleRequest(t.id, msg)}
             onWcUri={(uri) => pair(uri).catch(() => {})}
+            isBlocked={checkBlocked}
           />
         ))}
         {!activeTab?.uri && <DiscoverHome onOpen={navigate} rev={homeRev} />}
+        {activeTab?.blocked && <BlockInterstitial url={activeTab.blocked} onBack={goHome} onProceed={proceedBlocked} />}
       </View>
 
       <ConnectSheet
@@ -288,6 +371,24 @@ export function BrowserScreen() {
         onClose={closeTab}
         onNewTab={newTab}
         onDone={() => setSwitcherOpen(false)}
+      />
+      <BrowserMenu
+        visible={menuOpen}
+        hasUrl={!!activeTab?.currentUrl}
+        isFav={favNow}
+        onClose={() => setMenuOpen(false)}
+        onToggleFav={() => { setMenuOpen(false); toggleFav(); }}
+        onCopy={copyLink}
+        onShare={shareLink}
+        onConnectedSites={() => { setMenuOpen(false); setConnRev((r) => r + 1); setSitesOpen(true); }}
+        onClearData={clearData}
+      />
+      <ConnectedSitesModal
+        visible={sitesOpen}
+        connections={connections}
+        onClose={() => setSitesOpen(false)}
+        onDisconnect={disconnectSite}
+        onDisconnectAll={disconnectEverything}
       />
     </View>
   );

@@ -35,4 +35,8 @@ export interface TabState {
   canGoForward: boolean;
   loading: boolean;
   progress: number;
+  /** Set to the URL when navigation was stopped by the phishing blocklist (shows the interstitial). */
+  blocked?: string;
+  /** Bumped to force-remount the WebView (used to load a URL the user chose to proceed to). */
+  remountKey?: number;
 }

@@ -17,13 +17,20 @@ const SOURCE_URL = process.env.EXPO_PUBLIC_BLOCKLIST_URL;
 
 let solana = new Set<string>();
 let evm = new Set<string>();
+let domains = new Set<string>();
 
-function ingest(data: { solana?: unknown; evm?: unknown }): void {
+const normHost = (h: string): string => h.trim().toLowerCase().replace(/^www\./, "");
+
+function ingest(data: { solana?: unknown; evm?: unknown; domains?: unknown }): void {
   if (Array.isArray(data.solana))
     solana = new Set(data.solana.filter((a): a is string => typeof a === "string"));
   if (Array.isArray(data.evm))
     evm = new Set(
       data.evm.filter((a): a is string => typeof a === "string").map((a) => a.toLowerCase())
+    );
+  if (Array.isArray(data.domains))
+    domains = new Set(
+      data.domains.filter((d): d is string => typeof d === "string").map(normHost)
     );
 }
 
@@ -43,7 +50,7 @@ export async function loadBlocklist(): Promise<void> {
     const data = (await res.json()) as { solana?: unknown; evm?: unknown };
     ingest(data);
     try {
-      await SecureStore.setItemAsync(CACHE_KEY, JSON.stringify({ solana: [...solana], evm: [...evm] }));
+      await SecureStore.setItemAsync(CACHE_KEY, JSON.stringify({ solana: [...solana], evm: [...evm], domains: [...domains] }));
     } catch {
       /* cache write is best-effort */
     }
@@ -60,4 +67,16 @@ export function isBlockedSolana(address: string): boolean {
 /** True if an EVM address is on the scam/drainer blocklist (case-insensitive). */
 export function isBlockedEvm(address: string): boolean {
   return evm.has(address.toLowerCase());
+}
+
+/** True if a website host is on the scam/phishing domain blocklist. Matches the host and any parent
+ *  domain, so a listed `evil.com` also blocks `app.evil.com`. Empty list = nothing blocked. */
+export function isBlockedDomain(host: string): boolean {
+  if (!domains.size || !host) return false;
+  const h = normHost(host);
+  const parts = h.split(".");
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (domains.has(parts.slice(i).join("."))) return true;
+  }
+  return domains.has(h);
 }
