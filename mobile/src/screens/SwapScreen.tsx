@@ -29,6 +29,7 @@ import { EVM_NATIVE, type UnifiedQuote } from "../swap/types";
 import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { haptics } from "../ui/haptics";
+import { getLastFeeAttempt } from "../solana/feeDiagnostics";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { ChainDef } from "../chains/registry";
@@ -257,7 +258,15 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
             try {
               const sig = await swapExecute(quote, (s) => setStatus(s));
               haptics.success();
-              Alert.alert("Swap submitted", "Your swap is confirmed.", [
+              // The community fee rides a second transaction that's deliberately best-effort, so
+              // it can fail without failing the swap. Say so rather than letting the treasury go
+              // quietly unfunded — this is the only place the reason is visible.
+              const fee = getLastFeeAttempt();
+              const feeNote =
+                fee && fee.swapSignature === sig && !fee.ok
+                  ? `\n\nNote: the community fee didn't reach the treasury (${fee.detail}). Your swap is unaffected.`
+                  : "";
+              Alert.alert("Swap submitted", `Your swap is confirmed.${feeNote}`, [
                 { text: "View on explorer", onPress: () => Linking.openURL(activeChain.explorerTx(sig)) },
                 {
                   text: "Done",

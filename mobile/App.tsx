@@ -60,6 +60,7 @@ import { loadPubAddresses } from "./src/wallet/pubAddresses";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
 import { loadCollectiblePrefs, loadCollectibleSnapshots } from "./src/solana/collectibles";
+import { loadLastFeeAttempt } from "./src/solana/feeDiagnostics";
 import { haptics } from "./src/ui/haptics";
 import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
 import { navigationRef, navigate } from "./src/navigationRef";
@@ -313,6 +314,7 @@ export default function App() {
       loadPubAddresses(),
       loadWalletSnapshots(),
       loadCollectiblePrefs(),
+      loadLastFeeAttempt(),
       loadCollectibleSnapshots(),
       loadBrowserData(),
       loadConnections(),

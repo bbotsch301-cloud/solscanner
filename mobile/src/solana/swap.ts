@@ -15,6 +15,7 @@ import {
 import { connection } from "./connection";
 import { XGO_MINT } from "./token2022";
 import { feeBpsFor, TREASURY_FEE_OWNER } from "../config/swapFee";
+import { recordFeeAttempt } from "./feeDiagnostics";
 import { solLogo } from "../config/logos";
 import { toBaseUnits } from "../units";
 import { confirmWithRecovery } from "./tx";
@@ -263,8 +264,9 @@ export async function fetchQuote(
  *  transfers `feeBase` of the output to the treasury. SOL output → a plain lamport transfer to the
  *  treasury wallet; SPL output → a transferChecked into the treasury's (idempotently-created) ATA.
  *  Throws are the caller's to swallow: the swap already succeeded, so a failed fee never fails it. */
-async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: number, feeBase: bigint): Promise<void> {
-  if (feeBase <= 0n || !TREASURY_FEE_OWNER) return;
+async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: number, feeBase: bigint): Promise<string> {
+  if (feeBase <= 0n) throw new Error("computed fee was zero (check the quote's outAmount)");
+  if (!TREASURY_FEE_OWNER) throw new Error("no TREASURY_FEE_OWNER configured");
   const owner = new PublicKey(TREASURY_FEE_OWNER);
   const tx = new Transaction();
   if (outputMint === SOL_MINT) {
@@ -281,7 +283,7 @@ async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: nu
     }
     tx.add(createTransferCheckedInstruction(userAta, mintPk, treasuryAta, keypair.publicKey, feeBase, decimals, [], programId));
   }
-  await sendAndConfirmTransaction(connection, tx, [keypair]);
+  return await sendAndConfirmTransaction(connection, tx, [keypair]);
 }
 
 /**
@@ -352,13 +354,34 @@ export async function executeSwap(
   // ourselves so the treasury is still funded. Best-effort: the swap has already landed, so a
   // failed fee transfer is logged, never surfaced as a swap failure.
   const feeBps = feeCtx?.feeBps ?? 0;
-  if (!q.platformFee && feeBps > 0 && q.outputMint) {
+  if (q.platformFee && feeAccount) {
+    // Jupiter charged it inline as part of the swap itself — nothing more to send.
+    recordFeeAttempt({
+      at: Date.now(),
+      swapSignature: sig,
+      outputMint: q.outputMint ?? "",
+      feeBase: String(q.platformFee.amount ?? ""),
+      route: "jupiter",
+      ok: true,
+      detail: `charged inline to ${feeAccount}`,
+    });
+  } else if (feeBps > 0 && q.outputMint) {
+    const outAmount = BigInt((rawQuote as { outAmount?: string }).outAmount ?? "0");
+    const feeBase = (outAmount * BigInt(feeBps)) / 10000n;
+    const base = {
+      at: Date.now(),
+      swapSignature: sig,
+      outputMint: q.outputMint,
+      feeBase: String(feeBase),
+      route: "self" as const,
+    };
     try {
-      const outAmount = BigInt((rawQuote as { outAmount?: string }).outAmount ?? "0");
-      const feeBase = (outAmount * BigInt(feeBps)) / 10000n;
-      await selfCollectFee(keypair, q.outputMint, feeCtx?.outputDecimals ?? 0, feeBase);
+      const feeSig = await selfCollectFee(keypair, q.outputMint, feeCtx?.outputDecimals ?? 0, feeBase);
+      recordFeeAttempt({ ...base, ok: true, detail: feeSig });
     } catch (e) {
-      console.warn("Community fee self-collect failed (swap succeeded):", e);
+      // Still swallowed — the swap already landed and must not be reported as failed — but the
+      // reason is now recorded so the swap screen and the treasury can both explain it.
+      recordFeeAttempt({ ...base, ok: false, detail: e instanceof Error ? e.message : String(e) });
     }
   }
   return sig;
