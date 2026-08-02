@@ -181,14 +181,23 @@ function ActivityWrap({ children }: { children: ReactNode }) {
   );
 }
 
+/** The key's entrance runs ~1.1s, but a warm start finishes loading in a fraction of that, so the
+ *  splash would flash and vanish mid-turn. Hold it just long enough to land. */
+const SPLASH_MIN_MS = 1250;
+
 function Root() {
   const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp, shouldPromptPin } =
     useWallet();
+  const [splashHeld, setSplashHeld] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setSplashHeld(false), SPLASH_MIN_MS);
+    return () => clearTimeout(t);
+  }, []);
   const { unlocked } = useAuth();
   // One-time legal acceptance, before anything else. Re-shows if LEGAL_VERSION is bumped.
   const [legalOk, setLegalOk] = useState(getAcceptedLegalVersion() >= LEGAL_VERSION);
 
-  if (initializing) return <><StatusBar style="light" /><Splash /></>;
+  if (initializing || splashHeld) return <><StatusBar style="light" /><Splash /></>;
   if (!legalOk)
     return (
       <>
