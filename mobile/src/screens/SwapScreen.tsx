@@ -29,6 +29,7 @@ import { EVM_NATIVE, type UnifiedQuote } from "../swap/types";
 import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { haptics } from "../ui/haptics";
+import { nativeLogo } from "../config/logos";
 import { getLastFeeAttempt } from "../solana/feeDiagnostics";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
@@ -110,7 +111,16 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const owned = useMemo<OwnedToken[]>(() => {
     const list: OwnedToken[] = [
       {
-        token: { mint: nativeMint, symbol: native.symbol, decimals: activeChain.decimals, verified: true },
+        // The logo matters: picking the native token from the sheet replaces `from`/`to` with THIS
+        // object, so omitting it made SOL's mark vanish from the token chip after selection (and
+        // show as a letter placeholder in "Your tokens" while every other row had its icon).
+        token: {
+          mint: nativeMint,
+          symbol: native.symbol,
+          decimals: activeChain.decimals,
+          logoURI: nativeLogo[activeChain.id],
+          verified: true,
+        },
         balance: native.balance ?? 0,
         usd: native.usd,
       },
@@ -127,7 +137,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       })),
     ];
     return list;
-  }, [native, assets, activeChain.decimals, nativeMint]);
+  }, [native, assets, activeChain.decimals, activeChain.id, nativeMint]);
 
   const balanceOf = (mint: string): number => owned.find((o) => o.token.mint === mint)?.balance ?? 0;
 

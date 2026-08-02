@@ -23,6 +23,7 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { Button } from "../components/Button";
 import { SuccessCheck } from "../components/SuccessCheck";
 import { haptics } from "../ui/haptics";
+import { nativeLogo } from "../config/logos";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
 import { isEvmAddress, isChecksumValid } from "../wallet/evm";
 import { looksLikeName, resolveName } from "../naming/resolve";
@@ -97,10 +98,11 @@ export function SendScreen() {
         decimals: activeChain.decimals,
         balance: native.balance ?? 0,
         usd: native.usd,
+        logoURI: nativeLogo[activeChain.id],
       },
       ...assets,
     ],
-    [native, assets, activeChain.decimals]
+    [native, assets, activeChain.decimals, activeChain.id]
   );
 
   const [assetKey, setAssetKey] = useState(route.params?.asset ?? "native");

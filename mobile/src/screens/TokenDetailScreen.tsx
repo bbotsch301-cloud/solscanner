@@ -8,6 +8,7 @@ import { TradingViewChart } from "../components/chart/TradingViewChart";
 import { ChartFullScreen } from "../components/ChartFullScreen";
 import { PressableScale } from "../components/PressableScale";
 import { Skeleton } from "../components/Skeleton";
+import { nativeLogo } from "../config/logos";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
 import { haptics } from "../ui/haptics";
@@ -27,7 +28,7 @@ export function TokenDetailScreen() {
   // Resolve the asset from live wallet state (balances stay fresh).
   const view = useMemo(() => {
     if (assetKey === "native") {
-      return { symbol: native.symbol, name: activeChain.name, decimals: activeChain.decimals, balance: native.balance ?? 0, usd: native.usd, logoURI: undefined as string | undefined, isNative: true, contract: null as string | null };
+      return { symbol: native.symbol, name: activeChain.name, decimals: activeChain.decimals, balance: native.balance ?? 0, usd: native.usd, logoURI: nativeLogo[activeChain.id] as string | undefined, isNative: true, contract: null as string | null };
     }
     const a = assets.find((x) => x.key === assetKey);
     if (!a) return null;
