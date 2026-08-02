@@ -41,6 +41,8 @@ import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
 import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
+import { BrowserScreen } from "./src/browser/BrowserScreen";
+import { loadBrowserData } from "./src/browser/dapps";
 import { loadNetworkPref } from "./src/solana/connection";
 import { loadSecurityPref, getAcceptedLegalVersion, setAcceptedLegalVersion } from "./src/security/prefs";
 import { LEGAL_VERSION } from "./src/legal/content";
@@ -72,6 +74,7 @@ const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home",
   Wallet: "wallet",
   "Buy/Swap": "swap-horizontal",
+  Browser: "compass",
   More: "ellipsis-horizontal",
 };
 
@@ -100,6 +103,7 @@ function Tabs() {
       <Tab.Screen name="Buy/Swap" options={{ tabBarLabel: "Swap" }}>
         {() => <SwapScreen asTab />}
       </Tab.Screen>
+      <Tab.Screen name="Browser" component={BrowserScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
@@ -236,6 +240,7 @@ export default function App() {
       loadApprovals(),
       loadContacts(),
       loadPubAddresses(),
+      loadBrowserData(),
       preloadTokenMetaCache(),
     ]).finally(() => setReady(true));
   }, []);

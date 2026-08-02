@@ -15,32 +15,13 @@ import { humanizeError } from "../solana/errors";
 import { activeEvmAccount as getEvmAccount } from "../wallet/vault";
 import type { EvmAccount } from "../wallet/evm";
 import { useWallet } from "../wallet/WalletContext";
-import * as LocalAuthentication from "expo-local-authentication";
 import { connection } from "../solana/connection";
 import { colors, font, radius, spacing } from "../theme";
-import { pinEnabled } from "../wallet/lock";
-import { isBiometricEnabled } from "../security/prefs";
+import { requireReauth } from "../security/reauth";
 import { wcEnabled } from "./config";
 import { initWalletKit } from "./client";
 import { approvedNamespaces } from "./namespaces";
 import { describeRequest, handleEvmRequest, handleSolanaRequest } from "./handlers";
-
-/**
- * Require a fresh biometric / device-passcode confirmation before signing a fund-moving dApp
- * request. Only gates when the wallet has a lock set; if the device has no biometric/passcode
- * enrolled we can't prompt, so we don't block (the app-entry lock already gated access).
- */
-async function requireReauth(): Promise<boolean> {
-  if (!pinEnabled() && !isBiometricEnabled()) return true;
-  try {
-    const ready = (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync());
-    if (!ready) return true;
-    const r = await LocalAuthentication.authenticateAsync({ promptMessage: "Confirm this dApp request", cancelLabel: "Cancel" });
-    return r.success;
-  } catch {
-    return false;
-  }
-}
 
 interface WCState {
   enabled: boolean;
