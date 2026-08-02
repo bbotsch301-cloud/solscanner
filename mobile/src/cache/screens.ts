@@ -26,6 +26,17 @@ export interface EcoSnapshot {
   prices: Record<string, PriceInfo>;
   ocPrices: OffchainPrices;
   deposits: Deposit[];
+  /**
+   * Whether `deposits` came from a scan that actually SUCCEEDED.
+   *
+   * An empty array is written on failure too (to preserve whatever was there before), so on its
+   * own it can't be told apart from a treasury that genuinely has no inflows — and a snapshot
+   * written during an outage would make the next cold open declare "No deposits yet" instantly,
+   * with total confidence, before it had looked. Same unknown-vs-zero trap as the USD totals, one
+   * level down. Absent on snapshots written before this field existed, which correctly reads as
+   * "not authoritative" and shows the skeleton until this session's scan answers.
+   */
+  depositsLoaded?: boolean;
   supply: number | null;
   fee: TransferFee | null;
 }

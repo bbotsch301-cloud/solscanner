@@ -75,8 +75,11 @@ export function EcosystemScreen() {
   const [ocPrices, setOcPrices] = useState<OffchainPrices>(seed?.ocPrices ?? {});
   const [deposits, setDeposits] = useState<Deposit[]>(seed?.deposits ?? []);
   // "Never fetched" and "fetched, found none" look identical in an empty array — but the first
-  // must show a skeleton and the second an empty state. This is the difference.
-  const [depositsLoaded, setDepositsLoaded] = useState(seed != null);
+  // must show a skeleton and the second an empty state. This is the difference. Note it's seeded
+  // from the snapshot's OWN flag, not from the snapshot merely existing: a snapshot saved while
+  // the scan was failing carries an empty list, and trusting that made the next open announce
+  // "No deposits yet" before it had looked.
+  const [depositsLoaded, setDepositsLoaded] = useState(seed?.depositsLoaded ?? false);
   const [depositsError, setDepositsError] = useState(false);
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [otherExpanded, setOtherExpanded] = useState(false);
@@ -115,15 +118,20 @@ export function EcosystemScreen() {
       setPrices(nextPrices);
       setMetas((prev) => ({ ...prev, ...m }));
       setOcPrices(oc);
-      const nextDeposits = d ?? ecoSnapshots.get(treasuryAddress())?.deposits ?? [];
+      const prevSnap = ecoSnapshots.get(treasuryAddress());
+      const nextDeposits = d ?? prevSnap?.deposits ?? [];
+      // Authoritative if THIS scan succeeded, or if a previous one did and we're just keeping its
+      // list alive through a failure. A failed scan must never upgrade an empty list to "final".
+      const nextDepositsLoaded = d !== null || (prevSnap?.depositsLoaded ?? false);
       setDeposits(nextDeposits);
-      if (d !== null) setDepositsLoaded(true);
+      setDepositsLoaded(nextDepositsLoaded);
       setDepositsError(d === null);
       ecoSnapshots.set(treasuryAddress(), {
         holdings: h,
         prices: nextPrices,
         ocPrices: oc,
         deposits: nextDeposits,
+        depositsLoaded: nextDepositsLoaded,
         supply: s,
         fee: f,
       });
@@ -164,6 +172,10 @@ export function EcosystemScreen() {
 
   const depositsTotal = deposits.reduce((s, d) => s + (d.usd ?? 0), 0);
   const depositsPriced = deposits.every((d) => d.usd != null);
+  // The three deposit states, named once so the tiles and the list can't drift apart:
+  // known (a scan succeeded, or we have rows to show), pending (still looking, nothing to show).
+  const depositsKnown = depositsLoaded || deposits.length > 0;
+  const depositsPending = !depositsKnown && !depositsError;
   const scan = lastDepositScan();
   const customRpc = getCustomRpc();
 
@@ -350,31 +362,32 @@ export function EcosystemScreen() {
       {/* Recent deposits — inflows to the treasury, incl. swap fees */}
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Recent deposits</Text>
-        {depositsLoaded && loading && <Updating style={{ marginTop: spacing(5) }} />}
+        {depositsKnown && loading && <Updating style={{ marginTop: spacing(5) }} />}
       </View>
       <View style={styles.tiles}>
         {/* A skeleton promises a number is coming. Once the load has FAILED nothing is coming, so
             these fall back to "—" rather than pulsing forever over an error message. */}
         <StatTile
           label="Deposits"
-          value={depositsLoaded ? compact(deposits.length) : "—"}
+          value={depositsKnown ? compact(deposits.length) : "—"}
           delta="recent"
-          loading={!depositsLoaded && !depositsError}
+          loading={depositsPending}
         />
         <StatTile
           label="Total in"
           // Deposits whose token has no price contribute nothing to the sum, so the total would
           // read as complete when it isn't. Say so rather than under-report.
-          value={!depositsLoaded ? "—" : depositsPriced ? usd(depositsTotal) : `${usd(depositsTotal)}+`}
+          value={!depositsKnown ? "—" : depositsPriced ? usd(depositsTotal) : `${usd(depositsTotal)}+`}
           delta="recent"
           deltaUp={depositsTotal > 0}
-          loading={!depositsLoaded && !depositsError}
+          loading={depositsPending}
         />
       </View>
       <View style={[styles.list, { marginTop: spacing(3) }]}>
-        {/* Never fetched yet — an empty state here would claim there are no deposits when we
-            simply haven't looked. */}
-        {!depositsLoaded && !depositsError ? (
+        {/* Nothing to show and no scan has succeeded — an empty state here would claim there are
+            no deposits when we simply haven't looked. Cached rows always win over a skeleton:
+            a snapshot from before `depositsLoaded` existed has a real list and no flag. */}
+        {depositsPending ? (
           [0, 1, 2].map((k) => (
             <View key={`dsk${k}`}>
               {k > 0 && <View style={styles.divider} />}
