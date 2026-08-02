@@ -6,8 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { ChainSwitcher } from "../components/ChainSwitcher";
+import { RefreshScroll } from "../components/RefreshScroll";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { TokenSelectSheet, type OwnedToken } from "../components/TokenSelectSheet";
@@ -330,10 +329,10 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         onClose={asTab ? undefined : () => nav.goBack()}
       />
 
-      <ScrollView
+      <RefreshScroll
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* The chain switcher lives here rather than on the Wallet tab. The wallet is the whole
             picture across every network; a swap happens on exactly one, so this is where choosing
@@ -484,7 +483,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
             </Text>
           </View>
         )}
-      </ScrollView>
+      </RefreshScroll>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing(3) }]}>
         {!canSwap ? (

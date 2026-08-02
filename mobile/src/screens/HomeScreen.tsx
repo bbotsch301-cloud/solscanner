@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import { memo, useCallback, useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { enrichActivity, fetchActivity, type HistoryItem } from "../activity";
@@ -11,7 +11,7 @@ import { TokenAvatar } from "../components/TokenAvatar";
 import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
 import { Updating } from "../components/Updating";
-import { BrandSpinner } from "../components/BrandSpinner";
+import { RefreshScroll } from "../components/RefreshScroll";
 import { ActivityRow } from "../components/ActivityRow";
 import { activitySnapshots } from "../cache/screens";
 import { getChain } from "../chains/registry";
@@ -143,31 +143,12 @@ export function HomeScreen() {
   }, [refresh, loadRecent]);
 
   return (
-    <View style={styles.screen}>
-      {/* Sits BEHIND the scroll view, in the strip pull-to-refresh opens up. The list carries the
-          background colour so this is hidden until the pull reveals it — which is why the spinner
-          can live here rather than crowding the balance card. */}
-      {refreshing && (
-        <View style={[styles.refreshSlot, { top: insets.top + spacing(3) }]} pointerEvents="none">
-          <BrandSpinner size={30} />
-        </View>
-      )}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            // Transparent hides the stock grey iOS spinner; ours renders behind instead. The
-            // RefreshControl still owns the gesture, the threshold and the release haptic.
-            tintColor="transparent"
-            colors={["transparent"]}
-            progressBackgroundColor="transparent"
-          />
-        }
-      >
+    <RefreshScroll
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      spinnerTop={insets.top + spacing(5)}
+      contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
+    >
       <Text style={styles.greeting}>{greeting}</Text>
       <View style={styles.headerRow}>
         <WalletSwitcher />
@@ -264,16 +245,12 @@ export function HomeScreen() {
           </View>
         </>
       )}
-      </ScrollView>
-    </View>
+    </RefreshScroll>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  // The list keeps the background so the strip above it stays hidden until a pull reveals it.
-  scroll: { flex: 1, backgroundColor: colors.bg },
-  refreshSlot: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   greeting: { color: colors.accent, fontSize: font.small, fontWeight: weight.bold, textTransform: "uppercase", letterSpacing: tracking.wide, marginBottom: spacing(1) },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
   actions: {
