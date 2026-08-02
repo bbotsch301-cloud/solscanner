@@ -14,10 +14,22 @@
  * With a dedicated RPC (EXPO_PUBLIC_MAINNET_RPC) the limit is far higher; the throttle is a
  * safe no-op-ish ceiling there.
  */
-const MAX_CONCURRENT = 3; // in-flight requests at once
-const MIN_SPACING_MS = 140; // ~7 request starts/sec — under the public endpoint's soft cap
 const MAX_429_RETRIES = 3;
 const RETRY_CAP_MS = 8000;
+
+// Throttle profile — conservative by default for the rate-limited PUBLIC endpoint. When a dedicated
+// RPC is active (Helius etc.), connection.ts relaxes this to near-unbounded concurrency with no
+// spacing, so parallel loads (balances + tokens + prices + deposits) fire at once instead of being
+// drip-fed — the difference between "excruciatingly slow" and Phantom-fast.
+let maxConcurrent = 3; // in-flight requests at once
+let minSpacingMs = 140; // ~7 request starts/sec — under the public endpoint's soft cap
+
+/** Tune the queue for the active RPC. Public → tight; dedicated → wide-open. */
+export function setThrottleProfile(p: { maxConcurrent: number; minSpacingMs: number }): void {
+  maxConcurrent = Math.max(1, p.maxConcurrent);
+  minSpacingMs = Math.max(0, p.minSpacingMs);
+  pump(); // a wider profile may let queued requests start immediately
+}
 
 let active = 0;
 let lastStart = 0;
@@ -40,10 +52,10 @@ async function fetchWithBackoff(input: RequestInfo | URL, init?: RequestInit): P
 }
 
 function pump(): void {
-  if (queue.length === 0 || active >= MAX_CONCURRENT) return;
+  if (queue.length === 0 || active >= maxConcurrent) return;
   const now = Date.now();
-  const earliest = lastStart + MIN_SPACING_MS;
-  if (now < earliest) {
+  const earliest = lastStart + minSpacingMs;
+  if (minSpacingMs > 0 && now < earliest) {
     setTimeout(pump, earliest - now); // honor the minimum spacing between starts
     return;
   }

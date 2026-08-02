@@ -4,40 +4,62 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Server-side proxy for the Solana JSON-RPC endpoint. The mobile app points
- * `EXPO_PUBLIC_MAINNET_RPC` at `${YOUR_BACKEND}/api/rpc`; this route forwards each JSON-RPC POST to
- * the real upstream (e.g. a Helius URL) with the API key injected here — so the key never ships in
- * the app bundle and every user shares one operator-provided RPC with no per-user setup.
+ * Server-side proxy for Solana + EVM JSON-RPC. The mobile app points each network's RPC at
+ * `${YOUR_BACKEND}/api/rpc?chain=<chain>`; this route forwards the JSON-RPC POST to the real upstream
+ * with the provider key injected here — so keys never ship in the app and every user shares one
+ * operator-provided RPC per network, with no per-user setup.
  *
- * Configure the upstream server-side (never exposed to the app), reusing the keys this backend
- * already documents — pick one:
- *   HELIUS_API_KEY=<key>                              (→ https://mainnet.helius-rpc.com/?api-key=…)
- *   MAINNET_RPC=https://<provider>/…                  (any full RPC URL; matches lib/liquidity, lib/tokens)
- * Falls back to the public endpoint if neither is set (so the route never hard-fails, it just isn't
- * faster). Upstream rate limits (and, on Helius, request/origin restrictions) are the abuse control;
- * this is a thin relay, not an open gateway.
+ * `?chain=` selects the network (default `solana-mainnet`, so the plain `/api/rpc` URL keeps working):
+ *   solana-mainnet · solana-devnet · ethereum · bsc
+ *
+ * Configure upstreams server-side (never exposed), reusing the keys this backend already documents.
+ * Each falls back to the public endpoint so the route never hard-fails, it just isn't faster:
+ *   HELIUS_API_KEY=<key>          → Helius mainnet + devnet
+ *   MAINNET_RPC / DEVNET_RPC=<url> → any full Solana RPC URL (MAINNET_RPC also feeds lib/liquidity)
+ *   ETH_RPC / BSC_RPC=<url>        → keyed EVM providers (Alchemy/Infura/QuickNode)
+ * Upstream rate limits (and provider origin/key restrictions) are the abuse control; this is a thin
+ * relay, not an open gateway.
  */
-function upstream(): string {
-  if (process.env.MAINNET_RPC) return process.env.MAINNET_RPC;
-  if (process.env.HELIUS_API_KEY) return `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
-  return process.env.NEXT_PUBLIC_MAINNET_RPC ?? "https://api.mainnet-beta.solana.com";
+type Chain = "solana-mainnet" | "solana-devnet" | "ethereum" | "bsc";
+const CHAINS = new Set<Chain>(["solana-mainnet", "solana-devnet", "ethereum", "bsc"]);
+const heliusUrl = (net: "mainnet" | "devnet") =>
+  process.env.HELIUS_API_KEY ? `https://${net}.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}` : "";
+
+function upstreamFor(chain: Chain): string {
+  switch (chain) {
+    case "solana-devnet":
+      return process.env.DEVNET_RPC || heliusUrl("devnet") || process.env.NEXT_PUBLIC_DEVNET_RPC || "https://api.devnet.solana.com";
+    case "ethereum":
+      return process.env.ETH_RPC || "https://ethereum-rpc.publicnode.com";
+    case "bsc":
+      return process.env.BSC_RPC || "https://bsc-rpc.publicnode.com";
+    case "solana-mainnet":
+    default:
+      return process.env.MAINNET_RPC || heliusUrl("mainnet") || process.env.NEXT_PUBLIC_MAINNET_RPC || "https://api.mainnet-beta.solana.com";
+  }
 }
-const isConfigured = () => !!(process.env.MAINNET_RPC || process.env.HELIUS_API_KEY);
+
+function parseChain(req: NextRequest): Chain {
+  const c = req.nextUrl.searchParams.get("chain") ?? "solana-mainnet";
+  return CHAINS.has(c as Chain) ? (c as Chain) : "solana-mainnet";
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  // Only forward well-formed JSON-RPC payloads (a single call or a batch array) — blocks casual
-  // scans/abuse without maintaining a brittle method allowlist.
+  // Only forward well-formed JSON-RPC (a single call or a batch array) — blocks casual scans/abuse
+  // without a brittle method allowlist. Both Solana (batched getTransaction) and EVM payloads pass.
   try {
     const parsed = JSON.parse(body);
-    const looksRpc = Array.isArray(parsed) ? parsed.every((x) => x && typeof x.method === "string") : typeof parsed?.method === "string";
-    if (!looksRpc) throw new Error("not json-rpc");
+    const ok = Array.isArray(parsed)
+      ? parsed.every((x) => x && typeof x.method === "string")
+      : typeof parsed?.method === "string";
+    if (!ok) throw new Error("not json-rpc");
   } catch {
     return NextResponse.json({ error: "Expected a JSON-RPC request body." }, { status: 400 });
   }
 
   try {
-    const res = await fetch(upstream(), {
+    const res = await fetch(upstreamFor(parseChain(req)), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
@@ -53,11 +75,17 @@ export async function POST(req: NextRequest) {
 }
 
 /** Friendly response when the URL is opened in a browser (the app uses POST). */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const chain = parseChain(req);
+  const dedicated =
+    (chain.startsWith("solana") && !!(process.env.MAINNET_RPC || process.env.DEVNET_RPC || process.env.HELIUS_API_KEY)) ||
+    (chain === "ethereum" && !!process.env.ETH_RPC) ||
+    (chain === "bsc" && !!process.env.BSC_RPC);
   return NextResponse.json({
     ok: true,
-    hint: isConfigured()
+    chain,
+    hint: dedicated
       ? "POST JSON-RPC here (dedicated upstream configured)."
-      : "POST JSON-RPC here. No dedicated upstream set (HELIUS_API_KEY / MAINNET_RPC) — relaying to the public endpoint.",
+      : "POST JSON-RPC here. No dedicated upstream for this chain — relaying to the public endpoint.",
   });
 }

@@ -1,6 +1,6 @@
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 import * as SecureStore from "expo-secure-store";
-import { throttledFetch } from "./rpcThrottle";
+import { throttledFetch, setThrottleProfile } from "./rpcThrottle";
 
 // Route every RPC request through the shared throttle so parallel bursts stay under the
 // public endpoint's rate limit (fewer 429s). "confirmed" commitment for all connections.
@@ -58,11 +58,18 @@ export let IS_MAINNET = NETWORK === "mainnet-beta";
 export let CLUSTER: Network = NETWORK;
 export let connection = new Connection(rpcFor(NETWORK), CONNECTION_CONFIG);
 
+// The rate-limited public endpoints. Anything else (Helius, a proxy, any keyed provider) is treated
+// as dedicated and gets the wide-open throttle profile.
+const PUBLIC_RPCS = new Set(["https://api.mainnet-beta.solana.com", "https://api.devnet.solana.com"]);
+
 function apply(n: Network): void {
   NETWORK = n;
   IS_MAINNET = n === "mainnet-beta";
   CLUSTER = n;
   connection = new Connection(rpcFor(n), CONNECTION_CONFIG);
+  // A dedicated RPC can handle parallel bursts; drop the public-endpoint spacing so loads are fast.
+  const dedicated = !PUBLIC_RPCS.has(rpcFor(n));
+  setThrottleProfile(dedicated ? { maxConcurrent: 8, minSpacingMs: 0 } : { maxConcurrent: 3, minSpacingMs: 140 });
 }
 
 /** Load the saved network choice. Call once at startup, before rendering. */
