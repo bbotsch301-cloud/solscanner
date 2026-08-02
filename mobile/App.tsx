@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { ActivityIndicator, LogBox, Platform, UIManager, View } from "react-native";
+import { Animated, Easing, LogBox, Platform, UIManager, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -33,6 +33,7 @@ import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
 import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
 import { LockScreen } from "./src/screens/LockScreen";
 import { Fade } from "./src/components/Fade";
+import { Crown } from "./src/components/Crown";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
@@ -144,9 +145,21 @@ const navTheme = {
 };
 
 function Splash() {
+  // Just the crown, centered, slowly spinning — no text, no other marks.
+  const [spin] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 2400, easing: Easing.linear, useNativeDriver: true })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-      <ActivityIndicator color={colors.primary} />
+      <Animated.View style={{ transform: [{ rotate }] }}>
+        <Crown size={192} />
+      </Animated.View>
     </View>
   );
 }
