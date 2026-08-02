@@ -1,7 +1,7 @@
 /**
- * One Collection item: full artwork, what it is, and its actions — Open (its portal/link in the
- * in-app Browser), Send (standard NFTs only), View on Solscan, Hide. The item is read from the
- * collectibles snapshot (saved on every fetch), so this screen needs no loading state of its own.
+ * One Collection item: full artwork, what it is, and its actions — Open its content, Send
+ * (standard NFTs only), View on Solscan, Archive (done with it, still yours) and Mark as spam
+ * (junk). The item is read from the collectibles snapshot, so this screen needs no loading state.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
@@ -18,6 +18,8 @@ import {
   fetchCollectible,
   isHiddenItem,
   removeCollectible,
+  isArchived,
+  setArchived,
   setHidden,
   type Collectible,
 } from "../solana/collectibles";
@@ -77,6 +79,8 @@ export function CollectibleDetailScreen() {
   // Derived from the item (so a freshly-fetched one is right too), with the user's tap taking over.
   const [override, setOverride] = useState<boolean | null>(null);
   const hiddenNow = override ?? (item ? isHiddenItem(item) : false);
+  const [archivedOverride, setArchivedOverride] = useState<boolean | null>(null);
+  const archivedNow = archivedOverride ?? isArchived(mint);
   const [sendOpen, setSendOpen] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -221,8 +225,21 @@ export function CollectibleDetailScreen() {
             icon="shield-checkmark-outline"
             onPress={() => Linking.openURL(solscanAccount(item.mint))}
           />
+          {/* Archive is the everyday action — a used ticket or a past event, still yours, just
+              out of the way. Marking something spam is a different (and rarer) judgement, so it
+              sits below and only offers the direction that makes sense for the current state. */}
           <Button
-            label={hiddenNow ? "Unhide from Collection" : "Hide from Collection"}
+            label={archivedNow ? "Restore to Collection" : "Archive"}
+            variant="secondary"
+            icon={archivedNow ? "arrow-undo-outline" : "archive-outline"}
+            onPress={() => {
+              setArchived(mint, !archivedNow);
+              setArchivedOverride(!archivedNow);
+              haptics.tap();
+            }}
+          />
+          <Button
+            label={hiddenNow ? "Not spam — restore" : "Mark as spam"}
             variant="secondary"
             icon={hiddenNow ? "eye-outline" : "eye-off-outline"}
             onPress={() => {

@@ -12,8 +12,9 @@
  *     functional without any API key.
  *
  * Spam: every active wallet gets airdropped junk. Items in an unverified collection with no artwork
- * start in "Hidden"; the user can hide/unhide anything, persisted on-device. The last-good list is
- * also persisted per (cluster, address) so a cold open paints the gallery instantly.
+ * start in "Hidden". Separately, the user can "Archive" anything they're done with — see the prefs
+ * section below for why those two are kept apart. Both persist on-device, as does the last-good
+ * list per (cluster, address) so a cold open paints the gallery instantly.
  */
 import { PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -50,27 +51,44 @@ export interface Collectible {
 }
 
 const HIDDEN_KEY = "collectibles.hidden.v1";
+const ARCHIVED_KEY = "collectibles.archived.v1";
 const SNAP_KEY = "collectibles.snap.v1:";
 const SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const KIND_VALUES: CollectibleKind[] = ["ticket", "membership", "book", "portal", "file", "art"];
 
-// ---- Hidden overrides (user-controlled, persisted; load-once + write-through like pubAddresses).
-// Spam-looking items default to hidden; an explicit user choice (either way) wins. ----
+// ---- Per-item prefs (user-controlled, persisted; load-once + write-through like pubAddresses).
+//
+// Two DIFFERENT ideas, deliberately kept apart:
+//   • HIDDEN — junk. Spam-looking airdrops start here automatically; the user can force-hide
+//     something or rescue a false positive, but this bucket means "not really mine".
+//   • ARCHIVED — a deliberate "I'm done with this". A ticket to an event that's happened, a pass
+//     that's been used. It's still yours, still openable and sendable, just out of the way.
+//
+// Folding these together would file a used ticket in the same drawer as a scam airdrop. ----
 
 let hiddenOverrides = new Map<string, boolean>();
-const hiddenListeners = new Set<() => void>();
+let archivedSet = new Set<string>();
+const prefsListeners = new Set<() => void>();
+
+function notifyPrefs(): void {
+  prefsListeners.forEach((fn) => fn());
+}
 
 export async function loadCollectiblePrefs(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(HIDDEN_KEY);
-    if (raw) hiddenOverrides = new Map(Object.entries(JSON.parse(raw) as Record<string, boolean>));
+    const [rawHidden, rawArchived] = await Promise.all([
+      AsyncStorage.getItem(HIDDEN_KEY),
+      AsyncStorage.getItem(ARCHIVED_KEY),
+    ]);
+    if (rawHidden) hiddenOverrides = new Map(Object.entries(JSON.parse(rawHidden) as Record<string, boolean>));
+    if (rawArchived) archivedSet = new Set(JSON.parse(rawArchived) as string[]);
   } catch {
     /* best-effort */
   }
 }
 
-/** Effective visibility: the user's explicit choice, else hidden-by-default for spam-looking items. */
+/** Junk: the spam heuristic, unless the user has said otherwise either way. */
 export function isHiddenItem(c: Collectible): boolean {
   return hiddenOverrides.get(c.mint) ?? c.likelySpam;
 }
@@ -78,14 +96,26 @@ export function isHiddenItem(c: Collectible): boolean {
 export function setHidden(mint: string, v: boolean): void {
   hiddenOverrides.set(mint, v);
   AsyncStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(hiddenOverrides))).catch(() => {});
-  hiddenListeners.forEach((fn) => fn());
+  notifyPrefs();
 }
 
-/** Subscribe to hide/unhide changes so an open gallery re-splits its sections. Returns unsubscribe. */
-export function onHiddenChange(fn: () => void): () => void {
-  hiddenListeners.add(fn);
+/** Done with, but still yours. Never automatic — only ever the user's own choice. */
+export function isArchived(mint: string): boolean {
+  return archivedSet.has(mint);
+}
+
+export function setArchived(mint: string, v: boolean): void {
+  if (v) archivedSet.add(mint);
+  else archivedSet.delete(mint);
+  AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify([...archivedSet])).catch(() => {});
+  notifyPrefs();
+}
+
+/** Subscribe to hide/archive changes so an open gallery re-splits its sections. Returns unsubscribe. */
+export function onPrefsChange(fn: () => void): () => void {
+  prefsListeners.add(fn);
   return () => {
-    hiddenListeners.delete(fn);
+    prefsListeners.delete(fn);
   };
 }
 

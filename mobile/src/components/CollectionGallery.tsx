@@ -1,7 +1,8 @@
 /**
- * The Collection view of the Wallet tab — a 2-column gallery of the wallet's non-fungible items
- * (access passes, tickets, books, art), artwork-first. Spam-looking items sit in a collapsed
- * "Hidden" section. Paints instantly from the persisted snapshot, refreshes behind.
+ * A 2-column gallery of the wallet's non-fungible items (access passes, tickets, books, art),
+ * artwork-first. Three buckets, each meaning something different: the live grid, a collapsed
+ * "Archived" section the user puts things into once they're done with them, and a collapsed
+ * "Hidden" section for spam-looking junk. Paints instantly from the persisted snapshot.
  */
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +17,8 @@ import {
   fetchCollectibles,
   isHiddenItem,
   onCollectiblesChange,
-  onHiddenChange,
+  isArchived,
+  onPrefsChange,
   type Collectible,
   type CollectibleKind,
 } from "../solana/collectibles";
@@ -79,8 +81,9 @@ export function CollectionGallery({
   const [items, setItems] = useState<Collectible[]>(() => cachedCollectibles(owner) ?? []);
   const [loading, setLoading] = useState(() => !cachedCollectibles(owner));
   const [showHidden, setShowHidden] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
-  // Bumped when the hidden set changes or an item is sent away, so the sections re-split.
+  // Bumped when the hide/archive prefs change or an item is sent away, so sections re-split.
   const [localRev, setLocalRev] = useState(0);
 
   useEffect(() => {
@@ -97,28 +100,31 @@ export function CollectionGallery({
     };
   }, [owner, refreshKey]);
 
-  // Hide/unhide (from the detail screen) and local removals (an item sent away) re-render us.
+  // Hide/archive changes (from the detail screen) and local removals re-render us.
   useEffect(() => {
     const bump = () => setLocalRev((r) => r + 1);
-    const offHidden = onHiddenChange(bump);
+    const offPrefs = onPrefsChange(bump);
     const offItems = onCollectiblesChange(() => {
       setItems(cachedCollectibles(owner) ?? []);
       bump();
     });
     return () => {
-      offHidden();
+      offPrefs();
       offItems();
     };
   }, [owner]);
 
-  const { visible, hidden } = useMemo(() => {
-    void localRev; // recompute after a hide/unhide
+  // Every item lands in exactly one bucket. Junk wins over archived: something the spam heuristic
+  // caught shouldn't dress itself up as a pass the user deliberately put away.
+  const { visible, archived, hidden } = useMemo(() => {
+    void localRev; // recompute after a hide/archive
     const q = query.trim().toLowerCase();
     const match = (c: Collectible) =>
       !q || c.name.toLowerCase().includes(q) || (c.collection ?? "").toLowerCase().includes(q);
     const shown = items.filter(match);
     return {
-      visible: shown.filter((c) => !isHiddenItem(c)),
+      visible: shown.filter((c) => !isHiddenItem(c) && !isArchived(c.mint)),
+      archived: shown.filter((c) => !isHiddenItem(c) && isArchived(c.mint)),
       hidden: shown.filter((c) => isHiddenItem(c)),
     };
   }, [items, query, localRev]);
@@ -159,7 +165,7 @@ export function CollectionGallery({
       <View style={[styles.headerRow, !title && { justifyContent: "flex-end" }]}>
         {title && <Text style={styles.header}>{title}</Text>}
         <Text style={styles.count}>
-          {items.length} item{items.length === 1 ? "" : "s"}
+          {visible.length} item{visible.length === 1 ? "" : "s"}
         </Text>
       </View>
 
@@ -192,8 +198,34 @@ export function CollectionGallery({
         <Text style={styles.note}>
           {query.trim()
             ? `Nothing matches “${query.trim()}”.`
-            : "Everything here is hidden — check the Hidden section below."}
+            : archived.length > 0
+              ? "Everything here is archived — open Archived below."
+              : "Everything here is hidden — check the Hidden section below."}
         </Text>
+      )}
+
+      {archived.length > 0 && (
+        <>
+          <PressableScale
+            haptic={null}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              haptics.tap();
+              setShowArchived((v) => !v);
+            }}
+            style={styles.hiddenToggle}
+          >
+            <Ionicons name={showArchived ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+            <Text style={styles.archivedText}>Archived ({archived.length})</Text>
+          </PressableScale>
+          {showArchived && (
+            <View style={styles.grid}>
+              {archived.map((c) => (
+                <ItemCard key={c.mint} item={c} dimmed onPress={() => open(c.mint)} />
+              ))}
+            </View>
+          )}
+        </>
       )}
 
       {hidden.length > 0 && (
@@ -276,4 +308,5 @@ const styles = StyleSheet.create({
   note: { color: colors.textFaint, fontSize: font.small, textAlign: "center", paddingVertical: spacing(4) },
   hiddenToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(2) },
   hiddenText: { color: colors.textFaint, fontSize: font.small, fontWeight: weight.semibold },
+  archivedText: { color: colors.textMuted, fontSize: font.small, fontWeight: weight.semibold },
 });
