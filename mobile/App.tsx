@@ -5,7 +5,7 @@ import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Animated, Easing, LogBox, Platform, StyleSheet, UIManager, View } from "react-native";
+import { LogBox, Platform, StyleSheet, UIManager, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -35,7 +35,7 @@ import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
 import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
 import { LockScreen } from "./src/screens/LockScreen";
 import { Fade } from "./src/components/Fade";
-import { Crown } from "./src/components/Crown";
+import { KeySplash } from "./src/components/KeySplash";
 import { PrivacyCover } from "./src/components/PrivacyCover";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
@@ -152,25 +152,10 @@ const navTheme = {
 };
 
 function Splash() {
-  // Just the crown, centered — it turns up from upside down and settles upright. No endless
-  // spin: a crown shouldn't sit inverted, and the half turn gives it a single deliberate beat.
-  const [spin] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    const anim = Animated.timing(spin, {
-      toValue: 1,
-      duration: 1100,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [spin]);
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
+  // The Kingdom Key, pulled upright into place. See KeySplash for why it's a spring, not a tween.
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-      <Animated.View style={{ transform: [{ rotate }] }}>
-        <Crown size={192} />
-      </Animated.View>
+      <KeySplash />
     </View>
   );
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWallet } from "../wallet/WalletContext";
 import { XGOLogo } from "../components/XGOLogo";
-import { Crown } from "../components/Crown";
+import { KeySplash } from "../components/KeySplash";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -27,27 +25,13 @@ function formatWait(ms: number): string {
 }
 
 /** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a moment
- *  on-device). Just the Kingdom crown, centered — it turns up from upside down and settles
- *  upright, matching the startup splash in App.tsx. */
+ *  on-device). The same Kingdom Key entrance as the startup splash, so unlocking reads as the same
+ *  ritual as launching. */
 function DecryptingSplash() {
   const insets = useSafeAreaInsets();
-  const [spin] = useState(() => new Animated.Value(0)); // stable Animated value (not a ref)
-  useEffect(() => {
-    const anim = Animated.timing(spin, {
-      toValue: 1,
-      duration: 1100,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [spin]);
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "360deg"] });
   return (
     <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Animated.View style={{ transform: [{ rotate }] }}>
-        <Crown size={192} />
-      </Animated.View>
+      <KeySplash />
     </View>
   );
 }
