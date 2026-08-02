@@ -24,7 +24,8 @@ import {
   createTransferCheckedInstruction,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
-import { connection, CLUSTER } from "../solana/connection";
+import { connection, CLUSTER, isPublicRpc } from "../solana/connection";
+import { fetchAssetsViaDas } from "../solana/das";
 import { getWalletSnapshot, saveWalletSnapshot } from "./snapshotCache";
 import { sendAndConfirmGuarded } from "../solana/tx";
 import { toBaseUnits } from "../units";
@@ -65,7 +66,7 @@ import {
   type AccountRef,
 } from "./vault";
 import { getPubAddress, putPubAddress } from "./pubAddresses";
-import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled } from "../security/prefs";
+import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled, isFastBalancesEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
 import { notifyReceived, registerForBackendPush } from "../ui/notifications";
 import type { EvmAccount } from "./evm";
@@ -292,6 +293,34 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchBalances = useCallback(async (pubkey: PublicKey) => {
+    // Fast-path: on a dedicated (Helius-capable) RPC with the opt-in enabled, one DAS call returns
+    // balances + prices + metadata. Any failure returns null → we fall through to the normal path,
+    // so the balance display can never break.
+    if (!isPublicRpc() && isFastBalancesEnabled()) {
+      const das = await fetchAssetsViaDas(pubkey);
+      if (das) {
+        const solUi = das.lamports / LAMPORTS_PER_SOL;
+        // DAS omits the 24h change; grab just SOL's (one tiny call) so the balance hero keeps its %.
+        const solChange = await fetchPrices([WSOL_MINT]).then((p) => p[WSOL_MINT]?.priceChange24h).catch(() => undefined);
+        const prices = { ...das.prices };
+        if (prices[WSOL_MINT] && solChange != null) prices[WSOL_MINT] = { ...prices[WSOL_MINT], priceChange24h: solChange };
+        setSolBalance(solUi);
+        setTokens(das.tokens);
+        setPrices(prices);
+        saveWalletSnapshot(`sol:${CLUSTER}:${pubkey.toBase58()}`, { solBalance: solUi, tokens: das.tokens, prices });
+        detectReceipts(pubkey.toBase58(), [
+          { key: "native:SOL", symbol: "SOL", amount: solUi, priceUsd: prices[WSOL_MINT]?.usdPrice ?? null },
+          ...das.tokens.map((t) => ({
+            key: t.mint,
+            symbol: t.symbol ?? t.mint.slice(0, 4),
+            amount: t.amount,
+            priceUsd: prices[t.mint]?.usdPrice ?? null,
+          })),
+        ]);
+        return;
+      }
+    }
+
     // Query BOTH token programs so Token-2022 assets (like XGO) show up too.
     const [lamports, legacy, token2022] = await Promise.all([
       connection.getBalance(pubkey),

@@ -11,11 +11,13 @@ const BIOMETRIC_KEY = "solwallet.biometric.v1";
 const PIN_PROMPTED_KEY = "solwallet.pinPrompted.v1";
 const NOTIFICATIONS_KEY = "solwallet.notifications.v1";
 const LEGAL_ACCEPTED_KEY = "solwallet.legalAccepted.v1";
+const FAST_BALANCES_KEY = "solwallet.fastBalances.v1";
 
 let biometricEnabled = false;
 let pinPrompted = false;
 let notificationsEnabled = false;
 let acceptedLegalVersion = 0;
+let fastBalancesEnabled = false;
 
 export function isBiometricEnabled(): boolean {
   return biometricEnabled;
@@ -31,6 +33,12 @@ export function isPinPrompted(): boolean {
   return pinPrompted;
 }
 
+/** True if the user enabled the Helius DAS fast-path (one call for tokens+prices+metadata).
+ *  Off by default; only takes effect on a dedicated (Helius-capable) RPC, and falls back safely. */
+export function isFastBalancesEnabled(): boolean {
+  return fastBalancesEnabled;
+}
+
 /** Highest legal-documents version the user has accepted (0 = never). Compared against
  *  LEGAL_VERSION so a bumped version re-triggers the first-run acceptance gate. */
 export function getAcceptedLegalVersion(): number {
@@ -39,16 +47,18 @@ export function getAcceptedLegalVersion(): number {
 
 export async function loadSecurityPref(): Promise<void> {
   try {
-    const [bio, prompted, notif, legal] = await Promise.all([
+    const [bio, prompted, notif, legal, fast] = await Promise.all([
       SecureStore.getItemAsync(BIOMETRIC_KEY),
       SecureStore.getItemAsync(PIN_PROMPTED_KEY),
       SecureStore.getItemAsync(NOTIFICATIONS_KEY),
       SecureStore.getItemAsync(LEGAL_ACCEPTED_KEY),
+      SecureStore.getItemAsync(FAST_BALANCES_KEY),
     ]);
     biometricEnabled = bio === "on"; // default off unless explicitly enabled
     pinPrompted = prompted === "1";
     notificationsEnabled = notif === "on";
     acceptedLegalVersion = legal ? parseInt(legal, 10) || 0 : 0;
+    fastBalancesEnabled = fast === "on";
   } catch {
     /* keep defaults (biometric off, not prompted) */
   }
@@ -68,6 +78,15 @@ export async function setNotificationsEnabled(v: boolean): Promise<void> {
   notificationsEnabled = v;
   try {
     await SecureStore.setItemAsync(NOTIFICATIONS_KEY, v ? "on" : "off");
+  } catch {
+    /* best-effort */
+  }
+}
+
+export async function setFastBalancesEnabled(v: boolean): Promise<void> {
+  fastBalancesEnabled = v;
+  try {
+    await SecureStore.setItemAsync(FAST_BALANCES_KEY, v ? "on" : "off");
   } catch {
     /* best-effort */
   }

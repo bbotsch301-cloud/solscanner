@@ -8,7 +8,7 @@ import { useAuth } from "../auth";
 import type { RootNav } from "../navigation";
 import { useWallet } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET, setNetwork, solscanAccount, setCustomRpc, getCustomRpc, isPublicRpc, type Network } from "../solana/connection";
-import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled } from "../security/prefs";
+import { isBiometricEnabled, setBiometricEnabled, isNotificationsEnabled, setNotificationsEnabled, isFastBalancesEnabled, setFastBalancesEnabled } from "../security/prefs";
 import { requestNotificationPermission, notifyReceived } from "../ui/notifications";
 import { PinActionModal, type PinAction } from "../components/PinActionModal";
 import { IconChip } from "../components/IconChip";
@@ -49,6 +49,12 @@ export function SettingsScreen() {
   const [notifications, setNotifications] = useState(isNotificationsEnabled());
   const [pinAction, setPinAction] = useState<PinAction>(null);
   const [rpcUrl, setRpcUrl] = useState(getCustomRpc() ?? "");
+  const [fastBalances, setFastBalances] = useState(isFastBalancesEnabled());
+
+  const toggleFastBalances = (v: boolean) => {
+    setFastBalances(v);
+    setFastBalancesEnabled(v);
+  };
 
   const saveRpc = () => {
     const url = rpcUrl.trim();
@@ -207,6 +213,22 @@ export function SettingsScreen() {
         <Text style={styles.hint}>
           The public endpoint is rate-limited, so treasury deposits and history often fail to load. A
           dedicated RPC (a free Helius key works) fixes it. Stored only on this device.
+        </Text>
+        <View style={styles.divider} />
+        <View style={styles.netRow}>
+          <Ionicons name="flash-outline" size={20} color={colors.primary} />
+          <Text style={styles.rowLabel}>Fast balances (Helius)</Text>
+          <Switch
+            value={fastBalances}
+            onValueChange={toggleFastBalances}
+            trackColor={{ true: colors.primary, false: colors.cardBorder }}
+            thumbColor={colors.text}
+          />
+        </View>
+        <Text style={styles.hint}>
+          Loads your tokens, prices, and logos in one Helius call instead of many — much faster and
+          cheaper at scale. Needs a dedicated/Helius RPC above; falls back automatically otherwise.
+          Applies on the next refresh.
         </Text>
       </View>
 
