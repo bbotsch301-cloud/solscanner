@@ -6,7 +6,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bs58 from "bs58";
-import { ed25519 } from "@noble/curves/ed25519";
+import { signMessageBytes } from "../solana/signMessage";
 import { Keypair, VersionedTransaction, Transaction, type Connection } from "@solana/web3.js";
 import { CHAINS } from "../chains/registry";
 import type { EvmAccount } from "../wallet/evm";
@@ -213,8 +213,7 @@ export async function handleSolanaRequest(
 ): Promise<any> {
   switch (method) {
     case "solana_signMessage": {
-      const msg = bs58.decode(params.message);
-      const sig = ed25519.sign(msg, keypair.secretKey.slice(0, 32));
+      const sig = signMessageBytes(keypair, bs58.decode(params.message));
       return { signature: bs58.encode(sig) };
     }
     case "solana_signTransaction":

@@ -22,6 +22,7 @@
     "@walletconnect/react-native-compat": "^2.23.10",
     "@walletconnect/utils": "^2.23.10",
     "bip39": "^3.1.0",
+    "bs58": "^4.0.1",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "expo": "~54.0.35",

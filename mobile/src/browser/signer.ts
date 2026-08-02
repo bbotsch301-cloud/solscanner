@@ -4,7 +4,7 @@
  * (the page can't depend on bs58), returning the signer's raw signature bytes so the page can apply
  * them to its own transaction object. Runs only AFTER the user approves in the sheet.
  */
-import { ed25519 } from "@noble/curves/ed25519";
+import { signMessageBytes } from "../solana/signMessage";
 import { Keypair, VersionedTransaction, Transaction } from "@solana/web3.js";
 import { connection } from "../solana/connection";
 import { CHAINS } from "../chains/registry";
@@ -84,8 +84,7 @@ function serializeSigned(tx: VersionedTransaction | Transaction): string {
 export async function runSolanaRequest(method: string, params: Record<string, unknown>, kp: Keypair): Promise<unknown> {
   switch (method) {
     case "solana_signMessage": {
-      const msg = b64ToBytes(String(params.message));
-      const sig = ed25519.sign(msg, kp.secretKey.slice(0, 32));
+      const sig = signMessageBytes(kp, b64ToBytes(String(params.message)));
       return { signature: bytesToB64(sig) };
     }
     case "solana_signTransaction": {

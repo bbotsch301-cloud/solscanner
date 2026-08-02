@@ -24,6 +24,7 @@ import {
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
 import { openContentUrl } from "../access/openContent";
+import { attemptGatedUrl } from "../access/vault";
 import { navigationRef } from "../navigationRef";
 import { useWallet } from "../wallet/WalletContext";
 import { solscanAccount } from "../solana/connection";
@@ -45,7 +46,7 @@ export function CollectibleDetailScreen() {
   const nav = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootStackParamList, "Collectible">>();
   const insets = useSafeAreaInsets();
-  const { activeAddress, solanaAddress, sendToken } = useWallet();
+  const { activeAddress, solanaAddress, sendToken, keypair } = useWallet();
   const owner = solanaAddress ?? activeAddress;
   const mint = route.params.mint;
 
@@ -80,6 +81,7 @@ export function CollectibleDetailScreen() {
   const [recipient, setRecipient] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
 
   if (!item) {
     return (
@@ -106,7 +108,23 @@ export function CollectibleDetailScreen() {
         navigationRef.navigate({ name: "Tabs", params: { screen: "Browser" } } as never);
       return;
     }
-    const r = await openContentUrl(access.url);
+    // If the vault is configured and publishes this asset, prove ownership and open the
+    // short-lived link it hands back. Unconfigured (today) → null → the public link below.
+    let url = access.url;
+    if (keypair && owner) {
+      setUnlocking(true);
+      try {
+        url = (await attemptGatedUrl(item, owner, keypair)) ?? access.url;
+      } catch (e) {
+        // A refusal is real information — don't quietly open the public link instead.
+        Alert.alert("Locked", e instanceof Error ? e.message : "This pass didn't unlock the content.");
+        return;
+      } finally {
+        setUnlocking(false);
+      }
+    }
+
+    const r = await openContentUrl(url);
     if (r === "blocked")
       Alert.alert("Blocked", "This link is on the phishing blocklist, so it wasn't opened.");
     else if (r !== "opened") Alert.alert("Couldn't open", "This item's link could not be opened.");
@@ -182,7 +200,14 @@ export function CollectibleDetailScreen() {
         )}
 
         <View style={styles.actions}>
-          {access && <Button label={accessVerb(item.kind)} icon="open-outline" onPress={openContent} />}
+          {access && (
+            <Button
+              label={unlocking ? "Unlocking…" : accessVerb(item.kind)}
+              icon="open-outline"
+              onPress={openContent}
+              disabled={unlocking}
+            />
+          )}
           {item.transferable ? (
             <Button label="Send" variant="secondary" icon="arrow-up" onPress={() => setSendOpen(true)} />
           ) : (
