@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -27,40 +26,25 @@ function formatWait(ms: number): string {
   return m < 60 ? `${m} min` : `${Math.ceil(m / 60)} hr`;
 }
 
-/** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a
- *  moment on-device). The Kingdom crown starts upside down and rights itself as it loads;
- *  a gentle pulse + spinner keep the wait reading as progress. */
+/** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a moment
+ *  on-device). Just the Kingdom crown, centered and slowly spinning — no text, no other marks —
+ *  matching the startup splash in App.tsx. */
 function DecryptingSplash() {
   const insets = useSafeAreaInsets();
-  const [pulse] = useState(() => new Animated.Value(0)); // stable Animated values (not refs)
-  const [spin] = useState(() => new Animated.Value(0));
+  const [spin] = useState(() => new Animated.Value(0)); // stable Animated value (not a ref)
   useEffect(() => {
-    const pulseAnim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 850, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
+    const anim = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 2400, easing: Easing.linear, useNativeDriver: true })
     );
-    // Rotate from upside-down (180°) to upright (0°) once, settling as the wallet unlocks.
-    const rightUp = Animated.timing(spin, { toValue: 1, duration: 1900, easing: Easing.out(Easing.cubic), useNativeDriver: true });
-    pulseAnim.start();
-    rightUp.start();
-    return () => {
-      pulseAnim.stop();
-      rightUp.stop();
-    };
-  }, [pulse, spin]);
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
-  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] });
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["180deg", "0deg"] });
+    anim.start();
+    return () => anim.stop();
+  }, [spin]);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   return (
     <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Animated.View style={{ transform: [{ rotate }, { scale }], opacity }}>
-        <Crown size={112} />
+      <Animated.View style={{ transform: [{ rotate }] }}>
+        <Crown size={192} />
       </Animated.View>
-      <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: spacing(9) }} />
-      <Text style={styles.splashTitle}>Entering the Kingdom…</Text>
-      <Text style={styles.splashSub}>Decrypting your wallets on this device. This can take a moment.</Text>
     </View>
   );
 }
@@ -185,7 +169,5 @@ const styles = StyleSheet.create({
   error: { color: colors.negative, fontSize: font.small, textAlign: "center", marginTop: spacing(3) },
   forgot: { alignItems: "center", paddingVertical: spacing(4) },
   forgotText: { color: colors.textMuted, fontSize: font.small, fontWeight: "700" },
-  splash: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing(8) },
-  splashTitle: { color: colors.text, fontSize: font.h2, fontWeight: "900", marginTop: spacing(6), textAlign: "center" },
-  splashSub: { color: colors.textMuted, fontSize: font.body, textAlign: "center", lineHeight: 22, marginTop: spacing(2) },
+  splash: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
 });
