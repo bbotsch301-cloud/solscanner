@@ -46,6 +46,8 @@ export function MoreScreen() {
       <View style={styles.group}>
         <Row icon="wallet" label="Wallets & accounts" onPress={() => nav.navigate("Wallets")} />
         <View style={styles.divider} />
+        <Row icon="bag-handle" label="Purchases" onPress={() => nav.navigate("Purchases")} />
+        <View style={styles.divider} />
         <Row icon="book" label="Address book" onPress={() => nav.navigate("Contacts")} />
         <View style={styles.divider} />
         <Row icon="people-circle" label="Multisig treasury" onPress={() => nav.navigate("Multisig")} />

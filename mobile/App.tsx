@@ -9,6 +9,7 @@ import { Animated, Easing, LogBox, Platform, UIManager, View } from "react-nativ
 import { Ionicons } from "@expo/vector-icons";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
+import { PurchasesScreen } from "./src/screens/PurchasesScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
@@ -252,6 +253,7 @@ function Root() {
           <Stack.Screen name="ConnectMultisig" component={ConnectMultisigScreen} />
           <Stack.Screen name="ManageSigners" component={ManageSignersScreen} />
           <Stack.Screen name="ProposeTransfer" component={ProposeTransferScreen} />
+          <Stack.Screen name="Purchases" component={PurchasesScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />

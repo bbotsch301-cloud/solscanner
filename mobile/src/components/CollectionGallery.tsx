@@ -63,7 +63,16 @@ function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boole
   );
 }
 
-export function CollectionGallery({ owner, refreshKey }: { owner: string; refreshKey: number }) {
+export function CollectionGallery({
+  owner,
+  refreshKey,
+  title = "Collection",
+}: {
+  owner: string;
+  refreshKey: number;
+  /** Section label above the grid. Pass null when the screen already has its own title. */
+  title?: string | null;
+}) {
   const nav = useNavigation<RootNav>();
   // Seeded synchronously from the persisted snapshot (parent remounts us per owner via `key`), so
   // the gallery paints instantly; the effect below only revalidates in the background.
@@ -147,8 +156,8 @@ export function CollectionGallery({ owner, refreshKey }: { owner: string; refres
 
   return (
     <View>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>Collection</Text>
+      <View style={[styles.headerRow, !title && { justifyContent: "flex-end" }]}>
+        {title && <Text style={styles.header}>{title}</Text>}
         <Text style={styles.count}>
           {items.length} item{items.length === 1 ? "" : "s"}
         </Text>
