@@ -24,6 +24,11 @@ function formatWait(ms: number): string {
   return m < 60 ? `${m} min` : `${Math.ceil(m / 60)} hr`;
 }
 
+/** The entrance is given this long before the unlock runs. Without it the screen lives only as long
+ *  as scrypt, which on a quick device is a fraction of the ~940ms turn — so the key barely moved.
+ *  The cost is real: unlocking takes this plus the derivation. */
+const UNLOCK_MIN_MS = 1000;
+
 /** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a moment
  *  on-device). The same Kingdom Key entrance as the startup splash, so unlocking reads as the same
  *  ritual as launching. */
@@ -57,6 +62,9 @@ export function PinUnlockScreen() {
     if (value.length < 6 || busy || lockedOut) return;
     setBusy(true);
     setError(null);
+    // Let the key's entrance play BEFORE unlocking. A successful unlock flips `locked` and unmounts
+    // this screen immediately, so any hold applied after the fact would only ever delay failures.
+    await new Promise((r) => setTimeout(r, UNLOCK_MIN_MS));
     try {
       const ok = await unlockWithPin(value);
       if (ok) {
