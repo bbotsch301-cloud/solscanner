@@ -15,30 +15,46 @@ import { solLogo, LOGO_OVERRIDES } from "../config/logos";
 // Persistent metadata cache key prefix. Bump the version to invalidate all stored entries
 // (v2: pump.fun logo source + reliable-gateway handling).
 const TM_KEY = "tm.v2:";
-// A stored logo older than this is refreshed in the background (stale-while-revalidate), so a
-// token that changed its logo/name eventually updates without ever showing a blank.
-const TM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// A stored entry older than its TTL is refreshed in the background (stale-while-revalidate), so a
+// token that changed its logo/name eventually updates without ever showing a blank. The TTL depends
+// on how complete the entry is: a finished one can sit for a month, an incomplete one should try
+// again sooner, and a mint we couldn't resolve at all should retry sooner still — but NOT on every
+// cold open, which is what happened when misses weren't persisted at all.
+const TM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — symbol + logo, nothing left to find
+const TM_TTL_PARTIAL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days — has a symbol but no logo yet
+const TM_TTL_MISS_MS = 24 * 60 * 60 * 1000; // 1 day — resolved to nothing
+
+function ttlFor(meta: TokenMeta | null): number {
+  if (!meta) return TM_TTL_MISS_MS;
+  return meta.logoURI ? TM_TTL_MS : TM_TTL_PARTIAL_MS;
+}
 
 // Mints currently being refreshed in the background — avoids duplicate concurrent refreshes.
 const refreshing = new Set<string>();
 
-/** Read a stored entry. Handles the legacy (unstamped) format too — an unstamped entry reads
- *  as stale, so it refreshes once and re-saves in the stamped format. */
-async function readPersisted(mint: string): Promise<{ meta: TokenMeta; stale: boolean } | undefined> {
+/** Read a stored entry. `meta: null` is a persisted MISS (we looked and found nothing) — distinct
+ *  from `undefined`, which means nothing is stored. Handles the legacy (unstamped) format too — an
+ *  unstamped entry reads as stale, so it refreshes once and re-saves in the stamped format. */
+async function readPersisted(
+  mint: string
+): Promise<{ meta: TokenMeta | null; stale: boolean } | undefined> {
   try {
     const raw = await AsyncStorage.getItem(TM_KEY + mint);
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { meta?: TokenMeta; ts?: number } & Partial<TokenMeta>;
-    const meta = (parsed.meta ?? parsed) as TokenMeta; // {meta,ts} (new) or raw TokenMeta (legacy)
+    const parsed = JSON.parse(raw) as { meta?: TokenMeta | null; ts?: number } & Partial<TokenMeta>;
+    // {meta,ts} (current — `meta` may be an explicit null) or a raw TokenMeta (legacy). Test for
+    // the key rather than `parsed.meta ?? parsed`, which would mistake a stored null for legacy.
+    const stored = "meta" in parsed ? parsed.meta ?? null : (parsed as TokenMeta);
+    const meta = stored?.symbol ? stored : null;
     const ts = parsed.ts ?? 0;
-    if (!meta?.symbol) return undefined;
-    return { meta, stale: Date.now() - ts > TM_TTL_MS };
+    return { meta, stale: Date.now() - ts > ttlFor(meta) };
   } catch {
     return undefined;
   }
 }
-function writePersisted(mint: string, meta: TokenMeta): void {
-  warm.set(mint, meta);
+/** Persist an outcome. `null` records that the mint resolved to nothing, so we stop re-asking. */
+function writePersisted(mint: string, meta: TokenMeta | null): void {
+  if (meta) warm.set(mint, meta);
   AsyncStorage.setItem(TM_KEY + mint, JSON.stringify({ meta, ts: Date.now() })).catch(() => {});
 }
 
@@ -54,8 +70,10 @@ export async function preloadTokenMetaCache(): Promise<void> {
     for (const [k, raw] of await AsyncStorage.multiGet(keys)) {
       if (!raw) continue;
       try {
-        const parsed = JSON.parse(raw) as { meta?: TokenMeta } & Partial<TokenMeta>;
-        const meta = (parsed.meta ?? parsed) as TokenMeta;
+        const parsed = JSON.parse(raw) as { meta?: TokenMeta | null } & Partial<TokenMeta>;
+        const meta = "meta" in parsed ? parsed.meta : (parsed as TokenMeta);
+        // Persisted misses (meta: null) stay out of the warm map — it's the "what do we know"
+        // map that `cachedTokenMetas` reads, and a miss is precisely not knowing.
         if (meta?.symbol) warm.set(k.slice(TM_KEY.length), meta);
       } catch {
         /* skip a corrupt entry */
@@ -253,10 +271,13 @@ async function refreshInBackground(mint: string): Promise<void> {
   refreshing.add(mint);
   try {
     const fresh = await resolveFromNetwork(mint);
-    if (fresh?.logoURI) {
-      cache.set(mint, fresh);
-      writePersisted(mint, fresh); // re-stamps the timestamp
-    }
+    // Nothing came back: keep whatever we had, and leave the timestamp alone so we try again.
+    if (!fresh) return;
+    // Never downgrade: if we already had a logo and this resolution didn't find one, keep ours.
+    const current = cache.get(mint) ?? warm.get(mint) ?? null;
+    const next = !fresh.logoURI && current?.logoURI ? { ...fresh, logoURI: current.logoURI } : fresh;
+    cache.set(mint, next);
+    writePersisted(mint, next); // re-stamps the timestamp
   } catch {
     /* keep the stale entry */
   } finally {
@@ -271,17 +292,24 @@ export async function fetchTokenMeta(mint: string): Promise<TokenMeta | undefine
   // Persistent cache (survives app restarts): a stored hit skips network resolution. If it's
   // older than the TTL, return it immediately AND refresh in the background for next time.
   const persisted = await readPersisted(mint);
-  if (persisted) {
+  if (persisted?.meta) {
     cache.set(mint, persisted.meta);
     if (persisted.stale) void refreshInBackground(mint);
     return persisted.meta;
   }
+  // A stored MISS that's still fresh: we already looked and found nothing, so don't spend a
+  // round-trip on it again this session. A stale miss falls through and retries.
+  if (persisted && !persisted.stale) {
+    cache.set(mint, null);
+    return undefined;
+  }
 
   const result = await resolveFromNetwork(mint);
   cache.set(mint, result ?? null);
-  // Persist only fully-resolved entries (with a logo) — that's the expensive thing to keep on
-  // disk. Logo-less / missed lookups stay in-memory so they retry (and may find a logo) later.
-  if (result?.logoURI) writePersisted(mint, result);
+  // Persist EVERY outcome. Previously only logo-bearing entries were written, so a logo-less
+  // token — and every mint that isn't listed anywhere — re-resolved from the network on each
+  // cold open. The shorter TTLs above are what let those keep improving over time.
+  writePersisted(mint, result ?? null);
   return result;
 }
 

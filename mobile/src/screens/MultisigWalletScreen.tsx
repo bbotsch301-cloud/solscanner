@@ -11,8 +11,8 @@ import { useWallet } from "../wallet/WalletContext";
 import { fetchMultisigInfo, isMember, type MultisigInfo } from "../solana/multisig";
 import { fetchHoldings, type Holdings } from "../solana/treasury";
 import { buildAllocation } from "../solana/allocation";
-import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
-import { fetchTokenMetas, type TokenMeta } from "../solana/tokens";
+import { fetchPrices, cachedPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
+import { fetchTokenMetas, cachedTokenMetas, type TokenMeta } from "../solana/tokens";
 import { activeMultisigAddress, multisigConfigured, multisigLabel } from "../config/multisig";
 import { solscanAccount } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing, usd } from "../theme";
@@ -39,12 +39,17 @@ export function MultisigWalletScreen() {
         const h = await fetchHoldings(i.vault);
         setHoldings(h);
         const mints = h.tokens.map((t) => t.mint);
+        // Seed from the warm caches so the vault's rows render named, logo'd and priced the
+        // moment the holdings land, rather than resolving to "$0.00" until the fetches return.
+        setMetas((prev) => ({ ...cachedTokenMetas(mints), ...prev }));
+        setPrices((prev) => ({ ...cachedPrices([WSOL_MINT, ...mints]), ...prev }));
         const [p, m] = await Promise.all([
           fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
           fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
         ]);
-        setPrices(p);
-        setMetas(m);
+        // A failed price/meta call must not wipe what we're already painting with.
+        if (Object.keys(p).length) setPrices(p);
+        setMetas((prev) => ({ ...prev, ...m }));
       }
     } catch {
       /* keep last */
@@ -62,7 +67,10 @@ export function MultisigWalletScreen() {
   const member = isMember(info, solanaAddress);
   const label = multisigLabel(activeMultisigAddress());
   // A multisig vault holds only on-chain assets (no off-chain silver/dinar); lump the tail.
-  const { slices, rows, total } = buildAllocation(holdings, prices, metas, {}, { includeOffchain: false, topN: 5 });
+  const { slices, rows, total, priced, unpriced } = buildAllocation(holdings, prices, metas, {}, { includeOffchain: false, topN: 5 });
+  // Holdings without any pricing yet would total a confident $0.00 — the same rule as the
+  // treasury page: a figure is only shown once something in it could actually be priced.
+  const valueKnown = holdings != null && !(priced === 0 && unpriced > 0);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing(2) }]}>
@@ -84,7 +92,7 @@ export function MultisigWalletScreen() {
             Multisig vault{info ? ` · ${info.threshold} of ${info.members.length}` : ""}
           </Text>
           <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
-            {holdings ? usd(total) : "—"}
+            {valueKnown ? usd(total) : "—"}
           </Text>
           {info && (
             <View style={styles.addrRow}>

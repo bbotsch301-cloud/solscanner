@@ -11,11 +11,16 @@ import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
+import { Updating } from "../components/Updating";
 import { ActivityRow } from "../components/ActivityRow";
+import { activitySnapshots } from "../cache/screens";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
 import { compact, colors, font, radius, spacing, tracking, usd as fmtUsd, weight } from "../theme";
 import type { RootNav } from "../navigation";
+
+/** How many transactions the Wallet tab previews before "View all". */
+const RECENT_COUNT = 4;
 
 /** One token row in the Wallet list. Memoized + a stable `onOpen` so it skips re-render when
  *  the screen re-renders (e.g. on pull-to-refresh) with unchanged token data. */
@@ -58,24 +63,34 @@ export function HomeScreen() {
     refresh,
     airdrop,
   } = useWallet();
-  const { busy, error } = useWalletStatus();
+  const { busy, error, refreshing: walletRefreshing } = useWalletStatus();
 
   const isSolana = activeChain.kind === "solana";
-  const empty = (native.balance ?? 0) === 0 && assets.length === 0;
+  // `native.balance == null` means "not loaded yet", and `?? 0` turned that into "empty wallet" —
+  // so a funded wallet flashed the "Fund your wallet" card on every cold open, and the token
+  // skeletons below could never render because this guard was already true.
+  const empty = native.balance != null && native.balance === 0 && assets.length === 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const network = isSolana ? (CLUSTER === "devnet" ? "Devnet" : "Mainnet") : activeChain.name;
   const openToken = useCallback((key: string) => nav.navigate("TokenDetail", { asset: key }), [nav]);
 
-  const [recent, setRecent] = useState<HistoryItem[]>([]);
+  // Seeded from the same persisted history the Activity screen writes, so "Recent activity"
+  // is already on screen at first paint instead of popping in a second later.
+  const [recent, setRecent] = useState<HistoryItem[]>(
+    () => activitySnapshots.get(`${activeChain.id}:${activeAddress ?? ""}`)?.slice(0, RECENT_COUNT) ?? []
+  );
   const [refreshing, setRefreshing] = useState(false);
   const loadRecent = useCallback(async () => {
     if (!activeAddress) {
       setRecent([]);
       return;
     }
+    // Cover a chain/account switch too — show that scope's last-known rows immediately.
+    const cached = activitySnapshots.get(`${activeChain.id}:${activeAddress}`);
+    if (cached) setRecent(cached.slice(0, RECENT_COUNT));
     try {
-      const rows = await fetchActivity(activeChain, activeAddress, 4);
+      const rows = await fetchActivity(activeChain, activeAddress, RECENT_COUNT);
       setRecent(rows);
       // Then work out what each one actually did (cached permanently after the first time).
       setRecent(await enrichActivity(activeChain, activeAddress, rows));
@@ -155,7 +170,12 @@ export function HomeScreen() {
           Hidden entirely for a native-only wallet so it never renders an empty bordered box. */}
       {!empty && (assets.length > 0 || native.balance == null) && (
         <>
-          <Text style={styles.sectionTitle}>Tokens</Text>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Tokens</Text>
+            {/* Rows painted from the persisted snapshot while a refresh runs. The pull-to-refresh
+                spinner only appears when the USER pulled; this covers the automatic refresh. */}
+            {assets.length > 0 && walletRefreshing && !refreshing && <Updating />}
+          </View>
           <View style={styles.card}>
             {native.balance == null && assets.length === 0
               ? [0, 1, 2].map((k) => (

@@ -30,8 +30,8 @@ import { getWalletSnapshot, saveWalletSnapshot } from "./snapshotCache";
 import { sendAndConfirmGuarded } from "../solana/tx";
 import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
-import { fetchPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
-import { fetchTokenMetas } from "../solana/tokens";
+import { fetchPrices, cachedPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
+import { fetchTokenMetas, cachedTokenMetas } from "../solana/tokens";
 import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "../chains/registry";
 import { getBalance as getEvmBalance } from "../evm/rpc";
 import { fetchEvmTokenBalances, type EvmTokenBalance } from "../evm/tokens";
@@ -307,7 +307,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const solUi = das.lamports / LAMPORTS_PER_SOL;
         // DAS omits the 24h change; grab just SOL's (one tiny call) so the balance hero keeps its %.
         const solChange = await fetchPrices([WSOL_MINT]).then((p) => p[WSOL_MINT]?.priceChange24h).catch(() => undefined);
-        const prices = { ...das.prices };
+        // DAS can come back with no pricing at all; fall back to the recent-price cache rather
+        // than publishing an empty map, which would render every holding as $0.00.
+        const prices = Object.keys(das.prices).length
+          ? { ...das.prices }
+          : cachedPrices([WSOL_MINT, ...das.tokens.map((t) => t.mint)]);
         if (prices[WSOL_MINT] && solChange != null) prices[WSOL_MINT] = { ...prices[WSOL_MINT], priceChange24h: solChange };
         setSolBalance(solUi);
         setTokens(das.tokens);
@@ -354,30 +358,42 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       ...toTokens(legacy, "legacy"),
       ...toTokens(token2022, "token2022"),
     ].filter((t) => t.amount > 0 && !(t.decimals === 0 && t.amount === 1));
-    setTokens(spl);
 
     const mints = spl.map((t) => t.mint);
+    // Attach what we already know about each mint before publishing the list. Publishing the raw
+    // accounts first meant the snapshot's named, logo'd rows were briefly replaced by bare mint
+    // addresses on every refresh — the cache was there, we just weren't reading it.
+    const warmMetas = cachedTokenMetas(mints);
+    const seeded = Object.keys(warmMetas).length ? spl.map((t) => ({ ...t, ...warmMetas[t.mint] })) : spl;
+    setTokens(seeded);
+    // Same for prices: fill from the recent-price cache so USD values are on screen before the
+    // price API answers, rather than every holding reading $0.00 in the meantime.
+    setPrices((prev) => ({ ...cachedPrices([WSOL_MINT, ...mints]), ...prev }));
+
     const [priceRes, metas] = await Promise.all([
       fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
       fetchTokenMetas(mints).catch(() => ({}) as Record<string, never>),
     ]);
-    setPrices(priceRes);
-    const merged = metas && Object.keys(metas).length ? spl.map((t) => ({ ...t, ...metas[t.mint] })) : spl;
-    if (merged !== spl) setTokens(merged);
+    // A failed (or rate-limited) price call returns {} — publishing that would wipe the values
+    // we're already showing and turn a funded wallet into $0.00. Keep the last-known instead.
+    const nextPrices = Object.keys(priceRes).length ? priceRes : cachedPrices([WSOL_MINT, ...mints]);
+    setPrices(nextPrices);
+    const merged = metas && Object.keys(metas).length ? seeded.map((t) => ({ ...t, ...metas[t.mint] })) : seeded;
+    if (merged !== seeded) setTokens(merged);
     // Persist this snapshot so the next cold open paints instantly (network-scoped: mainnet ≠ devnet).
     saveWalletSnapshot(`sol:${CLUSTER}:${pubkey.toBase58()}`, {
       solBalance: lamports / LAMPORTS_PER_SOL,
       tokens: merged,
-      prices: priceRes,
+      prices: nextPrices,
     });
 
     detectReceipts(pubkey.toBase58(), [
-      { key: "native:SOL", symbol: "SOL", amount: lamports / LAMPORTS_PER_SOL, priceUsd: priceRes[WSOL_MINT]?.usdPrice ?? null },
+      { key: "native:SOL", symbol: "SOL", amount: lamports / LAMPORTS_PER_SOL, priceUsd: nextPrices[WSOL_MINT]?.usdPrice ?? null },
       ...spl.map((t) => ({
         key: t.mint,
-        symbol: metas[t.mint]?.symbol ?? t.mint.slice(0, 4),
+        symbol: metas[t.mint]?.symbol ?? warmMetas[t.mint]?.symbol ?? t.mint.slice(0, 4),
         amount: t.amount,
-        priceUsd: priceRes[t.mint]?.usdPrice ?? null,
+        priceUsd: nextPrices[t.mint]?.usdPrice ?? null,
       })),
     ]);
   }, [detectReceipts]);
@@ -972,8 +988,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }));
     }
 
+    // `null` means "we don't know", and the UI must render it as such — never as $0.00. Two
+    // ways not to know: balances haven't arrived, or they have but nothing could be priced yet
+    // (the window right after a cold open, which is what made the wallet flash $0.00).
+    //
+    // A PARTIAL sum is still a real figure — plenty of small tokens genuinely have no market
+    // price and never will — so we only give up when nothing at all is priced. Zero-balance
+    // holdings are ignored either way: they contribute nothing whether or not we know the price.
+    const heldAssets = assets.filter((a) => a.balance > 0);
+    const heldNative = (native.balance ?? 0) > 0;
+    const anythingHeld = heldNative || heldAssets.length > 0;
+    const anythingPriced = (heldNative && native.usd != null) || heldAssets.some((a) => a.usd != null);
     const totalUsd =
-      native.balance == null
+      native.balance == null || (anythingHeld && !anythingPriced)
         ? null
         : (native.usd ?? 0) + assets.reduce((s, a) => s + (a.usd ?? 0), 0);
 

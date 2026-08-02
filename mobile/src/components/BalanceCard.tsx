@@ -57,11 +57,16 @@ export function BalanceCard({
               {refreshing && <ActivityIndicator color="#0A0A0C" style={{ marginLeft: 8 }} />}
             </View>
 
-            {usd != null && (
+            {usd != null ? (
               <View style={styles.usdRow}>
                 <Text style={styles.usd}>≈ {usd}</Text>
                 {change != null && <Text style={styles.change}>{change} 24h</Text>}
               </View>
+            ) : (
+              // Balance known, value not (prices still in flight). Holding the row's space with a
+              // placeholder keeps the card from reflowing when the figure lands — and, unlike the
+              // old behaviour of hiding the row entirely, admits that a number is coming.
+              <Skeleton width={130} height={18} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
             )}
           </>
         )}

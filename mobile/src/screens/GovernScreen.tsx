@@ -7,6 +7,7 @@ import { PublicKey } from "@solana/web3.js";
 import { HeroCard } from "../components/HeroCard";
 import { EmptyState } from "../components/EmptyState";
 import { Card } from "../components/Card";
+import { Skeleton } from "../components/Skeleton";
 import { useWallet, useWalletStatus } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { connection } from "../solana/connection";
@@ -17,8 +18,12 @@ import type { RootNav } from "../navigation";
 export function GovernScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
-  const { address, tokens, refresh } = useWallet();
+  const { address, tokens, solBalance, refresh } = useWallet();
   const { refreshing } = useWalletStatus();
+  // An empty `tokens` array means either "holds nothing" or "hasn't loaded" — `solBalance` is the
+  // one signal that tells them apart, since it's null until the wallet's balances land. Without
+  // this the hero opens claiming 0 votes, which is a statement, not a loading state.
+  const balancesLoaded = solBalance != null;
   const [supply, setSupply] = useState<number | null>(null);
   const [firstSeen, setFirstSeen] = useState<number | null>(null);
 
@@ -86,16 +91,25 @@ export function GovernScreen() {
             </View>
           )}
         </View>
-        <View style={styles.powerRow}>
-          <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
-            {fmtCompact(power)}
-          </Text>
-          <Text style={styles.powerUnit}>votes</Text>
-        </View>
-        <Text style={styles.cardSub}>
-          {fmtCompact(held)} XGO × {loyalty.mult}× loyalty
-          {share != null ? ` · ${(share * 100).toFixed(2)}% of all` : ""}
-        </Text>
+        {balancesLoaded ? (
+          <>
+            <View style={styles.powerRow}>
+              <Text style={styles.power} numberOfLines={1} adjustsFontSizeToFit>
+                {fmtCompact(power)}
+              </Text>
+              <Text style={styles.powerUnit}>votes</Text>
+            </View>
+            <Text style={styles.cardSub}>
+              {fmtCompact(held)} XGO × {loyalty.mult}× loyalty
+              {share != null ? ` · ${(share * 100).toFixed(2)}% of all` : ""}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Skeleton width={160} height={40} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
+            <Skeleton width={120} height={15} round={radius.sm} style={{ backgroundColor: "#0A0A0C33" }} />
+          </>
+        )}
       </HeroCard>
 
       <View style={styles.noteRow}>

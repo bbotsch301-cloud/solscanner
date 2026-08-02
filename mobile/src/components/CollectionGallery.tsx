@@ -12,6 +12,7 @@ import { PressableScale } from "./PressableScale";
 import { Artwork } from "./Artwork";
 import { EmptyState } from "./EmptyState";
 import { Skeleton } from "./Skeleton";
+import { Updating } from "./Updating";
 import {
   cachedCollectibles,
   fetchCollectibles,
@@ -80,6 +81,12 @@ export function CollectionGallery({
   // the gallery paints instantly; the effect below only revalidates in the background.
   const [items, setItems] = useState<Collectible[]>(() => cachedCollectibles(owner) ?? []);
   const [loading, setLoading] = useState(() => !cachedCollectibles(owner));
+  // Which (owner, refreshKey) we've finished fetching. Derived rather than a flag we flip on the
+  // way in, so nothing is set synchronously inside the effect: anything not yet settled is, by
+  // definition, still in flight. `loading` covers "nothing to show at all"; this covers the more
+  // common case of a cached grid being refreshed underneath the user.
+  const [settled, setSettled] = useState<string | null>(null);
+  const revalidating = settled !== `${owner}:${refreshKey}`;
   const [showHidden, setShowHidden] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
@@ -93,6 +100,7 @@ export function CollectionGallery({
       if (!cancelled) {
         setItems(fresh);
         setLoading(false);
+        setSettled(`${owner}:${refreshKey}`);
       }
     })();
     return () => {
@@ -164,9 +172,15 @@ export function CollectionGallery({
     <View>
       <View style={[styles.headerRow, !title && { justifyContent: "flex-end" }]}>
         {title && <Text style={styles.header}>{title}</Text>}
-        <Text style={styles.count}>
-          {visible.length} item{visible.length === 1 ? "" : "s"}
-        </Text>
+        {/* Cached grid on screen with a refresh in flight — say so instead of letting the count
+            look final while more items may still be on their way. */}
+        {revalidating ? (
+          <Updating />
+        ) : (
+          <Text style={styles.count}>
+            {visible.length} item{visible.length === 1 ? "" : "s"}
+          </Text>
+        )}
       </View>
 
       {items.length > SEARCH_THRESHOLD && (

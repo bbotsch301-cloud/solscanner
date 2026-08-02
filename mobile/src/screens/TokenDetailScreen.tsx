@@ -11,12 +11,15 @@ import { Skeleton } from "../components/Skeleton";
 import { nativeLogo } from "../config/logos";
 import { useWallet } from "../wallet/WalletContext";
 import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../prices/candles";
+import { candleSnapshots } from "../cache/screens";
 import { haptics } from "../ui/haptics";
 import { amount as fmtAmount, colors, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
-// Last-loaded candles per (chain, asset, range), so switching timeframes / revisiting is instant.
-const candleCache = new Map<string, Candle[]>();
+// Last-loaded candles per (chain, asset, range), so switching timeframes / revisiting is instant —
+// now persisted to disk (see cache/screens.ts), so it survives a restart too. Candles are the
+// slowest thing on this screen to fetch and the most jarring to watch appear from nothing.
+const candleCache = candleSnapshots;
 
 export function TokenDetailScreen() {
   const nav = useNavigation<RootNav>();
@@ -28,7 +31,9 @@ export function TokenDetailScreen() {
   // Resolve the asset from live wallet state (balances stay fresh).
   const view = useMemo(() => {
     if (assetKey === "native") {
-      return { symbol: native.symbol, name: activeChain.name, decimals: activeChain.decimals, balance: native.balance ?? 0, usd: native.usd, logoURI: nativeLogo[activeChain.id] as string | undefined, isNative: true, contract: null as string | null };
+      // `balance` stays nullable — collapsing an unloaded balance to 0 made this screen open
+      // claiming you hold nothing, which for the native asset is the headline figure.
+      return { symbol: native.symbol, name: activeChain.name, decimals: activeChain.decimals, balance: native.balance, usd: native.usd, logoURI: nativeLogo[activeChain.id] as string | undefined, isNative: true, contract: null as string | null };
     }
     const a = assets.find((x) => x.key === assetKey);
     if (!a) return null;
@@ -47,7 +52,7 @@ export function TokenDetailScreen() {
   const [range, setRange] = useState<ChartRange>("1W");
   const cacheKey = `${activeChain.id}:${assetKey}:${range}`;
   const [candles, setCandles] = useState<Candle[]>(() => candleCache.get(`${activeChain.id}:${assetKey}:1W`) ?? []);
-  const [loading, setLoading] = useState(() => !candleCache.has(`${activeChain.id}:${assetKey}:1W`));
+  const [loading, setLoading] = useState(() => !candleCache.get(`${activeChain.id}:${assetKey}:1W`));
   const [refreshing, setRefreshing] = useState(false);
   const [scrub, setScrub] = useState<Candle | null>(null); // candle under the crosshair, if any
   const [fullscreen, setFullscreen] = useState(false);
@@ -123,7 +128,8 @@ export function TokenDetailScreen() {
   // Live price = wallet-derived per-unit, else the latest candle close. When scrubbing, show the
   // hovered candle's close instead. Range change = first open → last close of the loaded candles.
   const latestClose = candles.length ? candles[candles.length - 1].close : null;
-  const livePrice = view.balance > 0 && view.usd != null ? view.usd / view.balance : latestClose;
+  const livePrice =
+    view.balance != null && view.balance > 0 && view.usd != null ? view.usd / view.balance : latestClose;
   const displayPrice = scrub ? scrub.close : livePrice;
   const change =
     candles.length >= 2 && candles[0].open > 0
@@ -207,8 +213,16 @@ export function TokenDetailScreen() {
 
       <View style={styles.balanceCard}>
         <Text style={styles.balLabel}>Your balance</Text>
-        <Text style={styles.balAmount}>{fmtAmount(view.balance)} {view.symbol}</Text>
-        {view.usd != null && <Text style={styles.balUsd}>{fmtUsd(view.usd)}</Text>}
+        {view.balance == null ? (
+          <Skeleton width={140} height={26} style={{ marginVertical: spacing(1) }} />
+        ) : (
+          <Text style={styles.balAmount}>{fmtAmount(view.balance)} {view.symbol}</Text>
+        )}
+        {view.usd != null ? (
+          <Text style={styles.balUsd}>{fmtUsd(view.usd)}</Text>
+        ) : (
+          <Skeleton width={80} height={15} />
+        )}
       </View>
 
       <View style={styles.actions}>

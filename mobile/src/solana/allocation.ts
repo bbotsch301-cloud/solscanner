@@ -36,10 +36,17 @@ export interface AllocRow {
 export interface Allocation {
   slices: PieSlice[];
   rows: AllocRow[];
+  /** Sum of everything we could put a price on. When `unpriced > 0` this is a LOWER BOUND, not
+   *  the treasury's value — callers must not render it as final. */
   total: number;
   solUsd: number;
   tokensUsd: number;
   offchainUsd: number;
+  /** Non-zero crypto holdings we could price. */
+  priced: number;
+  /** Non-zero crypto holdings we could NOT price. A holding of zero counts as neither: its
+   *  contribution is zero whether or not we know the price. */
+  unpriced: number;
 }
 
 interface CryptoItem {
@@ -64,19 +71,36 @@ export function buildAllocation(
 ): Allocation {
   const includeOffchain = opts.includeOffchain ?? true;
 
-  const solUsd = (holdings?.sol ?? 0) * (prices[WSOL_MINT]?.usdPrice ?? 0);
+  // "Unknown" and "zero" are different facts and are counted separately, so a screen can tell a
+  // treasury that's genuinely empty from one whose prices simply haven't arrived. A holding of
+  // zero is never counted either way — it contributes nothing regardless of its price.
+  let priced = 0;
+  let unpriced = 0;
+  const countPricing = (amount: number, price: number | undefined) => {
+    if (amount <= 0) return;
+    if (price != null) priced++;
+    else unpriced++;
+  };
+
+  const solAmount = holdings?.sol ?? 0;
+  const solPrice = prices[WSOL_MINT]?.usdPrice;
+  countPricing(solAmount, solPrice);
+  const solUsd = solAmount * (solPrice ?? 0);
   const solItem: CryptoItem = {
     key: "SOL",
     name: "Solana",
     symbol: "SOL",
-    amount: holdings?.sol ?? 0,
-    usdValue: solUsd,
+    amount: solAmount,
+    // Matches the token rows below, which already did this. Previously SOL alone reported a
+    // confident `$0.00` whenever the SOL price hadn't loaded.
+    usdValue: solPrice != null ? solUsd : undefined,
     value: solUsd,
     logoURI: nativeLogo.solana,
     color: colors.accent,
   };
   const tokenItems: CryptoItem[] = (holdings?.tokens ?? []).map((t) => {
     const price = prices[t.mint]?.usdPrice;
+    countPricing(t.amount, price);
     const value = t.amount * (price ?? 0);
     return {
       key: t.mint,
@@ -101,6 +125,10 @@ export function buildAllocation(
   if (opts.topN != null && crypto.length > opts.topN) {
     const rest = crypto.slice(opts.topN);
     const restVal = rest.reduce((s, x) => s + x.value, 0);
+    // The sum is only a real figure if every lumped holding was priced. A zero-balance holding
+    // contributes zero either way, so a missing price on one of those doesn't spoil it. The old
+    // `restVal > 0 ? restVal : undefined` read "unknown" as "zero" and vice versa.
+    const restKnown = rest.every((x) => x.usdValue != null || (x.amount ?? 0) <= 0);
     cryptoDisplay = [
       ...crypto.slice(0, opts.topN),
       {
@@ -108,7 +136,7 @@ export function buildAllocation(
         name: "Other holdings",
         symbol: `+${rest.length}`,
         value: restVal,
-        usdValue: restVal > 0 ? restVal : undefined,
+        usdValue: restKnown ? restVal : undefined,
         color: colors.textMuted,
         subtitle: `${rest.length} smaller ${rest.length === 1 ? "asset" : "assets"} · tap to expand`,
         children: rest.map((x) => ({
@@ -161,5 +189,5 @@ export function buildAllocation(
     .map((s, i) => ({ label: s.label, value: s.value, color: PIE_COLORS[i % PIE_COLORS.length] }))
     .filter((s) => s.value > 0);
 
-  return { slices, rows, total, solUsd, tokensUsd, offchainUsd };
+  return { slices, rows, total, solUsd, tokensUsd, offchainUsd, priced, unpriced };
 }

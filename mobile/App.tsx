@@ -60,6 +60,8 @@ import { loadContacts } from "./src/contacts/contacts";
 import { loadPubAddresses } from "./src/wallet/pubAddresses";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
+import { preloadPriceCache } from "./src/solana/prices";
+import { preloadScreenCaches } from "./src/cache/screens";
 import { loadCollectiblePrefs, loadCollectibleSnapshots } from "./src/solana/collectibles";
 import { loadLastFeeAttempt } from "./src/solana/feeDiagnostics";
 import { loadParsedTxCache } from "./src/solana/txParse";
@@ -325,6 +327,10 @@ export default function App() {
       loadBrowserData(),
       loadConnections(),
       preloadTokenMetaCache(),
+      // Last-known prices and per-screen snapshots, so the first frame after the splash paints
+      // real numbers instead of counting up from $0.00 while the network answers.
+      preloadPriceCache(),
+      preloadScreenCaches(),
     ]).finally(() => setReady(true));
   }, []);
 
