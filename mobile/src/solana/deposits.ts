@@ -10,7 +10,7 @@
  */
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { connection, solscanTx } from "./connection";
+import { connection, isPublicRpc, solscanTx } from "./connection";
 import { fetchTokenMetas } from "./tokens";
 import { fetchPrices, WSOL_MINT } from "./prices";
 import { nativeLogo } from "../config/logos";
@@ -27,12 +27,14 @@ export interface Deposit {
   explorerUrl: string;
 }
 
-// The swap fee lands in a *fresh* ATA (one per output mint), so the scan must cover the treasury's
-// full set of token accounts — capping it low silently drops recently-created fee accounts. The cap
-// stays only as a safety bound against a treasury with hundreds of dust accounts. getSignatures +
-// getParsedTransactions are the heaviest RPC methods, so a private RPC (EXPO_PUBLIC_MAINNET_RPC) is
-// strongly recommended; the shared throttle retries 429s, but the public endpoint is still slow.
-const MAX_TOKEN_ACCOUNTS = 40; // bound the number of getSignaturesForAddress calls
+// The number of the treasury's token accounts we fan `getSignaturesForAddress` across — the single
+// heaviest, most rate-limited part of the feed. It's ADAPTIVE so the app works with no RPC key out
+// of the box: on the public endpoint we stay light (or the whole feed 429s and shows "couldn't
+// load"); on a dedicated RPC we scan the full set so no SPL fee ATA is missed. The common swap fee
+// (a SOL-output swap) lands on the treasury WALLET itself, which is always scanned, so even the
+// light path catches it without a key.
+const MAX_TOKEN_ACCOUNTS_PUBLIC = 8;
+const MAX_TOKEN_ACCOUNTS_DEDICATED = 40;
 const PER_ACCOUNT_SIGS = 4;
 
 /**
@@ -56,11 +58,11 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
     ]);
-    // Scan ALL token accounts (up to the safety bound). A swap fee lands as a *small* amount in a
-    // possibly-fresh ATA, so we can't prioritize by balance or age — the only way not to miss it is
-    // to cover the full set. For a real treasury this is every account; the bound just guards against
-    // a wallet spammed with hundreds of dust accounts.
-    const tokenAccts = [...legacy.value, ...t22.value].slice(0, MAX_TOKEN_ACCOUNTS).map((a) => a.pubkey);
+    // A swap fee lands as a *small* amount in a possibly-fresh ATA, so we can't prioritize by balance
+    // or age — coverage is the only way not to miss it. Scan the full set on a dedicated RPC; stay
+    // light on the public endpoint so it doesn't rate-limit the whole feed into failure.
+    const maxAccts = isPublicRpc() ? MAX_TOKEN_ACCOUNTS_PUBLIC : MAX_TOKEN_ACCOUNTS_DEDICATED;
+    const tokenAccts = [...legacy.value, ...t22.value].slice(0, maxAccts).map((a) => a.pubkey);
     const accounts = [owner, ...tokenAccts];
 
     // 2. Recent signatures across the wallet + token accounts, deduped, newest first.
