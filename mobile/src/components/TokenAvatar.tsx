@@ -6,9 +6,10 @@ import { colors } from "../theme";
 // Fallback IPFS gateways, tried in order if the resolved one fails to load on-device.
 const IPFS_GATEWAYS = ["https://ipfs.io/ipfs/", "https://dweb.link/ipfs/", "https://nftstorage.link/ipfs/"];
 
-/** Ordered image candidates for a logo. For an IPFS URL that's every gateway (in case one is
- *  down); for a normal CDN URL it's just that URL. Exhausting the list → the text badge. */
-function candidates(logoURI?: string): string[] {
+/** Ordered image candidates for a logo/artwork. For an IPFS URL that's every gateway (in case one
+ *  is down); for a normal CDN URL it's just that URL. Exhausting the list → the caller's fallback.
+ *  Exported for the Collection gallery, which renders NFT artwork from the same flaky gateways. */
+export function candidates(logoURI?: string): string[] {
   if (!logoURI) return [];
   const cid = logoURI.match(/\/ipfs\/([^?#]+)/i)?.[1];
   if (!cid) return [logoURI];

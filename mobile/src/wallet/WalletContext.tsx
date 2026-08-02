@@ -343,10 +343,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         };
       });
 
+    // NFT-shaped accounts (decimals 0, amount 1) belong to the Collection gallery, not the token
+    // list — without this they render as junk "1 XXXX" rows.
     const spl: SplToken[] = [
       ...toTokens(legacy, "legacy"),
       ...toTokens(token2022, "token2022"),
-    ].filter((t) => t.amount > 0);
+    ].filter((t) => t.amount > 0 && !(t.decimals === 0 && t.amount === 1));
     setTokens(spl);
 
     const mints = spl.map((t) => t.mint);

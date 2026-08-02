@@ -53,6 +53,7 @@ export async function fetchAssetsViaDas(pubkey: PublicKey): Promise<DasResult | 
       const decimals = ti.decimals ?? 0;
       const amount = ti.balance / 10 ** decimals;
       if (amount <= 0) continue;
+      if (decimals === 0 && amount === 1) continue; // NFT-shaped → Collection gallery, not the token list
       const mint = it.id;
       tokens.push({
         mint,

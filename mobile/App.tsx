@@ -39,6 +39,7 @@ import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
+import { CollectibleDetailScreen } from "./src/screens/CollectibleDetailScreen";
 import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
@@ -56,6 +57,7 @@ import { loadContacts } from "./src/contacts/contacts";
 import { loadPubAddresses } from "./src/wallet/pubAddresses";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
+import { loadCollectiblePrefs, loadCollectibleSnapshots } from "./src/solana/collectibles";
 import { haptics } from "./src/ui/haptics";
 import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
 import { navigationRef, navigate } from "./src/navigationRef";
@@ -252,6 +254,7 @@ function Root() {
           <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
           <Stack.Screen name="Contacts" component={ContactsScreen} />
+          <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />
           <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>
@@ -277,6 +280,8 @@ export default function App() {
       loadContacts(),
       loadPubAddresses(),
       loadWalletSnapshots(),
+      loadCollectiblePrefs(),
+      loadCollectibleSnapshots(),
       loadBrowserData(),
       loadConnections(),
       preloadTokenMetaCache(),

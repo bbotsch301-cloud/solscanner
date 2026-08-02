@@ -11,6 +11,8 @@ import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
+import { CollectionGallery } from "../components/CollectionGallery";
+import { haptics } from "../ui/haptics";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
 import { compact, colors, font, radius, shortAddress, spacing, timeAgo, tracking, usd as fmtUsd, weight } from "../theme";
@@ -68,6 +70,10 @@ export function HomeScreen() {
 
   const [recent, setRecent] = useState<HistoryItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // Wallet-tab segment: fungible tokens vs the Collection gallery (Solana only in v1).
+  const [view, setView] = useState<"tokens" | "collection">("tokens");
+  const [collectionRefresh, setCollectionRefresh] = useState(0);
+  const showCollection = isSolana && view === "collection" && !!activeAddress;
   const loadRecent = useCallback(async () => {
     if (!activeAddress) {
       setRecent([]);
@@ -87,6 +93,7 @@ export function HomeScreen() {
   // synchronously on pull), and refresh BOTH balances/prices and the recent-activity list.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setCollectionRefresh((r) => r + 1); // the gallery refetches on its own key
     try {
       await Promise.all([refresh(), loadRecent()]);
     } finally {
@@ -127,6 +134,38 @@ export function HomeScreen() {
         <ActionButton icon="swap-horizontal" label="Swap" onPress={() => nav.navigate("Swap")} />
       </View>
 
+      {/* Tokens | Collection segment (the Collection gallery is Solana-only in v1). */}
+      {isSolana && (
+        <View style={styles.segmentRow}>
+          {(["tokens", "collection"] as const).map((v) => {
+            const on = view === v;
+            return (
+              <PressableScale
+                key={v}
+                haptic={null}
+                onPress={() => {
+                  if (on) return;
+                  haptics.select();
+                  setView(v);
+                }}
+                style={[styles.segment, on && styles.segmentOn]}
+              >
+                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
+                  {v === "tokens" ? "Tokens" : "Collection"}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        </View>
+      )}
+
+      {showCollection && (
+        <View style={{ marginTop: spacing(4) }}>
+          {/* key per address: the gallery seeds itself from the snapshot on mount. */}
+          <CollectionGallery key={activeAddress} owner={activeAddress!} refreshKey={collectionRefresh} />
+        </View>
+      )}
+
       {busy && <Text style={styles.status}>Requesting test SOL from the faucet…</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
 
@@ -149,7 +188,7 @@ export function HomeScreen() {
 
       {/* The native asset is the hero above; this lists the SPL/ERC-20 tokens the wallet holds.
           Hidden entirely for a native-only wallet so it never renders an empty bordered box. */}
-      {!empty && (assets.length > 0 || native.balance == null) && (
+      {!showCollection && !empty && (assets.length > 0 || native.balance == null) && (
         <>
           <Text style={styles.sectionTitle}>Tokens</Text>
           <View style={styles.card}>
@@ -170,7 +209,7 @@ export function HomeScreen() {
         </>
       )}
 
-      {recent.length > 0 && (
+      {!showCollection && recent.length > 0 && (
         <>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Recent activity</Text>
@@ -235,6 +274,19 @@ const styles = StyleSheet.create({
     marginTop: spacing(6),
     marginBottom: spacing(2),
   },
+  segmentRow: {
+    flexDirection: "row",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.pill,
+    padding: 3,
+    marginTop: spacing(2),
+  },
+  segment: { flex: 1, alignItems: "center", paddingVertical: spacing(2), borderRadius: radius.pill },
+  segmentOn: { backgroundColor: colors.primary },
+  segmentText: { color: colors.textMuted, fontSize: font.small, fontWeight: weight.bold },
+  segmentTextOn: { color: colors.bg },
   status: { color: colors.primary, fontSize: font.small, marginTop: spacing(2) },
   error: { color: colors.negative, fontSize: font.small, marginTop: spacing(2) },
   emptyCard: {

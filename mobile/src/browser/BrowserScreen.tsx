@@ -24,6 +24,7 @@ import { BlockInterstitial } from "./BlockInterstitial";
 import { BrowserMenu, ConnectedSitesModal } from "./BrowserMenu";
 import { buildInjectedProvider } from "./injected";
 import { addHistory, clearHistory, hostOf, isFavorite, toggleFavorite, toUrl } from "./dapps";
+import { onBrowserUrlRequest } from "./openRequest";
 import { disconnectAll, disconnectOrigin, isConnected, listConnections, setConnected } from "./connections";
 import { evmChainForHex, evmRpcPassthrough, runEvmRequest, runSolanaRequest, summarizeDappRequest } from "./signer";
 import type { BridgeMessage, PendingRequest, Responder, TabState } from "./types";
@@ -124,6 +125,12 @@ export function BrowserScreen() {
     setActiveId(id);
     setSwitcherOpen(false);
   }, []);
+
+  // URLs handed off from elsewhere in the app (e.g. a Collection item's "Open" action) load into
+  // the active tab whenever this screen is focused.
+  useFocusEffect(
+    useCallback(() => onBrowserUrlRequest((url) => navigate(url)), [navigate])
+  );
 
   const closeTab = useCallback((id: string) => {
     delete webviews.current[id];

@@ -27,6 +27,8 @@ export type RootStackParamList = {
   TokenApprovals: undefined;
   Contacts: undefined;
   Legal: { doc: LegalDocKey };
+  /** A Collection item (non-fungible asset), by mint. */
+  Collectible: { mint: string };
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;
