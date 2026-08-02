@@ -13,6 +13,7 @@ import { PurchasesScreen } from "./src/screens/PurchasesScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
+import { TransactionDetailScreen } from "./src/screens/TransactionDetailScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
 import { ReceiveScreen } from "./src/screens/ReceiveScreen";
@@ -61,6 +62,7 @@ import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
 import { loadCollectiblePrefs, loadCollectibleSnapshots } from "./src/solana/collectibles";
 import { loadLastFeeAttempt } from "./src/solana/feeDiagnostics";
+import { loadParsedTxCache } from "./src/solana/txParse";
 import { haptics } from "./src/ui/haptics";
 import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
 import { navigationRef, navigate } from "./src/navigationRef";
@@ -269,6 +271,7 @@ function Root() {
           <Stack.Screen name="ProposeTransfer" component={ProposeTransferScreen} />
           <Stack.Screen name="Purchases" component={PurchasesScreen} />
           <Stack.Screen name="Activity" component={ActivityScreen} />
+          <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
@@ -315,6 +318,7 @@ export default function App() {
       loadWalletSnapshots(),
       loadCollectiblePrefs(),
       loadLastFeeAttempt(),
+      loadParsedTxCache(),
       loadCollectibleSnapshots(),
       loadBrowserData(),
       loadConnections(),

@@ -1,53 +1,14 @@
 import { useNavigation } from "@react-navigation/native";
-import { memo, useCallback, useEffect, useState } from "react";
-import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useState } from "react";
+import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { useWallet } from "../wallet/WalletContext";
-import { fetchActivity, type HistoryItem } from "../activity";
+import { enrichActivity, fetchActivity, type HistoryItem } from "../activity";
 import { evmHistoryEnabled } from "../evm/history";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { EmptyState } from "../components/EmptyState";
-import { colors, font, radius, shortAddress, spacing, timeAgo } from "../theme";
+import { ActivityRow } from "../components/ActivityRow";
+import { colors, spacing } from "../theme";
 import type { RootNav } from "../navigation";
-
-function titleFor(item: HistoryItem): string {
-  if (item.failed) return "Failed transaction";
-  const verb = item.direction === "in" ? "Received" : item.direction === "out" ? "Sent" : null;
-  if (verb) return item.valueLabel ? `${verb} ${item.valueLabel}` : verb;
-  return "Transaction";
-}
-
-const Row = memo(function Row({ item }: { item: HistoryItem }) {
-  const color = item.failed
-    ? colors.negative
-    : item.direction === "in"
-      ? colors.positive
-      : colors.primary;
-  const icon = item.failed
-    ? "close"
-    : item.direction === "in"
-      ? "arrow-down"
-      : item.direction === "out"
-        ? "arrow-up"
-        : "swap-horizontal";
-  return (
-    <Pressable
-      onPress={() => Linking.openURL(item.explorerUrl)}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
-    >
-      <View style={[styles.icon, { backgroundColor: color + "22" }]}>
-        <Ionicons name={icon} size={18} color={color} />
-      </View>
-      <View style={styles.mid}>
-        <Text style={styles.title}>{titleFor(item)}</Text>
-        <Text style={styles.sub}>
-          {shortAddress(item.id, 6, 6)} · {timeAgo(item.time)}
-        </Text>
-      </View>
-      <Ionicons name="open-outline" size={16} color={colors.textFaint} />
-    </Pressable>
-  );
-});
 
 // Last-good history per (chain, address), kept in memory so re-opening Activity shows the
 // list instantly and refreshes behind it, instead of a blank list on every visit.
@@ -69,6 +30,11 @@ export function ActivityScreen() {
       const result = await fetchActivity(activeChain, activeAddress, 25);
       setTxs(result);
       actCache.set(key, result);
+      // Second stage: work out what each transaction actually did. Cheap after the first visit —
+      // parsed results are cached permanently, since a confirmed transaction never changes.
+      const enriched = await enrichActivity(activeChain, activeAddress, result);
+      setTxs(enriched);
+      actCache.set(key, enriched);
     } catch {
       /* keep previous list on transient errors */
     } finally {
@@ -86,7 +52,9 @@ export function ActivityScreen() {
       <FlatList
         data={txs}
         keyExtractor={(t) => t.id}
-        renderItem={({ item }) => <Row item={item} />}
+        renderItem={({ item }) => (
+          <ActivityRow item={item} onPress={() => nav.navigate("TransactionDetail", { item })} />
+        )}
         contentContainerStyle={{ paddingHorizontal: spacing(4), paddingBottom: spacing(10), flexGrow: 1 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
         ListEmptyComponent={
@@ -112,10 +80,5 @@ export function ActivityScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing(3), paddingVertical: spacing(3) },
-  icon: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  mid: { flex: 1, gap: 2 },
-  title: { color: colors.text, fontSize: font.body, fontWeight: "700" },
-  sub: { color: colors.textMuted, fontSize: font.small },
   emptyWrap: { flexGrow: 1, justifyContent: "center", paddingBottom: spacing(16) },
 });

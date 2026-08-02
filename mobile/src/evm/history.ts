@@ -5,8 +5,12 @@
  * i.e. etherscan.io/apis.
  */
 import type { ChainDef } from "../chains/registry";
+// Produces the chain-agnostic base fields only; activity.ts adds the Solana-side
+// classification fields (kind / moveIn / moveOut) that this path doesn't derive yet.
 import type { HistoryItem } from "../activity";
 import { amount as fmtAmount } from "../theme";
+
+type EvmHistoryItem = Omit<HistoryItem, "kind" | "moveIn" | "moveOut" | "feeSol">;
 
 const KEY = process.env.EXPO_PUBLIC_ETHERSCAN_KEY ?? "";
 export const evmHistoryEnabled = Boolean(KEY);
@@ -25,7 +29,7 @@ export async function fetchEvmHistory(
   chain: ChainDef,
   address: string,
   limit = 25
-): Promise<HistoryItem[]> {
+): Promise<EvmHistoryItem[]> {
   if (!KEY || !chain.evmChainId) return [];
   const url =
     `https://api.etherscan.io/v2/api?chainid=${chain.evmChainId}` +

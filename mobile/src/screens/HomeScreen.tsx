@@ -1,9 +1,9 @@
 import { useNavigation } from "@react-navigation/native";
 import { memo, useCallback, useEffect, useState } from "react";
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchActivity, type HistoryItem } from "../activity";
+import { enrichActivity, fetchActivity, type HistoryItem } from "../activity";
 import { BalanceCard } from "../components/BalanceCard";
 import { ActionButton } from "../components/ActionButton";
 import { ChainSwitcher } from "../components/ChainSwitcher";
@@ -11,9 +11,10 @@ import { WalletSwitcher } from "../components/WalletSwitcher";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { PressableScale } from "../components/PressableScale";
 import { SkeletonRow } from "../components/Skeleton";
+import { ActivityRow } from "../components/ActivityRow";
 import { useWallet, useWalletStatus, type UnifiedAsset } from "../wallet/WalletContext";
 import { CLUSTER, IS_MAINNET } from "../solana/connection";
-import { compact, colors, font, radius, shortAddress, spacing, timeAgo, tracking, usd as fmtUsd, weight } from "../theme";
+import { compact, colors, font, radius, spacing, tracking, usd as fmtUsd, weight } from "../theme";
 import type { RootNav } from "../navigation";
 
 /** One token row in the Wallet list. Memoized + a stable `onOpen` so it skips re-render when
@@ -74,7 +75,10 @@ export function HomeScreen() {
       return;
     }
     try {
-      setRecent(await fetchActivity(activeChain, activeAddress, 4));
+      const rows = await fetchActivity(activeChain, activeAddress, 4);
+      setRecent(rows);
+      // Then work out what each one actually did (cached permanently after the first time).
+      setRecent(await enrichActivity(activeChain, activeAddress, rows));
     } catch {
       /* best-effort */
     }
@@ -179,45 +183,16 @@ export function HomeScreen() {
             </Pressable>
           </View>
           <View style={styles.card}>
-            {recent.map((tx, i) => {
-              const color = tx.failed
-                ? colors.negative
-                : tx.direction === "in"
-                  ? colors.positive
-                  : colors.primary;
-              const icon = tx.failed
-                ? "close"
-                : tx.direction === "in"
-                  ? "arrow-down"
-                  : tx.direction === "out"
-                    ? "arrow-up"
-                    : "swap-horizontal";
-              const title = tx.failed
-                ? "Failed"
-                : tx.direction === "in"
-                  ? `Received${tx.valueLabel ? ` ${tx.valueLabel}` : ""}`
-                  : tx.direction === "out"
-                    ? `Sent${tx.valueLabel ? ` ${tx.valueLabel}` : ""}`
-                    : "Transaction";
-              return (
-                <View key={tx.id}>
-                  {i > 0 && <View style={styles.divider} />}
-                  <Pressable
-                    onPress={() => Linking.openURL(tx.explorerUrl)}
-                    style={({ pressed }) => [styles.tokenRow, pressed && { opacity: 0.6 }]}
-                  >
-                    <View style={[styles.actIcon, { backgroundColor: color + "22" }]}>
-                      <Ionicons name={icon} size={16} color={color} />
-                    </View>
-                    <View style={styles.mid}>
-                      <Text style={styles.symbol}>{title}</Text>
-                      <Text style={styles.sub}>{shortAddress(tx.id, 6, 6)} · {timeAgo(tx.time)}</Text>
-                    </View>
-                    <Ionicons name="open-outline" size={15} color={colors.textFaint} />
-                  </Pressable>
-                </View>
-              );
-            })}
+            {recent.map((tx, i) => (
+              <View key={tx.id}>
+                {i > 0 && <View style={styles.divider} />}
+                <ActivityRow
+                  item={tx}
+                  compactSize
+                  onPress={() => nav.navigate("TransactionDetail", { item: tx })}
+                />
+              </View>
+            ))}
           </View>
         </>
       )}
@@ -252,7 +227,6 @@ const styles = StyleSheet.create({
   emptyBtnText: { color: colors.bg, fontSize: font.body, fontWeight: "800" },
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing(6), marginBottom: spacing(3) },
   viewAll: { color: colors.primary, fontSize: font.small, fontWeight: "700" },
-  actIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.small,

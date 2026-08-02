@@ -1,5 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { LegalDocKey } from "./legal/content";
+import type { HistoryItem } from "./activity";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -21,6 +22,8 @@ export type RootStackParamList = {
   ManageSigners: undefined;
   ProposeTransfer: undefined;
   Activity: undefined;
+  /** Passes the row the list already has, so the screen paints without a refetch. */
+  TransactionDetail: { item: HistoryItem };
   Govern: undefined;
   Settings: undefined;
   WalletConnect: undefined;
