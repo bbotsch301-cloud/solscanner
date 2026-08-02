@@ -23,6 +23,8 @@ import {
   setHidden,
   type Collectible,
 } from "../solana/collectibles";
+import { HoldToConfirm } from "../components/HoldToConfirm";
+import { burnCollectible, burnPreflight, type BurnPlan } from "../solana/burn";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
 import { openContentUrl } from "../access/openContent";
@@ -86,6 +88,9 @@ export function CollectibleDetailScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
+  const [burnOpen, setBurnOpen] = useState(false);
+  const [burning, setBurning] = useState(false);
+  const [burnPlan, setBurnPlan] = useState<BurnPlan | null>(null);
 
   if (!item) {
     return (
@@ -99,6 +104,37 @@ export function CollectibleDetailScreen() {
   }
 
   const access = resolveAccess(item);
+
+  const openBurn = async () => {
+    if (!owner) return;
+    haptics.tap();
+    setBurnPlan(null);
+    setBurnOpen(true);
+    setBurnPlan(await burnPreflight(item, owner));
+  };
+
+  const doBurn = async () => {
+    if (!keypair || !owner) return;
+    setBurning(true);
+    try {
+      const { reclaimedSol } = await burnCollectible(keypair, item);
+      haptics.success();
+      // Gone from the chain — drop it locally too so the gallery doesn't show a ghost.
+      removeCollectible(owner, item.mint);
+      setBurnOpen(false);
+      Alert.alert(
+        "Burned",
+        `"${item.name}" is gone for good.` +
+          (reclaimedSol > 0 ? `\n\n${reclaimedSol.toFixed(5)} SOL of rent has been returned to your wallet.` : ""),
+        [{ text: "Done", onPress: () => nav.goBack() }]
+      );
+    } catch (e) {
+      haptics.error();
+      Alert.alert("Burn failed", humanizeError(e, { action: "send", symbol: item.name, native: "SOL" }));
+    } finally {
+      setBurning(false);
+    }
+  };
 
   const openContent = async () => {
     if (!access) return;
@@ -238,6 +274,11 @@ export function CollectibleDetailScreen() {
               haptics.tap();
             }}
           />
+          {/* Burn is offered only on the spam bucket. It's irreversible, so it stays away from
+              items the user has treated as real — archiving is the reversible option there. */}
+          {hiddenNow && !item.compressed && (
+            <Button label="Burn and reclaim rent" variant="danger" icon="flame-outline" onPress={openBurn} />
+          )}
           <Button
             label={hiddenNow ? "Not spam — restore" : "Mark as spam"}
             variant="secondary"
@@ -250,6 +291,46 @@ export function CollectibleDetailScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Burn confirmation. Irreversible, so it states plainly what will happen, what comes back,
+          and requires a deliberate hold rather than a tap. */}
+      <Modal visible={burnOpen} transparent animationType="slide" onRequestClose={() => !burning && setBurnOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => !burning && setBurnOpen(false)}>
+          <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + spacing(4) }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Burn “{item.name}”?</Text>
+            {burnPlan === null ? (
+              <Text style={styles.burnBody}>Checking this item…</Text>
+            ) : burnPlan.blocked ? (
+              <>
+                <Text style={styles.burnBody}>{burnPlan.reason}</Text>
+                <Button label="Close" variant="secondary" onPress={() => setBurnOpen(false)} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.burnBody}>
+                  This destroys the item permanently. It cannot be undone, and nobody — including
+                  you — can recover it afterwards.
+                </Text>
+                <Text style={styles.burnReclaim}>
+                  {burnPlan.reclaimSol.toFixed(5)} SOL of locked rent returns to your wallet.
+                </Text>
+                <HoldToConfirm
+                  // Remount per open: the hold latches once it fires, so without this a failed
+                  // burn would leave the button spent and un-retryable.
+                  key={burnOpen ? "burn-open" : "burn-closed"}
+                  label={burning ? "Burning…" : "Hold to burn"}
+                  confirmedLabel="Burning…"
+                  onConfirm={doBurn}
+                  disabled={burning}
+                />
+                <Pressable onPress={() => !burning && setBurnOpen(false)} hitSlop={8} style={styles.burnCancel}>
+                  <Text style={styles.burnCancelText}>Keep it</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Minimal send sheet — recipient + confirm; the transfer reuses the wallet's sendToken. */}
       <Modal visible={sendOpen} transparent animationType="slide" onRequestClose={() => setSendOpen(false)}>
@@ -291,6 +372,10 @@ export function CollectibleDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  burnBody: { color: colors.textMuted, fontSize: font.body, lineHeight: font.body * leading.normal, marginBottom: spacing(3) },
+  burnReclaim: { color: colors.positive, fontSize: font.small, fontWeight: weight.semibold, marginBottom: spacing(4) },
+  burnCancel: { alignSelf: "center", paddingVertical: spacing(3) },
+  burnCancelText: { color: colors.textMuted, fontSize: font.body, fontWeight: weight.semibold },
   missing: { color: colors.textMuted, fontSize: font.body, textAlign: "center", marginTop: spacing(10), paddingHorizontal: spacing(6) },
   name: { color: colors.text, fontSize: font.h2, fontWeight: weight.bold, marginTop: spacing(4) },
   collectionRow: { flexDirection: "row", alignItems: "center", gap: spacing(1.5), marginTop: spacing(1) },
