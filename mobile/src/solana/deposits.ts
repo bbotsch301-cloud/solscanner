@@ -33,9 +33,10 @@ export interface Deposit {
 // load"); on a dedicated RPC we scan the full set so no SPL fee ATA is missed. The common swap fee
 // (a SOL-output swap) lands on the treasury WALLET itself, which is always scanned, so even the
 // light path catches it without a key.
-const MAX_TOKEN_ACCOUNTS_PUBLIC = 8;
 const MAX_TOKEN_ACCOUNTS_DEDICATED = 40;
 const PER_ACCOUNT_SIGS = 4;
+// The public path scans the wallet alone, so it can afford a deeper slice of its history.
+const PER_ACCOUNT_SIGS_PUBLIC = 10;
 
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
@@ -52,22 +53,37 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
   }
   const ownerStr = owner.toBase58();
 
+  // The public endpoint can't survive the full scan: enumerating token accounts (2 calls) plus a
+  // signature call per account (9+) plus getParsedTransactions, mostly in parallel bursts, reliably
+  // 429s and the whole feed fails closed. So the public path deliberately scans ONLY the treasury
+  // wallet — 2 calls total. That still catches the self-collected swap fee, which is a plain SOL
+  // transfer to the wallet itself; it's SPL deposits into fresh ATAs that need the wide scan and a
+  // dedicated RPC. Partial data beats "couldn't load".
+  const light = isPublicRpc();
+
   try {
     // 1. The treasury's token accounts (both token programs) — their ATAs receive SPL deposits.
-    const [legacy, t22] = await Promise.all([
-      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
-      connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
-    ]);
-    // A swap fee lands as a *small* amount in a possibly-fresh ATA, so we can't prioritize by balance
-    // or age — coverage is the only way not to miss it. Scan the full set on a dedicated RPC; stay
-    // light on the public endpoint so it doesn't rate-limit the whole feed into failure.
-    const maxAccts = isPublicRpc() ? MAX_TOKEN_ACCOUNTS_PUBLIC : MAX_TOKEN_ACCOUNTS_DEDICATED;
-    const tokenAccts = [...legacy.value, ...t22.value].slice(0, maxAccts).map((a) => a.pubkey);
+    //    Skipped entirely on the public endpoint, and never fatal: losing the ATA list just means
+    //    a wallet-only scan, which is far better than no feed at all.
+    let tokenAccts: PublicKey[] = [];
+    if (!light) {
+      const [legacy, t22] = await Promise.all([
+        connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }).catch(() => null),
+        connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => null),
+      ]);
+      // A swap fee lands as a *small* amount in a possibly-fresh ATA, so we can't prioritize by
+      // balance or age — coverage is the only way not to miss it.
+      tokenAccts = [...(legacy?.value ?? []), ...(t22?.value ?? [])]
+        .slice(0, MAX_TOKEN_ACCOUNTS_DEDICATED)
+        .map((a) => a.pubkey);
+    }
     const accounts = [owner, ...tokenAccts];
 
-    // 2. Recent signatures across the wallet + token accounts, deduped, newest first.
+    // 2. Recent signatures across the wallet + token accounts, deduped, newest first. Sequential on
+    //    the public endpoint (one call) so there's no parallel burst to rate-limit.
+    const perAccount = light ? PER_ACCOUNT_SIGS_PUBLIC : PER_ACCOUNT_SIGS;
     const sigLists = await Promise.all(
-      accounts.map((a) => connection.getSignaturesForAddress(a, { limit: PER_ACCOUNT_SIGS }).catch(() => []))
+      accounts.map((a) => connection.getSignaturesForAddress(a, { limit: perAccount }).catch(() => []))
     );
     const seen = new Set<string>();
     const sigs = sigLists
@@ -76,10 +92,22 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       .sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0))
       .slice(0, limit)
       .map((s) => s.signature);
+    // Signatures came back, so the treasury address itself is reachable. From here on, an RPC
+    // failure degrades to fewer deposits rather than none.
     if (sigs.length === 0) return [];
 
-    // 3. Parse the transactions and diff the treasury's balances.
-    const txs = await connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
+    // 3. Parse the transactions and diff the treasury's balances. Fetched in small chunks so one
+    //    rate-limited batch costs a few rows instead of the entire feed.
+    const CHUNK = light ? 3 : 10;
+    const txs: Awaited<ReturnType<typeof connection.getParsedTransactions>> = [];
+    for (let i = 0; i < sigs.length; i += CHUNK) {
+      const batch = await connection
+        .getParsedTransactions(sigs.slice(i, i + CHUNK), { maxSupportedTransactionVersion: 0 })
+        .catch(() => []);
+      txs.push(...batch);
+    }
+    // Every batch failed and we have nothing to show — that's an outage, not an empty treasury.
+    if (txs.length === 0) throw new DepositsUnavailableError("Couldn't read treasury transactions.");
     const raw: { signature: string; time: number | null; mint: string | null; amountUi: number }[] = [];
     for (const tx of txs) {
       if (!tx || !tx.meta || tx.meta.err) continue;
