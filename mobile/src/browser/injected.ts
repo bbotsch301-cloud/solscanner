@@ -206,6 +206,44 @@ export function buildInjectedProvider(seed: InjectedSeed): string {
   window.solana = sol;
   window.xgoSolana = sol;
 
+  /* ---- Solana wallet-standard (for dApps that ignore window.solana) ---- */
+  var ICON = "data:image/svg+xml;base64," + btoa("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='15' fill='#E7B838'/><text x='16' y='21' font-size='15' font-weight='bold' text-anchor='middle' fill='#0A0A0C'>X</text></svg>");
+  var wsAccount = null;
+  var wsListeners = {};
+  function wsEmit(ev, data) { (wsListeners[ev] || []).slice().forEach(function (cb) { try { cb(data); } catch (e) {} }); }
+  function makeAccount(addr) {
+    return { address: addr, publicKey: b58decode(addr), chains: ["solana:mainnet", "solana:devnet", "solana:testnet"], features: ["solana:signAndSendTransaction", "solana:signTransaction", "solana:signMessage"], label: "XGO" };
+  }
+  function eachInput(args, fn) { return Promise.all([].slice.call(args).map(fn)); }
+  var wallet = {
+    version: "1.0.0", name: "XGO", icon: ICON,
+    chains: ["solana:mainnet", "solana:devnet", "solana:testnet"],
+    get accounts() { return wsAccount ? [wsAccount] : []; },
+    features: {
+      "standard:connect": { version: "1.0.0", connect: function () {
+        if (wsAccount) return Promise.resolve({ accounts: [wsAccount] });
+        return send("solana", "connect", {}).then(function (addr) { state.solAddress = addr; wsAccount = makeAccount(addr); sol.publicKey = new PubKey(addr); sol.isConnected = true; wsEmit("change", { accounts: [wsAccount] }); return { accounts: [wsAccount] }; });
+      } },
+      "standard:disconnect": { version: "1.0.0", disconnect: function () { wsAccount = null; sol.isConnected = false; sol.publicKey = null; wsEmit("change", { accounts: [] }); return Promise.resolve(); } },
+      "standard:events": { version: "1.0.0", on: function (ev, cb) { (wsListeners[ev] = wsListeners[ev] || []).push(cb); return function () { wsListeners[ev] = (wsListeners[ev] || []).filter(function (l) { return l !== cb; }); }; } },
+      "solana:signAndSendTransaction": { version: "1.0.0", supportedTransactionVersions: ["legacy", 0], signAndSendTransaction: function () {
+        return eachInput(arguments, function (inp) { return send("solana", "solana_signAndSendTransaction", { transaction: bytesToB64(inp.transaction) }).then(function (r) { return { signature: b64ToBytes(r.signatureBytes) }; }); });
+      } },
+      "solana:signTransaction": { version: "1.0.0", supportedTransactionVersions: ["legacy", 0], signTransaction: function () {
+        return eachInput(arguments, function (inp) { return send("solana", "solana_signTransaction", { transaction: bytesToB64(inp.transaction) }).then(function (r) { return { signedTransaction: b64ToBytes(r.transaction) }; }); });
+      } },
+      "solana:signMessage": { version: "1.0.0", signMessage: function () {
+        return eachInput(arguments, function (inp) { return send("solana", "solana_signMessage", { message: bytesToB64(inp.message) }).then(function (r) { return { signedMessage: inp.message, signature: b64ToBytes(r.signature) }; }); });
+      } }
+    }
+  };
+  function registerWalletStandard() {
+    var cb = function (api) { try { api.register(wallet); } catch (e) {} };
+    try { window.dispatchEvent(new CustomEvent("wallet-standard:register-wallet", { detail: cb })); } catch (e) {}
+    try { window.addEventListener("wallet-standard:app-ready", function (e) { cb(e.detail); }); } catch (e) {}
+  }
+  registerWalletStandard();
+
   /* Apply account/chain updates pushed from the app after a switch. */
   xgo.update = function (next) {
     if (next.evmChainId && next.evmChainId !== eth.chainId) { eth.chainId = next.evmChainId; eth.networkVersion = String(parseInt(next.evmChainId, 16)); state.evmChainId = next.evmChainId; eth.emit("chainChanged", next.evmChainId); }

@@ -4,8 +4,9 @@
  * sign pipeline WalletConnect uses (see ./signer + walletconnect/handlers).
  */
 import { useCallback, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { BackHandler, Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import type { WebView } from "react-native-webview";
 import { useWallet } from "../wallet/WalletContext";
 import { useWalletConnect } from "../walletconnect/WalletConnectContext";
@@ -204,6 +205,25 @@ export function BrowserScreen() {
     toggleFavorite(activeTab.currentUrl, activeTab.title);
     setHomeRev((r) => r + 1);
   };
+
+  // Android hardware back navigates the page's history first; only falls through (leaving the
+  // browser) when there's nowhere left to go back to.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const onBack = () => {
+        const t = tabs.find((x) => x.id === activeId);
+        const wv = webviews.current[activeId];
+        if (t?.canGoBack && wv) {
+          wv.goBack();
+          return true;
+        }
+        return false;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
+      return () => sub.remove();
+    }, [activeId, tabs])
+  );
 
   const favNow = activeTab?.currentUrl ? isFavorite(activeTab.currentUrl) : false;
 

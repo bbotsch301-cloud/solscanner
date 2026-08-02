@@ -73,6 +73,13 @@ function deserialize(b64: string): VersionedTransaction | Transaction {
   }
 }
 
+/** Serialize a (partially) signed tx to base64 — needed by the wallet-standard signTransaction,
+ *  which returns the whole signed transaction rather than just the signature. */
+function serializeSigned(tx: VersionedTransaction | Transaction): string {
+  const bytes = tx instanceof VersionedTransaction ? tx.serialize() : tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+  return bytesToB64(bytes);
+}
+
 /** Run an approved Solana request. Signatures are returned base64 for the page to apply. */
 export async function runSolanaRequest(method: string, params: Record<string, unknown>, kp: Keypair): Promise<unknown> {
   switch (method) {
@@ -85,24 +92,27 @@ export async function runSolanaRequest(method: string, params: Record<string, un
       const tx = deserialize(String(params.transaction));
       if (tx instanceof VersionedTransaction) tx.sign([kp]);
       else tx.partialSign(kp);
-      return { signature: bytesToB64(signerSignature(tx, kp)) };
+      // `signature` = our raw sig (for the Phantom window.solana path, which applies it to the page's
+      // own tx object); `transaction` = full signed bytes (for the wallet-standard path).
+      return { signature: bytesToB64(signerSignature(tx, kp)), transaction: serializeSigned(tx) };
     }
     case "solana_signAndSendTransaction": {
       const tx = deserialize(String(params.transaction));
       if (tx instanceof VersionedTransaction) tx.sign([kp]);
       else tx.partialSign(kp);
       const sig = await connection.sendRawTransaction(tx.serialize());
-      return { signature: sig };
+      // `signature` = base58 txid (Phantom); `signatureBytes` = raw 64-byte sig (wallet-standard).
+      return { signature: sig, signatureBytes: bytesToB64(signerSignature(tx, kp)) };
     }
     case "solana_signAllTransactions": {
       const list = (params.transactions as string[]) ?? [];
-      const signatures = list.map((b64) => {
+      const out = list.map((b64) => {
         const tx = deserialize(b64);
         if (tx instanceof VersionedTransaction) tx.sign([kp]);
         else tx.partialSign(kp);
-        return bytesToB64(signerSignature(tx, kp));
+        return { signature: bytesToB64(signerSignature(tx, kp)), transaction: serializeSigned(tx) };
       });
-      return { signatures };
+      return { signatures: out.map((o) => o.signature), transactions: out.map((o) => o.transaction) };
     }
     default:
       throw new Error(`Unsupported Solana method: ${method}`);
