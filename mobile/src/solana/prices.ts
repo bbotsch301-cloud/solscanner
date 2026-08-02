@@ -131,20 +131,30 @@ interface DexPair {
   baseToken?: { address?: string };
   liquidity?: { usd?: number };
   priceChange?: { h24?: number };
+  info?: { imageUrl?: string };
 }
 
-/** The deepest pool DexScreener knows about for a mint: its price and how much sits in it. */
-interface DexInfo {
+/** The deepest pool DexScreener knows about for a mint: its price, depth and artwork. */
+export interface DexInfo {
   usdPrice: number;
   liquidityUsd: number;
   priceChange24h?: number;
+  /** Token artwork from the pool listing — often the only logo source for a small-cap. */
+  imageUrl?: string;
 }
 
 /**
- * One DexScreener round-trip, reduced to the deepest Solana pool per requested mint. Shared by the
- * price fallback and the liquidity signal, so both agree on which pool is authoritative.
+ * One DexScreener round-trip, reduced to the deepest pool per requested token. Shared by the price
+ * fallback, the liquidity signal and EVM logo lookup, so they all agree on which pool is
+ * authoritative.
+ *
+ * `chain` is DexScreener's own chain slug, which happens to match our ChainId for the chains we
+ * support ("solana", "ethereum", "bsc").
  */
-async function fetchDexInfo(mints: string[]): Promise<Record<string, DexInfo>> {
+export async function fetchDexInfo(
+  mints: string[],
+  chain: "solana" | "ethereum" | "bsc" = "solana"
+): Promise<Record<string, DexInfo>> {
   const out: Record<string, DexInfo> = {};
   // Base58 is case-sensitive and DexScreener echoes its own casing, so map back to the exact
   // string the caller asked for — the returned record's keys have to match the mints given.
@@ -160,7 +170,7 @@ async function fetchDexInfo(mints: string[]): Promise<Record<string, DexInfo>> {
       // A token can have many pools, some of them dust with nonsense prices. Take the deepest.
       const deepest = new Map<string, DexPair>();
       for (const p of pairs ?? []) {
-        if (p.chainId && p.chainId !== "solana") continue;
+        if (p.chainId && p.chainId !== chain) continue;
         const mint = byLower.get((p.baseToken?.address ?? "").toLowerCase());
         if (!mint) continue; // a quote-side token, not one we asked about
         const prev = deepest.get(mint);
@@ -173,6 +183,7 @@ async function fetchDexInfo(mints: string[]): Promise<Record<string, DexInfo>> {
           usdPrice: Number.isFinite(usdPrice) && usdPrice > 0 ? usdPrice : 0,
           liquidityUsd: p.liquidity?.usd ?? 0,
           priceChange24h: p.priceChange?.h24,
+          imageUrl: p.info?.imageUrl,
         };
       }
     } catch {

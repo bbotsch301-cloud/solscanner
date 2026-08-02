@@ -19,6 +19,8 @@ import { createDiskSnapshot } from "../cache/diskSnapshot";
 import { featuredFor } from "../config/featuredTokens";
 import { connection } from "../solana/connection";
 import { cachedTokenMetas, fetchTokenMetas } from "../solana/tokens";
+import { fetchDexInfo, type DexInfo } from "../solana/prices";
+import { evmLogo } from "../config/logos";
 import { ethCall } from "../evm/rpc";
 import { isEvmAddress, toChecksumAddress } from "../wallet/evm";
 import { shortAddress } from "../theme";
@@ -28,7 +30,9 @@ import type { SwapToken } from "./types";
 /** 30 days. The underlying facts don't change; this is really just a "re-check eventually". */
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-const cache = createDiskSnapshot<SwapToken[]>("featured.v1:", MAX_AGE_MS);
+// v2: entries resolved before logo lookup existed have no artwork, and with a 30-day horizon they
+// would have kept rendering as bare initials for a month. Bumping the prefix retires them.
+const cache = createDiskSnapshot<SwapToken[]>("featured.v2:", MAX_AGE_MS);
 
 /** Warm the cache at startup so the first picker open paints instantly. */
 export function preloadFeaturedTokens(): Promise<void> {
@@ -144,7 +148,23 @@ async function resolveEvm(chain: ChainDef, addresses: string[]): Promise<SwapTok
     const wave = await Promise.all(addresses.slice(i, i + EVM_WAVE).map((a) => resolveEvmOne(chain, a)));
     for (const t of wave) if (t) out.push(t);
   }
-  return out;
+  if (!out.length) return out;
+
+  // The contract knows its symbol, name and decimals but has no idea what it looks like, so these
+  // rendered as bare initials while the built-in majors beside them had artwork. DexScreener
+  // carries token images for anything with a live pool — which is exactly the small-caps a token
+  // registry won't have. One batched request for the whole list.
+  //
+  // Falling back to the Trust Wallet CDN path costs nothing when it misses: TokenAvatar advances
+  // through its candidates on error and lands on initials, which is where we already were.
+  const chainSlug = chain.id === "ethereum" || chain.id === "bsc" ? chain.id : null;
+  if (!chainSlug) return out;
+  const info = await fetchDexInfo(out.map((t) => t.mint), chainSlug).catch(() => ({}) as Record<string, DexInfo>);
+  const trustSlug = chain.id === "ethereum" ? "ethereum" : "smartchain";
+  return out.map((t) => ({
+    ...t,
+    logoURI: info[t.mint]?.imageUrl ?? evmLogo(trustSlug, t.mint),
+  }));
 }
 
 /** Resolve a chain's featured list from scratch and persist it. */
