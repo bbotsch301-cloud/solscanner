@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { TokenAvatar } from "../components/TokenAvatar";
 import { CandleChart } from "../components/CandleChart";
+import { ChartFullScreen } from "../components/ChartFullScreen";
 import { PressableScale } from "../components/PressableScale";
 import { Skeleton } from "../components/Skeleton";
 import { useWallet } from "../wallet/WalletContext";
@@ -48,6 +49,7 @@ export function TokenDetailScreen() {
   const [loading, setLoading] = useState(() => !candleCache.has(`${activeChain.id}:${assetKey}:1W`));
   const [refreshing, setRefreshing] = useState(false);
   const [scrub, setScrub] = useState<Candle | null>(null); // candle under the crosshair, if any
+  const [fullscreen, setFullscreen] = useState(false);
 
   const loadCandles = useCallback(async (): Promise<Candle[]> => {
     if (!view) return [];
@@ -63,6 +65,7 @@ export function TokenDetailScreen() {
     let cancelled = false;
     void (async () => {
       const cached = candleCache.get(cacheKey);
+      const hadData = !!cached && cached.length >= 2;
       if (cached) {
         setCandles(cached);
         setLoading(false);
@@ -71,9 +74,16 @@ export function TokenDetailScreen() {
       }
       const c = await loadCandles();
       if (!cancelled) {
-        setCandles(c);
+        // Never let a transient empty/rate-limited response wipe a chart that's already on screen —
+        // keep the last-good candles and only fall through to the empty state when we've genuinely
+        // never had data for this (token, range).
+        if (c.length >= 2) {
+          setCandles(c);
+          candleCache.set(cacheKey, c);
+        } else if (!hadData) {
+          setCandles([]);
+        }
         setLoading(false);
-        if (c.length >= 2) candleCache.set(cacheKey, c);
       }
     })();
     return () => {
@@ -82,18 +92,21 @@ export function TokenDetailScreen() {
   }, [cacheKey, loadCandles]);
 
   // Pull-to-refresh: re-price the wallet (updates this token's balance + USD value) and reload
-  // the candles for the current range.
+  // the candles for the current range. As above, a transient empty result keeps the last-good chart.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const [c] = await Promise.all([loadCandles(), refreshWallet()]);
-      setCandles(c);
+      if (c.length >= 2) {
+        setCandles(c);
+        candleCache.set(cacheKey, c);
+      }
     } catch {
       /* keep last */
     } finally {
       setRefreshing(false);
     }
-  }, [loadCandles, refreshWallet]);
+  }, [loadCandles, refreshWallet, cacheKey]);
 
   if (!view) {
     return (
@@ -150,7 +163,21 @@ export function TokenDetailScreen() {
         {loading && candles.length < 2 ? (
           <Skeleton width="100%" height={200} round={radius.md} />
         ) : candles.length >= 2 ? (
-          <CandleChart candles={candles} height={220} onScrub={setScrub} />
+          <>
+            <CandleChart candles={candles} height={220} onScrub={setScrub} />
+            <PressableScale
+              haptic={null}
+              onPress={() => {
+                haptics.tap();
+                setScrub(null);
+                setFullscreen(true);
+              }}
+              style={styles.expandBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="expand" size={18} color={colors.textMuted} />
+            </PressableScale>
+          </>
         ) : (
           <Text style={styles.sub}>No price chart for this token.</Text>
         )}
@@ -193,6 +220,22 @@ export function TokenDetailScreen() {
           <Text style={styles.secondaryText}>Swap</Text>
         </Pressable>
       </View>
+
+      <ChartFullScreen
+        visible={fullscreen}
+        onClose={() => setFullscreen(false)}
+        candles={candles}
+        loading={loading}
+        range={range}
+        onRangeChange={(r) => {
+          setScrub(null);
+          setRange(r);
+        }}
+        symbol={view.symbol}
+        name={view.name}
+        logoURI={view.logoURI}
+        livePrice={livePrice}
+      />
     </ScrollView>
   );
 }
@@ -229,6 +272,14 @@ const styles = StyleSheet.create({
     minHeight: 120,
     alignItems: "center",
     justifyContent: "center",
+  },
+  expandBtn: {
+    position: "absolute",
+    top: spacing(2),
+    right: spacing(2),
+    padding: spacing(1.5),
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgElevated + "CC",
   },
   balanceCard: {
     backgroundColor: colors.card,
