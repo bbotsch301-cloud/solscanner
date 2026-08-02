@@ -24,7 +24,7 @@ import { ecoSnapshots } from "../cache/screens";
 import { haptics } from "../ui/haptics";
 import { Skeleton, SkeletonRow } from "../components/Skeleton";
 import { Updating } from "../components/Updating";
-import { solscanAccount } from "../solana/connection";
+import { getCustomRpc, solscanAccount } from "../solana/connection";
 import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, timeAgo, usd } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -165,6 +165,7 @@ export function EcosystemScreen() {
   const depositsTotal = deposits.reduce((s, d) => s + (d.usd ?? 0), 0);
   const depositsPriced = deposits.every((d) => d.usd != null);
   const scan = lastDepositScan();
+  const customRpc = getCustomRpc();
 
   return (
     <ScrollView
@@ -352,15 +353,22 @@ export function EcosystemScreen() {
         {depositsLoaded && loading && <Updating style={{ marginTop: spacing(5) }} />}
       </View>
       <View style={styles.tiles}>
-        <StatTile label="Deposits" value={compact(deposits.length)} delta="recent" loading={!depositsLoaded} />
+        {/* A skeleton promises a number is coming. Once the load has FAILED nothing is coming, so
+            these fall back to "—" rather than pulsing forever over an error message. */}
+        <StatTile
+          label="Deposits"
+          value={depositsLoaded ? compact(deposits.length) : "—"}
+          delta="recent"
+          loading={!depositsLoaded && !depositsError}
+        />
         <StatTile
           label="Total in"
           // Deposits whose token has no price contribute nothing to the sum, so the total would
           // read as complete when it isn't. Say so rather than under-report.
-          value={depositsPriced ? usd(depositsTotal) : `${usd(depositsTotal)}+`}
+          value={!depositsLoaded ? "—" : depositsPriced ? usd(depositsTotal) : `${usd(depositsTotal)}+`}
           delta="recent"
           deltaUp={depositsTotal > 0}
-          loading={!depositsLoaded}
+          loading={!depositsLoaded && !depositsError}
         />
       </View>
       <View style={[styles.list, { marginTop: spacing(3) }]}>
@@ -378,8 +386,19 @@ export function EcosystemScreen() {
             icon="cloud-offline-outline"
             color={colors.warning}
             title="Couldn't load deposits"
-            subtitle="The public RPC is rate-limited or unreachable, so history can't load. Add a dedicated RPC (a free Helius key works) for reliable deposits, or pull to refresh."
-            cta={{ label: "Set a custom RPC", icon: "server-outline", onPress: () => nav.navigate("Settings") }}
+            // The old copy told everyone to add a dedicated RPC — including people who already
+            // had one set, for whom it was both wrong and unactionable. Say what's actually true
+            // of the RPC in use.
+            subtitle={
+              customRpc
+                ? "Your custom RPC didn't answer, or refused the request (a free tier's rate limit is the usual cause). Pull to refresh, or check the URL in Settings."
+                : "The public RPC is rate-limited or unreachable, so history can't load. Add a dedicated RPC (a free Helius key works) for reliable deposits, or pull to refresh."
+            }
+            cta={{
+              label: customRpc ? "Check RPC settings" : "Set a custom RPC",
+              icon: "server-outline",
+              onPress: () => nav.navigate("Settings"),
+            }}
           />
         ) : deposits.length === 0 ? (
           <EmptyState
@@ -431,10 +450,14 @@ export function EcosystemScreen() {
 
       {scan && (
         // This feed has been "fixed" several times on guesses about where coverage was being lost.
-        // Showing what the scan actually reached turns the next report into evidence.
+        // Showing what the scan actually reached turns the next report into evidence — which is
+        // why the failure counts are here too, and why they're recorded before the risky part.
         <Text style={styles.scanNote}>
-          Scanned {scan.scannedAccounts} of {scan.tokenAccounts + 1} treasury accounts ·{" "}
-          {scan.signatures} transactions · {scan.deposits} inflows found
+          Scanned {scan.scannedAccounts - scan.accountsFailed} of {scan.tokenAccounts + 1} treasury
+          accounts · {scan.signatures} transactions · {scan.deposits} inflows found
+          {scan.accountsFailed > 0 ? ` · ${scan.accountsFailed} accounts unreachable` : ""}
+          {scan.unreadable > 0 ? ` · ${scan.unreadable} unreadable` : ""}
+          {scan.publicRpc ? " · public RPC" : ""}
         </Text>
       )}
 

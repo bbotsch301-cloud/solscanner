@@ -53,26 +53,74 @@ const SIG_OVERSAMPLE = 2;
 // rate limit. Parsed in chunks of 10, so this is ~6 batched calls.
 const MAX_SIGNATURES = 60;
 
+/** How far the scan got before it gave up — so the UI can say what actually failed. */
+export type DepositsFailure = "signatures" | "transactions";
+
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
  * screen show "couldn't load" instead of a misleading "No deposits yet".
  */
-export class DepositsUnavailableError extends Error {}
+export class DepositsUnavailableError extends Error {
+  constructor(
+    message: string,
+    /** "signatures" = couldn't even list the treasury's transactions; "transactions" = listed them
+     *  but couldn't read a single one. Different problems, different advice. */
+    readonly stage: DepositsFailure
+  ) {
+    super(message);
+  }
+}
 
 /**
  * What the last scan actually saw. This feed has now been "fixed" several times on guesswork about
- * where coverage was being lost; these counts turn the next report into evidence.
+ * where coverage was being lost; these counts turn the next report into evidence. Recorded as soon
+ * as signatures are in hand — a scan that fails LATER is exactly the one whose numbers we need.
  */
 export interface ScanStats {
   tokenAccounts: number;
   scannedAccounts: number;
+  /** Accounts whose signature lookup failed outright (rate limit, transport). */
+  accountsFailed: number;
   signatures: number;
+  /** Signatures whose transaction couldn't be read, even one at a time. */
+  unreadable: number;
   parsed: number;
   deposits: number;
+  /** Whether this ran against the shared public endpoint or a dedicated RPC. */
+  publicRpc: boolean;
 }
 let lastScan: ScanStats | null = null;
 export function lastDepositScan(): ScanStats | null {
   return lastScan;
+}
+
+type ParsedTxs = Awaited<ReturnType<typeof connection.getParsedTransactions>>;
+
+/**
+ * Read transactions with a split-retry.
+ *
+ * `getParsedTransactions` is ONE batched HTTP POST, and it rejects wholesale if any single element
+ * in the batch errors — so one unparseable transaction used to cost the entire chunk, and if that
+ * happened to every chunk, the whole feed reported "couldn't load" on a perfectly healthy RPC.
+ * Halving on failure isolates the bad signature: only it is dropped, everything around it survives.
+ * (Same trick as solana/txParse.ts, which hit this first.)
+ */
+async function readTransactions(sigs: string[], dropped: { n: number }): Promise<ParsedTxs> {
+  if (sigs.length === 0) return [];
+  try {
+    return await connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
+  } catch {
+    if (sigs.length === 1) {
+      dropped.n += 1; // this one signature is the problem; lose it, not its neighbours
+      return [];
+    }
+    const mid = sigs.length >> 1;
+    const [a, b] = await Promise.all([
+      readTransactions(sigs.slice(0, mid), dropped),
+      readTransactions(sigs.slice(mid), dropped),
+    ]);
+    return [...a, ...b];
+  }
 }
 
 export async function fetchDeposits(address: string, limit = 10): Promise<Deposit[]> {
@@ -126,14 +174,23 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
     //    requests-per-second limit — which failed the whole feed even though the key was fine.
     const perAccount = light ? PER_ACCOUNT_SIGS_PUBLIC : PER_ACCOUNT_SIGS;
     const sigLists: Awaited<ReturnType<typeof connection.getSignaturesForAddress>>[] = [];
+    let accountsFailed = 0;
     const waveSize = light ? SIG_WAVE_PUBLIC : SIG_WAVE;
     for (let i = 0; i < accounts.length; i += waveSize) {
       const wave = await Promise.all(
-        accounts
-          .slice(i, i + waveSize)
-          .map((a) => connection.getSignaturesForAddress(a, { limit: perAccount }).catch(() => []))
+        accounts.slice(i, i + waveSize).map((a) =>
+          // null (not []) for a failure, so a rate-limited account is counted rather than looking
+          // like an account with no history. That distinction is the whole point of the stats.
+          connection.getSignaturesForAddress(a, { limit: perAccount }).then(
+            (r) => r,
+            () => null
+          )
+        )
       );
-      sigLists.push(...wave);
+      for (const list of wave) {
+        if (list === null) accountsFailed += 1;
+        else sigLists.push(list);
+      }
     }
     // THE SELECTION, and this is where recent fees were being lost. Pooling ~4 signatures from
     // each of 39 accounts and then keeping the newest 30 OVERALL sounds reasonable, but a single
@@ -161,29 +218,44 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       }
     }
     const sigs = picked;
-    // Signatures came back, so the treasury address itself is reachable. From here on, an RPC
-    // failure degrades to fewer deposits rather than none.
-    if (sigs.length === 0) return [];
 
-    // 3. Parse the transactions and diff the treasury's balances. Fetched in small chunks so one
-    //    rate-limited batch costs a few rows instead of the entire feed.
-    const CHUNK = light ? 3 : 10;
-    const txs: Awaited<ReturnType<typeof connection.getParsedTransactions>> = [];
-    for (let i = 0; i < sigs.length; i += CHUNK) {
-      const batch = await connection
-        .getParsedTransactions(sigs.slice(i, i + CHUNK), { maxSupportedTransactionVersion: 0 })
-        .catch(() => []);
-      txs.push(...batch);
-    }
-    // Every batch failed and we have nothing to show — that's an outage, not an empty treasury.
-    if (txs.length === 0) throw new DepositsUnavailableError("Couldn't read treasury transactions.");
+    // Record what the scan reached BEFORE the expensive part. Previously these stats were written
+    // only on the happy path, so the runs that actually needed explaining — the ones that ended in
+    // "Couldn't load deposits" — reported nothing at all.
     lastScan = {
       tokenAccounts: all.length,
       scannedAccounts: accounts.length,
+      accountsFailed,
       signatures: sigs.length,
-      parsed: txs.filter(Boolean).length,
+      unreadable: 0,
+      parsed: 0,
       deposits: 0,
+      publicRpc: light,
     };
+
+    // Not a single account answered — the treasury address itself is unreachable, which is an
+    // outage rather than a treasury with no history.
+    if (sigs.length === 0) {
+      if (accountsFailed > 0) {
+        throw new DepositsUnavailableError("Couldn't list the treasury's transactions.", "signatures");
+      }
+      return [];
+    }
+
+    // 3. Parse the transactions and diff the treasury's balances. Chunked, and each chunk halves
+    //    itself on failure, so one unreadable transaction costs one row instead of the feed.
+    const CHUNK = light ? 3 : 10;
+    const dropped = { n: 0 };
+    const txs: ParsedTxs = [];
+    for (let i = 0; i < sigs.length; i += CHUNK) {
+      txs.push(...(await readTransactions(sigs.slice(i, i + CHUNK), dropped)));
+    }
+    lastScan.unreadable = dropped.n;
+    lastScan.parsed = txs.filter(Boolean).length;
+    // Nothing readable at all — an outage, not an empty treasury.
+    if (txs.length === 0) {
+      throw new DepositsUnavailableError("Couldn't read treasury transactions.", "transactions");
+    }
     const raw: { signature: string; time: number | null; mint: string | null; amountUi: number }[] = [];
     for (const tx of txs) {
       if (!tx || !tx.meta || tx.meta.err) continue;
@@ -239,9 +311,10 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
         };
       })
       .sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
-  } catch {
+  } catch (e) {
     // The RPC calls (token-account lookup / getParsedTransactions) failed — signal "couldn't load"
     // so the screen doesn't render a misleading "No deposits yet". Genuine no-inflows still returns [].
-    throw new DepositsUnavailableError("Couldn't reach the RPC to read treasury deposits.");
+    if (e instanceof DepositsUnavailableError) throw e; // already staged; don't flatten it
+    throw new DepositsUnavailableError("Couldn't reach the RPC to read treasury deposits.", "signatures");
   }
 }

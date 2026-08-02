@@ -32,7 +32,11 @@ export function Skeleton({
 
   return (
     <Animated.View
-      style={[{ width, height, borderRadius: round, backgroundColor: colors.card, opacity: pulse }, style]}
+      // The border tone, not the card tone. Almost every skeleton in this app sits INSIDE a card,
+      // and `colors.card` on `colors.card` is invisible — a labelled tile with a silent gap where
+      // the number should be, which reads as broken rather than as loading. `cardBorder` is a
+      // clear step up from both the page background and a card.
+      style={[{ width, height, borderRadius: round, backgroundColor: colors.cardBorder, opacity: pulse }, style]}
     />
   );
 }

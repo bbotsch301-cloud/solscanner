@@ -67,9 +67,14 @@ function apply(n: Network): void {
   IS_MAINNET = n === "mainnet-beta";
   CLUSTER = n;
   connection = new Connection(rpcFor(n), CONNECTION_CONFIG);
-  // A dedicated RPC can handle parallel bursts; drop the public-endpoint spacing so loads are fast.
+  // A dedicated RPC handles far more than the public one, but "dedicated" in practice means a FREE
+  // Helius key — around 10 requests/second. `minSpacingMs: 0` with 8 in flight bursts well past
+  // that, and a batched getParsedTransactions counts once PER SIGNATURE, so the treasury scan's six
+  // HTTP calls are really sixty requests. That's how a perfectly valid key still produced
+  // "Couldn't load deposits". 60ms between starts (~16/s) smooths the burst while staying fast;
+  // the 429 backoff in rpcThrottle covers whatever still overshoots.
   const dedicated = !PUBLIC_RPCS.has(rpcFor(n));
-  setThrottleProfile(dedicated ? { maxConcurrent: 8, minSpacingMs: 0 } : { maxConcurrent: 3, minSpacingMs: 140 });
+  setThrottleProfile(dedicated ? { maxConcurrent: 6, minSpacingMs: 60 } : { maxConcurrent: 3, minSpacingMs: 140 });
 }
 
 /** Load the saved network choice. Call once at startup, before rendering. */
