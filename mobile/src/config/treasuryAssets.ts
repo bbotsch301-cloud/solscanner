@@ -25,7 +25,7 @@ export interface OffchainAsset {
    * When omitted, `valueUsd` is used as-is.
    */
   live?: "silver" | "iqd";
-  /** Which built-in SVG coin logo to show (see components/AssetLogo). */
+  /** Which bundled coin artwork to show (see components/AssetLogo). */
   icon?: "silver" | "dinar";
   /** Optional context, e.g. the rate/date the estimate is based on. */
   note?: string;
