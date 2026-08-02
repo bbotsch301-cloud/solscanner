@@ -46,10 +46,12 @@ const PER_ACCOUNT_SIGS_PUBLIC = 3;
 // dedicated path can span 40+ accounts — so these go out in waves instead of one burst.
 const SIG_WAVE = 5;
 const SIG_WAVE_PUBLIC = 3;
-// Transactions to sample per deposit asked for — see the slice below. Kept modest for the same
-// reason as the account cap: each extra transaction is another batched RPC call competing with the
-// signature fan-out for the same rate limit.
+// Transactions to sample per deposit asked for. The floor is really "at least one per account" —
+// see the round-robin below — with this as the multiplier once accounts are few.
 const SIG_OVERSAMPLE = 2;
+// Hard ceiling on transactions parsed per load, so a treasury with many accounts can't melt the
+// rate limit. Parsed in chunks of 10, so this is ~6 batched calls.
+const MAX_SIGNATURES = 60;
 
 /**
  * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
@@ -133,16 +135,32 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       );
       sigLists.push(...wave);
     }
+    // THE SELECTION, and this is where recent fees were being lost. Pooling ~4 signatures from
+    // each of 39 accounts and then keeping the newest 30 OVERALL sounds reasonable, but a single
+    // busy account can fill that entire cut — the treasury wallet trades, so its own transactions
+    // are always the newest. Every fee sitting in a quiet token account got crowded out, no matter
+    // how completely we scanned (the device reported 39 of 39 accounts covered, and still nothing).
+    //
+    // Round-robin instead: take each account's NEWEST transaction before any account's second.
+    // Every account that saw activity gets represented, which is exactly what a fee arriving in an
+    // otherwise-idle account needs.
+    const budget = Math.min(
+      Math.max(limit * SIG_OVERSAMPLE, accounts.length),
+      light ? 18 : MAX_SIGNATURES
+    );
     const seen = new Set<string>();
-    const sigs = sigLists
-      .flat()
-      .filter((s) => !s.err && !seen.has(s.signature) && (seen.add(s.signature), true))
-      .sort((a, b) => (b.blockTime ?? 0) - (a.blockTime ?? 0))
-      // `limit` counts DEPOSITS, not transactions. Most of a treasury's recent activity produces
-      // no inflow at all, so slicing signatures to `limit` meant asking for 15 deposits and
-      // parsing only 15 transactions — of which just a few were deposits. Over-fetch instead.
-      .slice(0, Math.min(limit * SIG_OVERSAMPLE, light ? 18 : 40))
-      .map((s) => s.signature);
+    const picked: string[] = [];
+    const deepest = sigLists.reduce((m, l) => Math.max(m, l.length), 0);
+    for (let depth = 0; depth < deepest && picked.length < budget; depth++) {
+      for (const list of sigLists) {
+        if (picked.length >= budget) break;
+        const sig = list[depth];
+        if (!sig || sig.err || seen.has(sig.signature)) continue;
+        seen.add(sig.signature);
+        picked.push(sig.signature);
+      }
+    }
+    const sigs = picked;
     // Signatures came back, so the treasury address itself is reachable. From here on, an RPC
     // failure degrades to fewer deposits rather than none.
     if (sigs.length === 0) return [];
