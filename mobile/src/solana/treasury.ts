@@ -8,22 +8,18 @@
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { connection } from "./connection";
+import { TREASURY_ADDRESS } from "../config/treasury";
 
 /**
- * The main Global Goshens communal treasury. Set `EXPO_PUBLIC_GOSHENS_TREASURY` to the real
- * treasury address; the fallback is the current placeholder used while testing.
- */
-const GOSHENS_TREASURY =
-  process.env.EXPO_PUBLIC_GOSHENS_TREASURY || "AiNGsZZnrxZiefZAijrpYGe4gBFQSs7rQ2NRrYXXkwhk";
-
-/**
- * The treasury address the app displays on Home + the Treasury tab: always the main Global
- * Goshens treasury. Deliberately independent of any Squads multisig — a connected multisig is
- * its own feature (its vault balance shows inside the multisig hub), so it never hijacks the
- * treasury view. Kept a function so a future runtime-set treasury address is a one-line change.
+ * The treasury address the app displays on the Ecosystem tab: always the main Global Goshens
+ * treasury, and the same address swap fees are paid to (see config/treasury.ts — they used to be
+ * separate literals that could silently diverge). Deliberately independent of any Squads multisig
+ * — a connected multisig is its own feature, with its vault balance shown inside the multisig hub,
+ * so it never hijacks the treasury view. Kept a function so a future runtime-set treasury address
+ * is a one-line change.
  */
 export function treasuryAddress(): string {
-  return GOSHENS_TREASURY;
+  return TREASURY_ADDRESS;
 }
 
 export interface Holding {
