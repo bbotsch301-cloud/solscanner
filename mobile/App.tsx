@@ -54,6 +54,7 @@ import { loadApprovals } from "./src/safety/approvals";
 import { loadContacts } from "./src/contacts/contacts";
 import { loadPubAddresses } from "./src/wallet/pubAddresses";
 import { preloadTokenMetaCache } from "./src/solana/tokens";
+import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
 import { haptics } from "./src/ui/haptics";
 import { configureNotifications, onNotificationTap } from "./src/ui/notifications";
 import { navigationRef, navigate } from "./src/navigationRef";
@@ -262,6 +263,7 @@ export default function App() {
       loadApprovals(),
       loadContacts(),
       loadPubAddresses(),
+      loadWalletSnapshots(),
       loadBrowserData(),
       loadConnections(),
       preloadTokenMetaCache(),

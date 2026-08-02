@@ -24,7 +24,8 @@ import {
   createTransferCheckedInstruction,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
-import { connection } from "../solana/connection";
+import { connection, CLUSTER } from "../solana/connection";
+import { getWalletSnapshot, saveWalletSnapshot } from "./snapshotCache";
 import { sendAndConfirmGuarded } from "../solana/tx";
 import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
@@ -325,9 +326,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       fetchTokenMetas(mints).catch(() => ({}) as Record<string, never>),
     ]);
     setPrices(priceRes);
-    if (metas && Object.keys(metas).length) {
-      setTokens(spl.map((t) => ({ ...t, ...metas[t.mint] })));
-    }
+    const merged = metas && Object.keys(metas).length ? spl.map((t) => ({ ...t, ...metas[t.mint] })) : spl;
+    if (merged !== spl) setTokens(merged);
+    // Persist this snapshot so the next cold open paints instantly (network-scoped: mainnet ≠ devnet).
+    saveWalletSnapshot(`sol:${CLUSTER}:${pubkey.toBase58()}`, {
+      solBalance: lamports / LAMPORTS_PER_SOL,
+      tokens: merged,
+      prices: priceRes,
+    });
 
     detectReceipts(pubkey.toBase58(), [
       { key: "native:SOL", symbol: "SOL", amount: lamports / LAMPORTS_PER_SOL, priceUsd: priceRes[WSOL_MINT]?.usdPrice ?? null },
@@ -350,6 +356,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setEvmNative(nativeAmt);
     setEvmTokens(toks);
     setEvmPrices(evPrices);
+    saveWalletSnapshot(`${chain.id}:${address}`, { evmNative: nativeAmt, evmTokens: toks, evmPrices: evPrices });
 
     detectReceipts(address, [
       { key: "native", symbol: chain.symbol, amount: nativeAmt, priceUsd: evPrices[chain.symbol] ?? null },
@@ -360,6 +367,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [detectReceipts]);
 
   /** Load balances for a specific chain (used by refresh + chain switch). */
+  // Paint the last-known balances/tokens/prices from disk immediately (before the RPC round-trip),
+  // so switching accounts/chains and cold opens feel instant. The live load then refreshes them.
+  const seedFromSnapshot = useCallback((id: ChainId, sol: string | null, evm: string | null) => {
+    const chain = getChain(id);
+    if (chain.kind === "solana" && sol) {
+      const s = getWalletSnapshot(`sol:${CLUSTER}:${sol}`);
+      if (s) {
+        setSolBalance(s.solBalance ?? null);
+        setTokens(s.tokens ?? []);
+        if (s.prices) setPrices(s.prices);
+      }
+    } else if (chain.kind === "evm" && evm) {
+      const s = getWalletSnapshot(`${id}:${evm}`);
+      if (s) {
+        setEvmNative(s.evmNative ?? null);
+        setEvmTokens(s.evmTokens ?? []);
+        if (s.evmPrices) setEvmPrices(s.evmPrices);
+      }
+    }
+  }, []);
+
   const loadChain = useCallback(
     async (id: ChainId) => {
       const chain = getChain(id);
@@ -390,10 +418,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (id: ChainId) => {
       activeChainRef.current = id;
       setActiveChainId(id);
+      seedFromSnapshot(id, activeSolAddressRef.current, activeEvmAddressRef.current); // instant paint
       await SecureStore.setItemAsync(ACTIVE_CHAIN_KEY, id).catch(() => {});
       await loadChain(id);
     },
-    [loadChain]
+    [loadChain, seedFromSnapshot]
   );
 
   // Set the active account's public addresses in both state (for the UI) and refs (for loadChain).
@@ -423,6 +452,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const stored = getPubAddress(ref.seedId, ref.index);
       if (stored) {
         setActiveAddresses(stored.sol, stored.evm);
+        seedFromSnapshot(activeChainRef.current, stored.sol, stored.evm); // instant paint from disk
         loadChain(activeChainRef.current);
       } else {
         setActiveAddresses(null, null);
@@ -447,7 +477,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         loadChain(activeChainRef.current);
       }
     },
-    [loadChain, setActiveAddresses]
+    [loadChain, setActiveAddresses, seedFromSnapshot]
   );
 
   // Load the vault (migrating a v1 single wallet) on startup.
