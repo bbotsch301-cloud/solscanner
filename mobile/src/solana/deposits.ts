@@ -27,11 +27,19 @@ export interface Deposit {
   explorerUrl: string;
 }
 
-// Bounds kept modest because getSignaturesForAddress + getParsedTransactions are the
-// heaviest, most rate-limited RPC methods on the public endpoint — a big fan-out here is the
-// main source of 429s. A private RPC (EXPO_PUBLIC_MAINNET_RPC) can afford much more.
-const MAX_TOKEN_ACCOUNTS = 8; // bound the number of getSignaturesForAddress calls
-const PER_ACCOUNT_SIGS = 6;
+// The swap fee lands in a *fresh* ATA (one per output mint), so the scan must cover the treasury's
+// full set of token accounts — capping it low silently drops recently-created fee accounts. The cap
+// stays only as a safety bound against a treasury with hundreds of dust accounts. getSignatures +
+// getParsedTransactions are the heaviest RPC methods, so a private RPC (EXPO_PUBLIC_MAINNET_RPC) is
+// strongly recommended; the shared throttle retries 429s, but the public endpoint is still slow.
+const MAX_TOKEN_ACCOUNTS = 40; // bound the number of getSignaturesForAddress calls
+const PER_ACCOUNT_SIGS = 4;
+
+/**
+ * Thrown when the deposits feed can't reach the RPC (vs. genuinely having no deposits) — lets the
+ * screen show "couldn't load" instead of a misleading "No deposits yet".
+ */
+export class DepositsUnavailableError extends Error {}
 
 export async function fetchDeposits(address: string, limit = 10): Promise<Deposit[]> {
   let owner: PublicKey;
@@ -48,7 +56,12 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_PROGRAM_ID }),
       connection.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID }),
     ]);
-    const accounts = [owner, ...[...legacy.value, ...t22.value].slice(0, MAX_TOKEN_ACCOUNTS).map((a) => a.pubkey)];
+    // Scan ALL token accounts (up to the safety bound). A swap fee lands as a *small* amount in a
+    // possibly-fresh ATA, so we can't prioritize by balance or age — the only way not to miss it is
+    // to cover the full set. For a real treasury this is every account; the bound just guards against
+    // a wallet spammed with hundreds of dust accounts.
+    const tokenAccts = [...legacy.value, ...t22.value].slice(0, MAX_TOKEN_ACCOUNTS).map((a) => a.pubkey);
+    const accounts = [owner, ...tokenAccts];
 
     // 2. Recent signatures across the wallet + token accounts, deduped, newest first.
     const sigLists = await Promise.all(
@@ -116,6 +129,8 @@ export async function fetchDeposits(address: string, limit = 10): Promise<Deposi
       })
       .sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
   } catch {
-    return [];
+    // The RPC calls (token-account lookup / getParsedTransactions) failed — signal "couldn't load"
+    // so the screen doesn't render a misleading "No deposits yet". Genuine no-inflows still returns [].
+    throw new DepositsUnavailableError("Couldn't reach the RPC to read treasury deposits.");
   }
 }

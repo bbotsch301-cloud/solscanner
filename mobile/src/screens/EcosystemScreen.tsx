@@ -55,6 +55,7 @@ export function EcosystemScreen() {
   const [fee, setFee] = useState<TransferFee | null>(seed?.fee ?? null);
   const [ocPrices, setOcPrices] = useState<OffchainPrices>(seed?.ocPrices ?? {});
   const [deposits, setDeposits] = useState<Deposit[]>(seed?.deposits ?? []);
+  const [depositsError, setDepositsError] = useState(false);
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [otherExpanded, setOtherExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -77,17 +78,21 @@ export function EcosystemScreen() {
       // Seed names/logos synchronously from the warm cache so they render immediately with the
       // holdings (no flash of the contract address); the async fetch below fills in the rest.
       setMetas((prev) => ({ ...cachedTokenMetas(mints), ...prev }));
+      // Deposits fail independently (heaviest RPC): null = couldn't load (keep last + flag the
+      // error), an array = authoritative (incl. genuinely empty). Don't let it blank a good list.
       const [p, m, oc, d] = await Promise.all([
         fetchPrices([WSOL_MINT, ...mints]).catch(() => ({}) as Record<string, PriceInfo>),
         fetchTokenMetas(mints).catch(() => ({}) as Record<string, TokenMeta>),
         fetchOffchainPrices().catch(() => ({}) as OffchainPrices),
-        fetchDeposits(treasuryAddress(), 15).catch(() => [] as Deposit[]),
+        fetchDeposits(treasuryAddress(), 15).then((x) => x, () => null as Deposit[] | null),
       ]);
       setPrices(p);
       setMetas((prev) => ({ ...prev, ...m }));
       setOcPrices(oc);
-      setDeposits(d);
-      ecoCache.set(treasuryAddress(), { holdings: h, prices: p, metas: m, supply: s, fee: f, ocPrices: oc, deposits: d });
+      const nextDeposits = d ?? ecoCache.get(treasuryAddress())?.deposits ?? [];
+      setDeposits(nextDeposits);
+      setDepositsError(d === null);
+      ecoCache.set(treasuryAddress(), { holdings: h, prices: p, metas: m, supply: s, fee: f, ocPrices: oc, deposits: nextDeposits });
     } catch {
       /* keep last data */
     } finally {
@@ -255,7 +260,14 @@ export function EcosystemScreen() {
         <StatTile label="Total in" value={usd(depositsTotal)} delta="recent" deltaUp={depositsTotal > 0} />
       </View>
       <View style={[styles.list, { marginTop: spacing(3) }]}>
-        {deposits.length === 0 ? (
+        {deposits.length === 0 && depositsError ? (
+          <EmptyState
+            icon="cloud-offline-outline"
+            color={colors.warning}
+            title="Couldn't load deposits"
+            subtitle="The public RPC is rate-limited or unreachable. Pull to refresh, or set a dedicated RPC (EXPO_PUBLIC_MAINNET_RPC) for reliable history."
+          />
+        ) : deposits.length === 0 ? (
           <EmptyState
             icon="arrow-down-circle-outline"
             title="No deposits yet"
