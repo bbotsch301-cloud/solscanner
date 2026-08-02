@@ -30,7 +30,7 @@ import { getWalletSnapshot, saveWalletSnapshot } from "./snapshotCache";
 import { sendAndConfirmGuarded } from "../solana/tx";
 import { toBaseUnits } from "../units";
 import { humanizeError } from "../solana/errors";
-import { fetchPrices, cachedPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
+import { fetchPrices, cachedPrices, fetchDexPrices, WSOL_MINT, type PriceInfo } from "../solana/prices";
 import { fetchTokenMetas, cachedTokenMetas } from "../solana/tokens";
 import { CHAINS, DEFAULT_CHAIN, getChain, type ChainDef, type ChainId } from "../chains/registry";
 import { getBalance as getEvmBalance } from "../evm/rpc";
@@ -317,6 +317,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setTokens(das.tokens);
         setPrices(prices);
         saveWalletSnapshot(`sol:${CLUSTER}:${pubkey.toBase58()}`, { solBalance: solUi, tokens: das.tokens, prices });
+        // DAS only prices what Helius indexes, so smaller holdings come back with no value at all.
+        // Fill those in behind the fast paint rather than blocking it — the point of this path is
+        // that balances appear immediately.
+        const unpriced = das.tokens.filter((t) => t.amount > 0 && !prices[t.mint]).map((t) => t.mint);
+        if (unpriced.length) {
+          void fetchDexPrices(unpriced).then((extra) => {
+            if (!Object.keys(extra).length) return;
+            const merged = { ...prices, ...extra };
+            setPrices(merged);
+            saveWalletSnapshot(`sol:${CLUSTER}:${pubkey.toBase58()}`, {
+              solBalance: solUi,
+              tokens: das.tokens,
+              prices: merged,
+            });
+          });
+        }
         detectReceipts(pubkey.toBase58(), [
           { key: "native:SOL", symbol: "SOL", amount: solUi, priceUsd: prices[WSOL_MINT]?.usdPrice ?? null },
           ...das.tokens.map((t) => ({

@@ -80,27 +80,117 @@ function persistPrices(prices: Record<string, PriceInfo>): void {
   AsyncStorage.multiSet(pairs).catch(() => {});
 }
 
+/** Jupiter's price endpoint caps the id list, so long wallets are asked for in batches. */
+const JUP_BATCH = 50;
+
+async function fetchJupiterPrices(ids: string[]): Promise<{ prices: Record<string, PriceInfo>; ok: boolean }> {
+  const out: Record<string, PriceInfo> = {};
+  let ok = false;
+  for (let i = 0; i < ids.length; i += JUP_BATCH) {
+    const batch = ids.slice(i, i + JUP_BATCH);
+    try {
+      const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${batch.join(",")}`);
+      if (!res.ok) continue;
+      const json = (await res.json()) as Record<
+        string,
+        { usdPrice?: number; priceChange24h?: number } | null
+      >;
+      ok = true;
+      for (const [mint, v] of Object.entries(json)) {
+        if (v && typeof v.usdPrice === "number") {
+          out[mint] = { usdPrice: v.usdPrice, priceChange24h: v.priceChange24h };
+        }
+      }
+    } catch {
+      /* try the next batch; a partial answer still beats none */
+    }
+  }
+  return { prices: out, ok };
+}
+
+// --- DexScreener fallback ---------------------------------------------------
+//
+// Jupiter's price API only covers tokens it has decided to index, so a perfectly tradeable
+// small-cap comes back with no price at all — which is why some rows showed an amount and a
+// dash where a dollar value belonged. DexScreener prices anything with a live pool, and it's
+// already a trusted host here (solana/tokens.ts uses it for logos).
+const DEX_TOKENS_URL = "https://api.dexscreener.com/latest/dex/tokens/";
+/** DexScreener accepts a comma-separated list; 30 is its documented ceiling. */
+const DEX_BATCH = 30;
+/**
+ * Below this much pooled liquidity, a quoted spot price isn't a price anyone could actually
+ * get. Multiplying it by a multi-billion token balance would print a confident, badly wrong
+ * dollar figure — worse than the dash it replaced. Under the floor we keep saying "unknown".
+ */
+const MIN_LIQUIDITY_USD = 1000;
+
+interface DexPair {
+  chainId?: string;
+  priceUsd?: string;
+  baseToken?: { address?: string };
+  liquidity?: { usd?: number };
+  priceChange?: { h24?: number };
+}
+
+/**
+ * Prices for mints another source couldn't cover. Exported so the Helius fast-balances path —
+ * which brings its own prices and never calls `fetchPrices` — can fill the same gaps.
+ * Never throws; an empty result just means nothing extra was found.
+ */
+export async function fetchDexPrices(mints: string[]): Promise<Record<string, PriceInfo>> {
+  const out: Record<string, PriceInfo> = {};
+  // Base58 is case-sensitive and DexScreener echoes its own casing, so map back to the exact
+  // string the caller asked for — the returned record's keys have to match the mints given.
+  const byLower = new Map(mints.map((m) => [m.toLowerCase(), m]));
+
+  for (let i = 0; i < mints.length; i += DEX_BATCH) {
+    const batch = mints.slice(i, i + DEX_BATCH);
+    try {
+      const res = await fetch(DEX_TOKENS_URL + batch.join(","));
+      if (!res.ok) continue;
+      const { pairs } = (await res.json()) as { pairs?: DexPair[] | null };
+
+      // A token can have many pools, some of them dust with nonsense prices. Take the deepest.
+      const deepest = new Map<string, DexPair>();
+      for (const p of pairs ?? []) {
+        if (p.chainId && p.chainId !== "solana") continue;
+        const mint = byLower.get((p.baseToken?.address ?? "").toLowerCase());
+        if (!mint) continue; // a quote-side token, not one we asked about
+        const prev = deepest.get(mint);
+        if (!prev || (p.liquidity?.usd ?? 0) > (prev.liquidity?.usd ?? 0)) deepest.set(mint, p);
+      }
+
+      for (const [mint, p] of deepest) {
+        const usdPrice = Number(p.priceUsd);
+        if (!Number.isFinite(usdPrice) || usdPrice <= 0) continue;
+        if ((p.liquidity?.usd ?? 0) < MIN_LIQUIDITY_USD) continue;
+        out[mint] = { usdPrice, priceChange24h: p.priceChange?.h24 };
+      }
+    } catch {
+      /* best-effort: these are the tokens Jupiter already couldn't price */
+    }
+  }
+  // Persist here as well as in fetchPrices, since the fast-balances path calls this directly.
+  // Writing twice on the combined path is harmless — the later write just re-stamps.
+  persistPrices(out);
+  return out;
+}
+
 export async function fetchPrices(
   mints: string[]
 ): Promise<Record<string, PriceInfo>> {
   const ids = [...new Set(mints)].filter(Boolean);
   if (ids.length === 0) return {};
 
-  const res = await fetch(
-    `https://lite-api.jup.ag/price/v3?ids=${ids.join(",")}`
-  );
-  if (!res.ok) throw new Error(`Price API ${res.status}`);
-  const json = (await res.json()) as Record<
-    string,
-    { usdPrice?: number; priceChange24h?: number } | null
-  >;
+  const { prices, ok } = await fetchJupiterPrices(ids);
+  // Every batch failed — that's an outage, and callers rely on the throw to keep showing their
+  // last-known prices rather than publishing an empty map over good values.
+  if (!ok) throw new Error("Price API unavailable");
 
-  const out: Record<string, PriceInfo> = {};
-  for (const [mint, v] of Object.entries(json)) {
-    if (v && typeof v.usdPrice === "number") {
-      out[mint] = { usdPrice: v.usdPrice, priceChange24h: v.priceChange24h };
-    }
-  }
+  // Second pass for whatever Jupiter didn't cover.
+  const missing = ids.filter((m) => !prices[m]);
+  const out = missing.length ? { ...prices, ...(await fetchDexPrices(missing)) } : prices;
+
   persistPrices(out);
   return out;
 }
