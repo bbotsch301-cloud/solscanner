@@ -156,11 +156,15 @@ const navTheme = {
   },
 };
 
-function Splash() {
-  // The Kingdom Key, pulled upright into place. See KeySplash for why it's a spring, not a tween.
+/** The key's entrance runs ~940ms, but a warm start finishes loading in a fraction of that. Hold
+ *  the boot splash long enough for the turn to land — the whole animation lives on ONE instance so
+ *  it can't be interrupted and restarted partway. */
+const SPLASH_MIN_MS = 1250;
+
+function Splash({ animate = true }: { animate?: boolean }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-      <KeySplash />
+      <KeySplash animate={animate} />
     </View>
   );
 }
@@ -181,23 +185,16 @@ function ActivityWrap({ children }: { children: ReactNode }) {
   );
 }
 
-/** The key's entrance runs ~1.1s, but a warm start finishes loading in a fraction of that, so the
- *  splash would flash and vanish mid-turn. Hold it just long enough to land. */
-const SPLASH_MIN_MS = 1250;
-
 function Root() {
   const { initializing, hasWallet, pinEnabled, locked, needsBackup, markBackedUp, shouldPromptPin } =
     useWallet();
-  const [splashHeld, setSplashHeld] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setSplashHeld(false), SPLASH_MIN_MS);
-    return () => clearTimeout(t);
-  }, []);
   const { unlocked } = useAuth();
   // One-time legal acceptance, before anything else. Re-shows if LEGAL_VERSION is bumped.
   const [legalOk, setLegalOk] = useState(getAcceptedLegalVersion() >= LEGAL_VERSION);
 
-  if (initializing || splashHeld) return <><StatusBar style="light" /><Splash /></>;
+  // Static: the entrance already played on the boot splash above this one. Re-animating here
+  // would restart the turn from inverted the moment the providers mount.
+  if (initializing) return <><StatusBar style="light" /><Splash animate={false} /></>;
   if (!legalOk)
     return (
       <>
@@ -300,6 +297,12 @@ const styles = StyleSheet.create({
 export default function App() {
   // Apply the saved network choice before anything uses the connection.
   const [ready, setReady] = useState(false);
+  // Independent of loading: even a warm start keeps the splash up long enough to see the key land.
+  const [minElapsed, setMinElapsed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMinElapsed(true), SPLASH_MIN_MS);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => {
     // The blocklist refresh is best-effort and must never delay startup on a slow network,
     // so it's fired alongside but the app doesn't block on its result (it fails open).
@@ -330,7 +333,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {ready ? (
+      {ready && minElapsed ? (
         <WalletProvider>
           <WalletConnectProvider>
             <AuthProvider>

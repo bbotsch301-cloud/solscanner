@@ -32,12 +32,21 @@ const SNAP_MS = 620;
 /** The rotation at which it reads as "landed" — where the haptic fires. */
 const LOCK_AT = 350;
 
-export function KeySplash({ size = 320 }: { size?: number }) {
+export function KeySplash({
+  size = 320,
+  animate = true,
+}: {
+  size?: number;
+  /** False renders the key already upright and still — for a second mount that must not replay
+   *  the entrance the user has just watched. */
+  animate?: boolean;
+}) {
   // One driver: scale is interpolated off the same value so it can't drift from the rotation.
-  const [turn] = useState(() => new Animated.Value(START_AT));
+  const [turn] = useState(() => new Animated.Value(animate ? START_AT : 360));
   const locked = useRef(false);
 
   useEffect(() => {
+    if (!animate) return;
     // The haptic belongs to the landing, not the launch — fire it as the key crosses into place
     // rather than on a timer, so it stays true if the spring is retuned.
     const id = turn.addListener(({ value }) => {
@@ -86,7 +95,7 @@ export function KeySplash({ size = 320 }: { size?: number }) {
       anim.stop();
       turn.removeListener(id);
     };
-  }, [turn]);
+  }, [animate, turn]);
 
   const rotate = turn.interpolate({ inputRange: [0, 360], outputRange: ["0deg", "360deg"] });
   // Pulled toward the viewer as it rights itself, so the turn has depth rather than being flat.
