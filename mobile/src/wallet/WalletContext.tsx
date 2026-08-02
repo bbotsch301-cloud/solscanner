@@ -246,7 +246,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const lastActivityRef = useRef(0); // stamped on mount in the inactivity effect below
   const backgroundedAtRef = useRef(0); // when the app last went to background (0 = foregrounded)
   // Receive-notification state: last-known per-asset balances for the active address, and the
-  // time of the user's last send/swap (to suppress "received" for their own outgoing/swap moves).
+  // time of the user's last SEND (to suppress a "received" caused by their own outgoing move).
+  // Swaps deliberately do not suppress — see swapExecute.
   const balanceBaselineRef = useRef<{ addr: string; amounts: Record<string, number> } | null>(null);
   const lastActionRef = useRef(0);
   keypairRef.current = keypair;
@@ -892,7 +893,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const swapExecute = useCallback(
     async (quote: UnifiedQuote, onStatus?: (s: string) => void): Promise<string> => {
-      lastActionRef.current = Date.now(); // a swap's output isn't a "received" — suppress it
+      // Deliberately NOT stamping lastActionRef here. A swap's output used to be suppressed as
+      // "your own move", but landing the other side of a trade is exactly what people want
+      // confirmed — and the suppression was only ever a 12-second race anyway, so the alert
+      // arrived or didn't depending on when the balance poll happened to run. Sends still
+      // suppress (that's an outflow you initiated); swap receipts now always notify.
       const chain = getChain(activeChainRef.current);
       const signer = chain.kind === "solana" ? keypairRef.current : evmAccountRef.current;
       if (!signer) throw new Error("No wallet for this chain.");
