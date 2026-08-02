@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -30,7 +29,7 @@ import { IS_MAINNET } from "../solana/connection";
 import { humanizeError } from "../solana/errors";
 import { haptics } from "../ui/haptics";
 import { nativeLogo } from "../config/logos";
-import { getLastFeeAttempt } from "../solana/feeDiagnostics";
+import { SwapConfirmSheet, type SwapPhase } from "../components/SwapConfirmSheet";
 import { useWallet } from "../wallet/WalletContext";
 import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
 import type { ChainDef } from "../chains/registry";
@@ -94,6 +93,10 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   // rendered as "429…" — a number you can't read and can't act on. While the field isn't being
   // edited we show a compact form ("429.86M"); focusing it restores the exact digits to type on.
   const [amtFocused, setAmtFocused] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [phase, setPhase] = useState<SwapPhase>("confirm");
+  const [signature, setSignature] = useState<string | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
 
   const amtNum = parseFloat(amt) || 0;
   const nativeMint = isSolana ? SOL_MINT_ADDR : EVM_NATIVE;
@@ -255,6 +258,8 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
     return null;
   };
 
+  // The confirmation, execution and result all live in one branded sheet now (SwapConfirmSheet)
+  // instead of three OS alerts. `doSwap` just runs the preflight guard and opens it.
   const doSwap = () => {
     if (!quote) return;
     const pre = preflightError();
@@ -262,53 +267,43 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
       Alert.alert("Can't swap yet", pre);
       return;
     }
-    Alert.alert(
-      "Confirm swap",
-      `Swap ${amtNum} ${from.symbol} for about ${fmtAmount(quote.outUi)} ${to.symbol} via ${quote.provider}? This uses real funds.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Swap",
-          onPress: async () => {
-            setSwapping(true);
-            setStatus(null);
-            try {
-              const sig = await swapExecute(quote, (s) => setStatus(s));
-              haptics.success();
-              // The community fee rides a second transaction that's deliberately best-effort, so
-              // it can fail without failing the swap. Say so rather than letting the treasury go
-              // quietly unfunded — this is the only place the reason is visible.
-              const fee = getLastFeeAttempt();
-              const feeNote =
-                fee && fee.swapSignature === sig && !fee.ok
-                  ? `\n\nNote: the community fee didn't reach the treasury (${fee.detail}). Your swap is unaffected.`
-                  : "";
-              Alert.alert("Swap submitted", `Your swap is confirmed.${feeNote}`, [
-                { text: "View on explorer", onPress: () => Linking.openURL(activeChain.explorerTx(sig)) },
-                {
-                  text: "Done",
-                  onPress: () => {
-                    // As the tab root there's nothing to pop — just clear the form.
-                    if (asTab) {
-                      setAmt("");
-                      setQuote(null);
-                    } else {
-                      nav.goBack();
-                    }
-                  },
-                },
-              ]);
-            } catch (e) {
-              haptics.error();
-              Alert.alert("Swap failed", humanizeError(e, { action: "swap", symbol: from.symbol, native: native.symbol }));
-            } finally {
-              setSwapping(false);
-              setStatus(null);
-            }
-          },
-        },
-      ]
-    );
+    setSheetError(null);
+    setSignature(null);
+    setPhase("confirm");
+    setSheetOpen(true);
+  };
+
+  const runSwap = async () => {
+    if (!quote) return;
+    setPhase("executing");
+    setSwapping(true);
+    setStatus(null);
+    try {
+      const sig = await swapExecute(quote, (s) => setStatus(s));
+      haptics.success();
+      setSignature(sig);
+      setPhase("success");
+    } catch (e) {
+      haptics.error();
+      setSheetError(humanizeError(e, { action: "swap", symbol: from.symbol, native: native.symbol }));
+      setPhase("error");
+    } finally {
+      setSwapping(false);
+      setStatus(null);
+    }
+  };
+
+  const closeSheet = () => {
+    const succeeded = phase === "success";
+    setSheetOpen(false);
+    if (!succeeded) return;
+    // As the tab root there's nothing to pop — just clear the form.
+    if (asTab) {
+      setAmt("");
+      setQuote(null);
+    } else {
+      nav.goBack();
+    }
   };
 
   const canSwap = !isSolana || IS_MAINNET; // EVM is always mainnet
@@ -502,6 +497,22 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         exclude={pickerFor === "from" ? to.mint : from.mint}
         owned={owned}
         chain={activeChain}
+      />
+
+      <SwapConfirmSheet
+        visible={sheetOpen}
+        phase={phase}
+        quote={quote}
+        payAmount={amtNum}
+        slippageBps={slippageBps}
+        payUsd={payUsd}
+        receiveUsd={receiveUsd}
+        status={status}
+        signature={signature}
+        errorText={sheetError}
+        explorerUrl={signature ? activeChain.explorerTx(signature) : null}
+        onConfirm={runSwap}
+        onClose={closeSheet}
       />
     </KeyboardAvoidingView>
   );

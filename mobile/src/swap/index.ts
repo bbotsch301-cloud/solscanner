@@ -101,9 +101,11 @@ export async function executeUnifiedSwap(
   onStatus?: (s: string) => void
 ): Promise<string> {
   if (quote.kind === "solana")
-    return jupExecuteSwap(quote.solanaRaw, signer as Keypair, {
-      feeBps: quote.feeBps,
-      outputDecimals: quote.output.decimals,
-    });
+    return jupExecuteSwap(
+      quote.solanaRaw,
+      signer as Keypair,
+      { feeBps: quote.feeBps, outputDecimals: quote.output.decimals },
+      onStatus
+    );
   return executeEvmSwap(chain, quote, signer as EvmAccount, onStatus);
 }

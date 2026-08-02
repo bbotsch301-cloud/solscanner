@@ -297,8 +297,13 @@ async function selfCollectFee(keypair: Keypair, outputMint: string, decimals: nu
 export async function executeSwap(
   rawQuote: unknown,
   keypair: Keypair,
-  feeCtx?: { feeBps: number; outputDecimals: number }
+  feeCtx?: { feeBps: number; outputDecimals: number },
+  onStatus?: (s: string) => void
 ): Promise<string> {
+  // Progress reporting: a swap is several round-trips (fee-account setup, build, sign, confirm,
+  // then the fee skim) and used to be a silent wait on Solana — executeUnifiedSwap accepted an
+  // onStatus callback but dropped it here, so the UI had nothing to say while funds moved.
+  const say = (s: string) => onStatus?.(s);
   // The community fee (present on the quote as `platformFee`) is taken in the OUTPUT token and
   // paid to the treasury's associated token account for that mint. Jupiter won't create that
   // account, so create it idempotently first (a one-time ~0.002 SOL rent, only the first time
@@ -312,6 +317,7 @@ export async function executeSwap(
     const programId = mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID;
     const ata = getAssociatedTokenAddressSync(mintPk, owner, true, programId);
     if (!(await connection.getAccountInfo(ata))) {
+      say("Preparing treasury fee account…");
       const setup = new Transaction().add(
         createAssociatedTokenAccountIdempotentInstruction(keypair.publicKey, ata, owner, mintPk, programId)
       );
@@ -320,6 +326,7 @@ export async function executeSwap(
     feeAccount = ata.toBase58();
   }
 
+  say("Building your swap…");
   const res = await fetch("https://lite-api.jup.ag/swap/v1/swap", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -338,9 +345,11 @@ export async function executeSwap(
   };
   if (!swapTransaction) throw new Error("No swap transaction returned");
 
+  say("Signing…");
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, "base64"));
   tx.sign([keypair]);
 
+  say("Submitting to the network…");
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
   // Confirm against the transaction's OWN blockhash + expiry window (from Jupiter), not a
   // blockhash fetched after send — otherwise the confirmation deadline doesn't match the tx.
@@ -348,6 +357,7 @@ export async function executeSwap(
     lastValidBlockHeight != null
       ? { signature: sig, blockhash: tx.message.recentBlockhash, lastValidBlockHeight }
       : { signature: sig, ...(await connection.getLatestBlockhash()) };
+  say("Confirming on-chain…");
   await confirmWithRecovery(sig, strategy); // guard: a landed-but-slow confirm resolves as success
 
   // If Jupiter didn't charge the platform fee (e.g. a SOL-output swap), skim the community fee
@@ -376,6 +386,7 @@ export async function executeSwap(
       route: "self" as const,
     };
     try {
+      say("Collecting the community fee…");
       const feeSig = await selfCollectFee(keypair, q.outputMint, feeCtx?.outputDecimals ?? 0, feeBase);
       recordFeeAttempt({ ...base, ok: true, detail: feeSig });
     } catch (e) {
