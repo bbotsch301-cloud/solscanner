@@ -85,6 +85,18 @@ Trait names are matched case/space/underscore-insensitively with aliases, so `cr
       office row, not counted. If a junk airdrop grants standing, stop and tell me.
 - [ ] Agreements / Governance / Treasury / Account settings all navigate correctly.
 
+## 4b. Vault (More → Vault)
+
+- [ ] Experiences appear with counts — Library, Learning, Media, Documents, Software, AI, Passes —
+      and **only the ones you actually hold something in**.
+- [ ] Tapping a row expands it in place; tapping again collapses. No drill-down screen.
+- [ ] **Everything listed opens.** Tap through a few — anything that can't open shouldn't have been
+      listed. *A row that leads nowhere means the access check was skipped.*
+- [ ] Membership / office / fellowship / credential do **not** appear here. They're standing, and
+      they live on Association.
+- [ ] Search spans all experiences and auto-expands matches.
+- [ ] With nothing openable held: "Nothing in your vault yet", not an empty scroll.
+
 ## 5. Agreements (Association → Agreements)
 
 - [ ] On a fresh install, accept the legal gate → **Agreements lists Terms and Privacy**, each with

@@ -60,9 +60,13 @@ live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
   on-chain ownership on every privileged call. A client can claim anything.
 
 ## Phase 2 — Property + Vault
-Deed served from the platform, ownership history, vault delivery (the contract is
-already specified in `src/access/vault.ts` — implement it verbatim), vault organised as
-experiences rather than folders.
+- ~~**Vault organised as experiences.**~~ `src/vault/experiences.ts` + `VaultScreen` group
+  everything openable into Library / Learning / Media / Documents / Software / AI /
+  Passes. Kind decides the shelf, mime only breaks the ties kind leaves open. Anything
+  that can't open isn't listed. **No backend needed.**
+- **Still blocked on the platform:** deed served from the platform, ownership history,
+  and vault delivery — the contract is already specified in `src/access/vault.ts`;
+  implement it verbatim.
 **The privacy policy change ships here** — see the launch checklist below.
 
 ## Phase 3 — Settlement
