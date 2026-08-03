@@ -333,6 +333,7 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
         refreshing={refreshing}
         onRefresh={onRefresh}
         contentContainerStyle={{ padding: spacing(4), gap: spacing(3) }}
+        keyboardShouldPersistTaps="handled"
       >
         {/* The chain switcher lives here rather than on the Wallet tab. The wallet is the whole
             picture across every network; a swap happens on exactly one, so this is where choosing

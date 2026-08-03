@@ -1,64 +1,80 @@
 /**
- * A ScrollView with pull-to-refresh that shows OUR spinner instead of the platform's.
+ * A ScrollView with pull-to-refresh that shows OUR spinner — and only ours.
  *
- * The trick is layering: the indicator sits in a wrapper behind the list, and the list itself must
- * be transparent so the strip the pull opens up reveals it. Getting that background wrong is
- * silent — an opaque list hides the spinner permanently and looks exactly like a spinner that
- * never renders — so it lives here once rather than being re-derived per screen.
+ * This deliberately does NOT use RefreshControl. The first attempt did, with `tintColor:
+ * "transparent"` to hide the platform indicator, and iOS drew it anyway: you got the grey system
+ * spinner and the gold one on top of each other. There's no reliable way to keep RefreshControl's
+ * gesture while suppressing its indicator, so the pull is detected here instead.
  *
- * RefreshControl still owns the gesture, the threshold and the release haptic. Only its own
- * indicator is suppressed (transparent tint on iOS, transparent colours on Android).
+ * The mechanics are deliberately plain: watch the scroll offset, and once the user has dragged
+ * past the threshold, fire. While refreshing, a spacer at the top of the content holds the
+ * spinner and pushes the list down — no absolute positioning, no background layering, nothing
+ * that can silently cover the thing it's meant to reveal (which is exactly how the last version
+ * went wrong).
  */
-import { type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
-  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { BrandSpinner } from "./BrandSpinner";
+import { haptics } from "../ui/haptics";
 import { colors, spacing } from "../theme";
+
+/** How far past the top the drag has to go before it counts as a pull. */
+const PULL_THRESHOLD = 70;
+/** Height the spinner sits in while refreshing. */
+const SPINNER_SLOT = 56;
 
 export function RefreshScroll({
   refreshing,
   onRefresh,
-  /** Distance from the top of THIS component to the spinner. Screens with their own header can
-   *  leave it default; a full-bleed screen should pass its safe-area inset. */
-  spinnerTop = spacing(4),
   contentContainerStyle,
+  /** SwapScreen needs "handled" so a tap on the token picker doesn't just dismiss the keyboard. */
+  keyboardShouldPersistTaps,
   children,
 }: {
   refreshing: boolean;
   onRefresh: () => void;
-  spinnerTop?: number;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  keyboardShouldPersistTaps?: "always" | "never" | "handled";
   children: ReactNode;
 }) {
+  // One trigger per pull: the offset stays past the threshold for many scroll events, and
+  // re-arming only after the list returns near the top stops a single drag firing repeatedly.
+  const armed = useRef(true);
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    if (y <= -PULL_THRESHOLD && armed.current && !refreshing) {
+      armed.current = false;
+      haptics.tap(); // replaces the release tick RefreshControl used to give
+      onRefresh();
+    } else if (y > -8) {
+      armed.current = true;
+    }
+  };
+
   return (
     <View style={styles.wrap}>
-      {refreshing && (
-        <View style={[styles.slot, { top: spinnerTop }]} pointerEvents="none">
-          <BrandSpinner size={30} />
-        </View>
-      )}
       <ScrollView
-        // Transparent ON PURPOSE — the wrapper carries the background. An opaque colour here
-        // covers the spinner for good.
         style={styles.scroll}
         contentContainerStyle={contentContainerStyle}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="transparent"
-            colors={["transparent"]}
-            progressBackgroundColor="transparent"
-          />
-        }
       >
+        {refreshing && (
+          <View style={styles.slot}>
+            <BrandSpinner size={30} />
+          </View>
+        )}
         {children}
       </ScrollView>
     </View>
@@ -67,6 +83,6 @@ export function RefreshScroll({
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.bg },
-  scroll: { flex: 1, backgroundColor: "transparent" },
-  slot: { position: "absolute", left: 0, right: 0, alignItems: "center" },
+  scroll: { flex: 1 },
+  slot: { height: SPINNER_SLOT, alignItems: "center", justifyContent: "center", marginBottom: spacing(1) },
 });

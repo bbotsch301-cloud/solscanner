@@ -7,6 +7,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { LogBox, Platform, StyleSheet, UIManager, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Font from "expo-font";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { PurchasesScreen } from "./src/screens/PurchasesScreen";
@@ -326,6 +327,11 @@ export default function App() {
       loadCollectibleSnapshots(),
       loadBrowserData(),
       loadConnections(),
+      // The icon font, awaited BEFORE anything renders. @expo/vector-icons loads it lazily on
+      // first use, and the tab bar renders exactly once — so if the font wasn't ready by then its
+      // glyphs stayed blank for the whole session while screen content, which re-renders
+      // constantly, quietly recovered. That's why the tab icons came and went between launches.
+      Font.loadAsync(Ionicons.font).catch(() => {}),
       preloadTokenMetaCache(),
       // Last-known prices and per-screen snapshots, so the first frame after the splash paints
       // real numbers instead of counting up from $0.00 while the network answers.

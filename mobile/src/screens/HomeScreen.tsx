@@ -146,7 +146,6 @@ export function HomeScreen() {
     <RefreshScroll
       refreshing={refreshing}
       onRefresh={onRefresh}
-      spinnerTop={insets.top + spacing(5)}
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
     >
       <Text style={styles.greeting}>{greeting}</Text>
