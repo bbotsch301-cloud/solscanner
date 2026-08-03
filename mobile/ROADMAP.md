@@ -26,17 +26,22 @@ live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
 
 # The ecosystem build — phases in dependency order
 
-## Phase 0 — foundations (no backend needed)
-Ships today, blocks nothing, and delivers most of the model's *felt* promise.
-- **Signed agreement records.** Today acceptance is a single integer
-  (`solwallet.legalAccepted.v1`) — it proves only that someone tapped Accept on this
-  device. Replace with a signed, hashed, timestamped, append-only on-device record.
-- **Deed parsing + property status.** Rights checklist, creator royalty, treasury
-  assessment, expiration, agreement version — all already present in metadata
-  attributes. Derive active / expiring / expired. Separate *policy* transferability
-  (what the deed allows) from *technical* (what the token program allows).
-- **Property language pass** — with the on-chain reality always one tap away
-  (`ARCHITECTURE.md` §2, Challenge 2).
+## Phase 0 — foundations (no backend needed) — **DONE**
+- ~~**Deed parsing + property status.**~~ `src/property/deed.ts` reads the deed from
+  metadata attributes: rights (tri-state — granted, denied, or *unstated*), creator
+  royalty, treasury assessment, term, agreement version. Status is active / expiring /
+  expired. *Policy* transferability (what the deed allows) is now separate from
+  *technical* (what the token program allows), and Send needs both.
+- ~~**Property / Credentials split.**~~ What you own vs. what you are. Adding a
+  `CollectibleKind` is now a compile error at every dispatch site — the `default`
+  branches that would have silently mishandled Fellowship, Office and Subscription
+  are gone.
+- ~~**Signed agreement records.**~~ `src/agreements/record.ts` — sha256 of the document,
+  an ed25519 signature over wallet + document + version + hash + timestamp, append-only,
+  surfaced at More → Agreements. First-run records start unsigned (no wallet exists yet)
+  and can be signed later.
+- **Still open:** the on-chain reality should be one tap away everywhere property
+  language is used (`ARCHITECTURE.md` §2, Challenge 2).
 
 ## Phase 1 — Identity (blocks every server-side engine)
 - **1.1 Generalised wallet auth** — generalise `src/access/vault.ts` into

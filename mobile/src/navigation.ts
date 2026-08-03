@@ -30,6 +30,7 @@ export type RootStackParamList = {
   TokenApprovals: undefined;
   Contacts: undefined;
   Legal: { doc: LegalDocKey };
+  Agreements: undefined;
   Browser: undefined;
   /** A single Key (non-fungible asset), by mint. */
   Collectible: { mint: string };

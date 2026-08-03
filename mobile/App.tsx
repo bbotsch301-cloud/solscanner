@@ -47,11 +47,13 @@ import { CollectibleDetailScreen } from "./src/screens/CollectibleDetailScreen";
 import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
+import { AgreementsScreen } from "./src/screens/AgreementsScreen";
 import { BrowserScreen } from "./src/browser/BrowserScreen";
 import { loadBrowserData } from "./src/browser/dapps";
 import { loadConnections } from "./src/browser/connections";
 import { loadNetworkPref, loadRpcPref } from "./src/solana/connection";
 import { loadSecurityPref, getAcceptedLegalVersion, setAcceptedLegalVersion } from "./src/security/prefs";
+import { recordAcceptance } from "./src/agreements/record";
 import { LEGAL_VERSION } from "./src/legal/content";
 import { loadMultisigPref } from "./src/config/multisig";
 import { loadBlocklist } from "./src/safety/blocklist";
@@ -206,6 +208,11 @@ function Root() {
           <LegalAcceptScreen
             onAccept={() => {
               void setAcceptedLegalVersion(LEGAL_VERSION);
+              // A record of WHAT was agreed and WHEN, alongside the gate's version flag. This runs
+              // before any wallet exists, so it starts unsigned; More → Agreements signs it once
+              // there's a key. Fire-and-forget on purpose — the record is evidence, and a member
+              // who has agreed must get into the app whether or not it could be written.
+              void recordAcceptance(["terms", "privacy"], null, null);
               setLegalOk(true);
             }}
           />
@@ -277,6 +284,7 @@ function Root() {
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
           <Stack.Screen name="Contacts" component={ContactsScreen} />
           <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />
+          <Stack.Screen name="Agreements" component={AgreementsScreen} />
           <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>

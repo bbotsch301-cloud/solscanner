@@ -68,6 +68,8 @@ export function MoreScreen() {
 
       <Text style={styles.sectionTitle}>Legal</Text>
       <View style={styles.group}>
+        <Row icon="ribbon" label="Agreements" onPress={() => nav.navigate("Agreements")} />
+        <View style={styles.divider} />
         <Row icon="shield-checkmark" label="How your keys are protected" onPress={() => nav.navigate("Legal", { doc: "security" })} />
         <View style={styles.divider} />
         <Row icon="lock-closed" label="Privacy Policy" onPress={() => nav.navigate("Legal", { doc: "privacy" })} />
