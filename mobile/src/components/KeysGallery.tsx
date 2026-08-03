@@ -23,6 +23,7 @@ import {
   type Collectible,
   type CollectibleKind,
 } from "../solana/collectibles";
+import { parseDeed, propertyStatus } from "../property/deed";
 import { isPublicRpc } from "../solana/connection";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
@@ -40,8 +41,29 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
 /** Show the search field only once the set of keys is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
 
-function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boolean; onPress: () => void }) {
+function ItemCard({
+  item,
+  now,
+  dimmed,
+  onPress,
+}: {
+  item: Collectible;
+  /** Captured once by the gallery — reading the clock during render isn't allowed, and a grid of
+   *  cards each sampling its own `Date.now()` would be pointless anyway. */
+  now: number;
+  dimmed?: boolean;
+  onPress: () => void;
+}) {
   const badge = KIND_BADGE[item.kind];
+  // A lapsed term is worth saying in the grid, because it changes what the item is good for. An
+  // active one isn't — badging everything would just make the wall of artwork noisier.
+  const status = propertyStatus(parseDeed(item), now);
+  const term =
+    status === "expired"
+      ? { label: "Expired", color: colors.negative }
+      : status === "expiring"
+        ? { label: "Expires soon", color: colors.warning }
+        : null;
   return (
     <PressableScale onPress={onPress} style={[styles.card, dimmed && { opacity: 0.55 }]}>
       <View>
@@ -50,6 +72,11 @@ function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boole
           <View style={[styles.badge, { backgroundColor: badge.color + "E6" }]}>
             <Ionicons name={badge.icon} size={11} color={colors.bg} />
             <Text style={styles.badgeText}>{badge.label}</Text>
+          </View>
+        )}
+        {term && (
+          <View style={[styles.termBadge, { backgroundColor: term.color + "E6" }]}>
+            <Text style={styles.badgeText}>{term.label}</Text>
           </View>
         )}
       </View>
@@ -92,6 +119,9 @@ export function KeysGallery({
   const [showHidden, setShowHidden] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
+  // One clock reading for the whole grid, taken at mount. Terms are measured in days, so a value
+  // that doesn't tick is exactly right here.
+  const [now] = useState(() => Date.now());
   // Bumped when the hide/archive prefs change or an item is sent away, so sections re-split.
   const [localRev, setLocalRev] = useState(0);
 
@@ -207,7 +237,7 @@ export function KeysGallery({
 
       <View style={styles.grid}>
         {visible.map((c) => (
-          <ItemCard key={c.mint} item={c} onPress={() => open(c.mint)} />
+          <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
         ))}
       </View>
       {visible.length === 0 && (
@@ -237,7 +267,7 @@ export function KeysGallery({
           {showArchived && (
             <View style={styles.grid}>
               {archived.map((c) => (
-                <ItemCard key={c.mint} item={c} dimmed onPress={() => open(c.mint)} />
+                <ItemCard key={c.mint} item={c} now={now} dimmed onPress={() => open(c.mint)} />
               ))}
             </View>
           )}
@@ -261,7 +291,7 @@ export function KeysGallery({
           {showHidden && (
             <View style={styles.grid}>
               {hidden.map((c) => (
-                <ItemCard key={c.mint} item={c} dimmed onPress={() => open(c.mint)} />
+                <ItemCard key={c.mint} item={c} now={now} dimmed onPress={() => open(c.mint)} />
               ))}
             </View>
           )}
@@ -305,6 +335,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   art: { width: "100%", aspectRatio: 1 },
+  termBadge: {
+    position: "absolute",
+    top: spacing(2),
+    right: spacing(2),
+    paddingHorizontal: spacing(2),
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
   badge: {
     position: "absolute",
     top: spacing(2),

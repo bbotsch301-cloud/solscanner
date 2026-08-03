@@ -11,6 +11,7 @@ import { PublicKey } from "@solana/web3.js";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Artwork } from "../components/Artwork";
+import { DeedPanel } from "../components/DeedPanel";
 import { Button } from "../components/Button";
 import { ContactPicker } from "../components/ContactPicker";
 import {
@@ -27,6 +28,7 @@ import { HoldToConfirm } from "../components/HoldToConfirm";
 import { burnCollectible, burnPreflight, type BurnPlan } from "../solana/burn";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
+import { parseDeed, propertyStatus, deedAllowsTransfer } from "../property/deed";
 import { openContentUrl } from "../access/openContent";
 import { attemptGatedUrl } from "../access/vault";
 import { navigationRef } from "../navigationRef";
@@ -91,6 +93,9 @@ export function CollectibleDetailScreen() {
   const [burnOpen, setBurnOpen] = useState(false);
   const [burning, setBurning] = useState(false);
   const [burnPlan, setBurnPlan] = useState<BurnPlan | null>(null);
+  // Sampled once at mount rather than during render (reading the clock mid-render isn't allowed,
+  // and a term measured in days doesn't need to tick).
+  const [now] = useState(() => Date.now());
 
   if (!item) {
     return (
@@ -104,6 +109,17 @@ export function CollectibleDetailScreen() {
   }
 
   const access = resolveAccess(item);
+
+  // The deed: the agreement this property carries, read from its own metadata. `null` for anything
+  // issued without one (ordinary art, third-party NFTs), which is why the panel is conditional.
+  const deed = parseDeed(item);
+  const status = propertyStatus(deed, now);
+  // Two different questions, and the app used to only ask the first:
+  //   `item.transferable` — does the TOKEN PROGRAM allow a transfer (not compressed, not pNFT)
+  //   `deedAllowsTransfer` — does the AGREEMENT allow one
+  // Send needs both. A silent deed states no restriction, so it doesn't withhold anything.
+  const deedTransfer = deedAllowsTransfer(deed);
+  const canSend = item.transferable && deedTransfer !== false;
 
   const openBurn = async () => {
     if (!owner) return;
@@ -225,11 +241,23 @@ export function CollectibleDetailScreen() {
             </Text>
           </View>
         )}
+        {status === "expired" && (
+          <Text style={styles.statusExpired}>Expired · you still own it, but its term has ended</Text>
+        )}
+        {status === "expiring" && deed?.expiresAt != null && (
+          <Text style={styles.statusExpiring}>
+            Expires {new Date(deed.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })}
+          </Text>
+        )}
         {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
 
-        {item.attributes && item.attributes.length > 0 && (
+        {deed && <DeedPanel deed={deed} owner={owner ? shortAddress(owner, 4, 4) : undefined} />}
+
+        {/* Whatever the deed didn't claim. Splitting them this way means a trait is shown exactly
+            once — in the deed if it's a deed term, here if it isn't — and never dropped. */}
+        {(deed ? deed.extraTraits : (item.attributes ?? [])).length > 0 && (
           <View style={styles.attrs}>
-            {item.attributes.map((a, i) => (
+            {(deed ? deed.extraTraits : (item.attributes ?? [])).map((a, i) => (
               <View key={i} style={styles.attrChip}>
                 <Text style={styles.attrTrait}>{a.trait}</Text>
                 <Text style={styles.attrValue}>{a.value}</Text>
@@ -247,8 +275,13 @@ export function CollectibleDetailScreen() {
               disabled={unlocking}
             />
           )}
-          {item.transferable ? (
+          {canSend ? (
             <Button label="Send" variant="secondary" icon="arrow-up" onPress={() => setSendOpen(true)} />
+          ) : deedTransfer === false ? (
+            // Careful with this sentence. The wallet CANNOT stop a transfer — a plain SPL NFT moves
+            // with any other wallet or a CLI. Withholding Send states the agreement; only a
+            // Token-2022 NonTransferable mint (or a rule set) enforces it. So say what's true.
+            <Text style={styles.noSend}>Its deed doesn’t permit transfer, so Send is off here.</Text>
           ) : (
             <Text style={styles.noSend}>
               This item can’t be sent from the app{item.compressed ? " (compressed asset)" : ""}.
@@ -393,6 +426,8 @@ const styles = StyleSheet.create({
   attrTrait: { color: colors.textFaint, fontSize: font.tiny, fontWeight: weight.semibold, textTransform: "uppercase" },
   attrValue: { color: colors.text, fontSize: font.small, fontWeight: weight.semibold },
   actions: { marginTop: spacing(6), gap: spacing(3) },
+  statusExpired: { color: colors.negative, fontSize: font.small, marginTop: spacing(1) },
+  statusExpiring: { color: colors.warning, fontSize: font.small, marginTop: spacing(1) },
   noSend: { color: colors.textFaint, fontSize: font.small, textAlign: "center" },
   backdrop: { flex: 1, backgroundColor: "#000000AA", justifyContent: "flex-end" },
   sheet: {
