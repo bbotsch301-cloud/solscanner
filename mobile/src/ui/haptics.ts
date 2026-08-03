@@ -21,6 +21,15 @@ export const haptics = {
   bump: () => run(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
   /** Selection change — switching wallet/chain/tab. */
   select: () => run(() => Haptics.selectionAsync()),
+  /**
+   * A detent on a continuous control — the notch you feel dragging a slider.
+   *
+   * Same generator as `select`, named separately because the callers are different in kind: this
+   * one fires repeatedly during a gesture, so it must only ever be called on a *crossing*, never on
+   * every value change. A slider stepping 0–100 emits ~100 updates per drag; feeding all of them
+   * here is a buzz, and the queue lags the finger so it feels worse than no haptic at all.
+   */
+  tick: () => run(() => Haptics.selectionAsync()),
   /** Success — a transaction landed. */
   success: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
   /** Warning. */

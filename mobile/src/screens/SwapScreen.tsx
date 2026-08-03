@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -79,6 +79,11 @@ function TokenButton({ token, onPress }: { token: SwapToken; onPress: () => void
     </Pressable>
   );
 }
+
+/** Slider detent spacing, in percent — the notch you feel while dragging. */
+const DETENT = 5;
+/** The stops the chips below the slider name; these get a firmer bump than a plain detent. */
+const STOPS = [25, 50, 75, 100];
 
 export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const nav = useNavigation<RootNav>();
@@ -234,6 +239,26 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
   const trimAmt = (n: number): string => (n > 0 ? String(Number(n.toFixed(6))) : "");
   // Set the pay amount to a percentage (0–100) of the sellable balance.
   const setAmtToPct = (pct: number) => setAmt(trimAmt((sellable() * pct) / 100));
+
+  // ---- Slider feel -------------------------------------------------------------------------
+  //
+  // The slider steps in 1% increments, so a full drag fires onValueChange about a hundred times.
+  // Buzzing on every one is unpleasant and, worse, the haptic queue falls behind the finger — so
+  // the movement ends up feeling laggy rather than tactile. Instead it detents: a tick only when
+  // the drag CROSSES a notch, which is what a physical slider does.
+  //
+  // Two weights, so the control has a shape you can feel without looking: a light selection tick
+  // every 5%, and a firmer bump at the four stops the chips below name (25 / 50 / 75 / MAX).
+  const lastNotch = useRef<number | null>(null);
+
+  const onSliderChange = (pct: number) => {
+    setAmtToPct(pct);
+    const notch = Math.round(pct / DETENT) * DETENT;
+    if (lastNotch.current === notch) return;
+    lastNotch.current = notch;
+    if (STOPS.includes(notch)) haptics.tap();
+    else haptics.tick();
+  };
   const maxSellable = sellable();
   const sliderPct = maxSellable > 0 ? Math.min(100, (amtNum / maxSellable) * 100) : 0;
 
@@ -372,7 +397,13 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
             maximumValue={100}
             step={1}
             value={sliderPct}
-            onValueChange={setAmtToPct}
+            onValueChange={onSliderChange}
+            // Picking it up should register too, and it re-seeds the notch so the first tick lands
+            // on the next crossing rather than immediately.
+            onSlidingStart={() => {
+              lastNotch.current = Math.round(sliderPct / DETENT) * DETENT;
+              haptics.tap();
+            }}
             minimumTrackTintColor={colors.primary}
             maximumTrackTintColor={colors.cardBorder}
             thumbTintColor={colors.primary}
