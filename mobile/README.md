@@ -30,6 +30,7 @@ real. A test network is still reachable from Settings for development.
 - **Swap** — Jupiter on Solana, KyberSwap on Ethereum/BSC, with a hold-to-confirm sheet.
 - **Keys** — NFTs and access passes, with archive and burn-to-reclaim-rent.
 - **Ecosystem** — the treasury, its holdings, and recent inflows, all verifiable on-chain.
+- **Governance** — voting weight and membership tier derived from XGO held, non-custodial.
 - **Send / Receive** — signed transfers with a Solscan link; QR + address.
 - **Activity** — parsed transactions that say what moved and how much.
 - **Settings** — PIN, Face ID, notifications, custom RPC, and a "Reset wallet" danger action.
@@ -51,7 +52,7 @@ risk verdict shown as a `RiskCard` in the Send flow:
 src/polyfills.ts            get-random-values + Buffer + URL (required by web3.js)
 src/solana/connection.ts    mainnet Connection (custom RPC aware) + Solscan links
 src/solana/history.ts       recent signatures for an address
-src/wallet/keystore.ts      encrypted seed vault in expo-secure-store (device keychain)
+src/wallet/vault.ts         multi-seed vault in expo-secure-store (device keychain)
 src/wallet/WalletContext.tsx  balances, prices, signed transfers
 ```
 
@@ -67,6 +68,14 @@ src/components/       reusable UI (BalanceCard, TokenRow, Skeleton, Updating, �
 src/screens/          Wallet, Swap, Keys, Ecosystem, More + the stack screens
 ```
 
-## Roadmap
+## Where this is going
 
-See `ROADMAP.md` for where this is going and the open compliance questions.
+The wallet is becoming the member interface for a constitutional digital ecosystem —
+identity, digital property with real deeds, agreements, a content vault, settlement,
+communities and stewardship. Keys stay with the member; the platform facilitates.
+
+- **`ARCHITECTURE.md`** — assessment of what exists, what's missing, what has to be
+  built and by whom, and the assumptions in that model that don't survive contact with
+  the code.
+- **`ROADMAP.md`** — the phased plan, the XGO economics, and the open compliance
+  questions.
