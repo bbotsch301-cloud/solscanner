@@ -234,14 +234,80 @@ export async function warmLiquidity(mints: string[]): Promise<void> {
   }
 }
 
+// --- GeckoTerminal fallback -------------------------------------------------
+//
+// The third and last tier, and the reason it exists: the token-detail chart could price tokens the
+// Wallet list could not. The chart reaches GeckoTerminal (and pump.fun) — see prices/candles.ts —
+// while this module only ever asked Jupiter and DexScreener's /tokens/ endpoint. So a token with a
+// real, liquid pool that those two happen not to index showed a dollar value on one screen and a
+// dash on the other. Same holding, same second, two answers.
+//
+// GeckoTerminal indexes pools directly, including the pump/pumpswap pairs DexScreener's token
+// lookup sometimes misses (candles.ts already works around exactly that), so it closes the gap
+// rather than duplicating a source we've already asked.
+const GT_BASE = "https://api.geckoterminal.com/api/v2";
+/** GeckoTerminal's network slugs — its own, and not the same as DexScreener's. */
+const GT_NET: Record<"solana" | "ethereum" | "bsc", string> = { solana: "solana", ethereum: "eth", bsc: "bsc" };
+/** `tokens/multi` takes a comma-separated list; 30 is its documented ceiling. */
+const GT_BATCH = 30;
+
+interface GtToken {
+  attributes?: { address?: string; price_usd?: string | number; total_reserve_in_usd?: string | number };
+}
+
+const posNum = (x: unknown): number | null => {
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/**
+ * Batch spot price + pooled reserve from GeckoTerminal. Best-effort: a miss returns nothing for
+ * that mint, and a failed request returns nothing at all. Never throws.
+ *
+ * Note this returns the token's reserve across ALL its pools, where `fetchDexInfo` returns the
+ * deepest single pool. They're close enough to compare against the same floor, and where they
+ * disagree GeckoTerminal's is the larger, better-informed number.
+ */
+async function fetchGeckoTerminalInfo(
+  mints: string[],
+  chain: "solana" | "ethereum" | "bsc"
+): Promise<Record<string, { usdPrice: number; liquidityUsd: number }>> {
+  const out: Record<string, { usdPrice: number; liquidityUsd: number }> = {};
+  const byLower = new Map(mints.map((m) => [m.toLowerCase(), m]));
+
+  for (let i = 0; i < mints.length; i += GT_BATCH) {
+    const batch = mints.slice(i, i + GT_BATCH);
+    try {
+      const res = await fetch(`${GT_BASE}/networks/${GT_NET[chain]}/tokens/multi/${batch.join(",")}`);
+      if (!res.ok) continue;
+      const { data } = (await res.json()) as { data?: GtToken[] | null };
+      for (const t of data ?? []) {
+        // Echoed addresses are lower-cased, and base58 is case-sensitive — map back to the exact
+        // string the caller asked for, or the returned keys won't match any mint we hold.
+        const mint = byLower.get((t.attributes?.address ?? "").toLowerCase());
+        if (!mint) continue;
+        const usdPrice = posNum(t.attributes?.price_usd);
+        if (usdPrice == null) continue;
+        out[mint] = { usdPrice, liquidityUsd: Number(t.attributes?.total_reserve_in_usd ?? 0) || 0 };
+      }
+    } catch {
+      /* best-effort: these are mints two other sources already failed to price */
+    }
+  }
+  return out;
+}
+
 /**
  * Prices for mints another source couldn't cover. Exported so the Helius fast-balances path —
  * which brings its own prices and never calls `fetchPrices` — can fill the same gaps.
  * Never throws; an empty result just means nothing extra was found.
  */
-export async function fetchDexPrices(mints: string[]): Promise<Record<string, PriceInfo>> {
+export async function fetchDexPrices(
+  mints: string[],
+  chain: "solana" | "ethereum" | "bsc" = "solana"
+): Promise<Record<string, PriceInfo>> {
   const out: Record<string, PriceInfo> = {};
-  const info = await fetchDexInfo(mints);
+  const info = await fetchDexInfo(mints, chain);
   for (const [mint, i] of Object.entries(info)) {
     // Record liquidity while we have it — this call and the fee policy want the same number.
     liquidityCache.set(mint, i.liquidityUsd);
@@ -249,6 +315,24 @@ export async function fetchDexPrices(mints: string[]): Promise<Record<string, Pr
     if (i.liquidityUsd < MIN_LIQUIDITY_USD) continue;
     out[mint] = { usdPrice: i.usdPrice, priceChange24h: i.priceChange24h };
   }
+
+  // Anything still unpriced — no pool found, or a pool too thin to quote from — gets one more
+  // look. A thin DexScreener reading is worth re-testing rather than trusting: when the two
+  // disagree it's usually because DexScreener indexed a dust pool and missed the real one.
+  const stillMissing = mints.filter((m) => !out[m]);
+  if (stillMissing.length) {
+    const gt = await fetchGeckoTerminalInfo(stillMissing, chain);
+    for (const [mint, g] of Object.entries(gt)) {
+      // Keep the better-informed depth either way, so the fee policy and the "why is there no
+      // price" labels reason from the best measurement we have rather than the most recent one.
+      liquidityCache.set(mint, Math.max(g.liquidityUsd, cachedLiquidity(mint) ?? 0));
+      // The floor still applies. A price out of a near-empty pool is one nobody could realise,
+      // and printing it against a multi-billion token balance is worse than saying nothing.
+      if (g.liquidityUsd < MIN_LIQUIDITY_USD) continue;
+      out[mint] = { usdPrice: g.usdPrice };
+    }
+  }
+
   // Persist here as well as in fetchPrices, since the fast-balances path calls this directly.
   // Writing twice on the combined path is harmless — the later write just re-stamps.
   persistPrices(out);

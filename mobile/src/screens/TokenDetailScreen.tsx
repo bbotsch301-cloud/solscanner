@@ -147,18 +147,23 @@ export function TokenDetailScreen() {
   const livePrice =
     view.balance != null && view.balance > 0 && view.usd != null ? view.usd / view.balance : latestClose;
   const displayPrice = scrub ? scrub.close : livePrice;
+  const poolLiquidity = view.contract ? cachedLiquidity(view.contract) : undefined;
   // The wallet's price map doesn't cover every token, but the chart's latest close is a price for
   // exactly this asset — so use it rather than leave "Your balance" showing a permanent skeleton
   // under a screen that's displaying a price at the top.
+  //
+  // It must not, however, become a way around the liquidity floor. When we've measured the pool
+  // and it's under the floor the Wallet list refuses to value the holding, and this screen valuing
+  // it anyway is how one holding ended up with two different answers on two screens.
+  const tradable = poolLiquidity == null || poolLiquidity >= MIN_LIQUIDITY_USD;
   const balanceUsd =
-    view.usd ?? (view.balance != null && latestClose != null ? view.balance * latestClose : null);
+    view.usd ?? (tradable && view.balance != null && latestClose != null ? view.balance * latestClose : null);
   // Why there's no dollar value, said precisely enough to act on — and to debug.
   //
   // "we measured the pool and it holds $312" and "we never found a pool at all" are completely
   // different situations: the first means the holding is real but unsellable, the second means our
   // price lookup came up empty and may itself be at fault. Both used to render as the same dash,
   // which is how a diagnosis becomes a guessing game.
-  const poolLiquidity = view.contract ? cachedLiquidity(view.contract) : undefined;
   const noPriceLabel =
     balanceUsd != null
       ? null
