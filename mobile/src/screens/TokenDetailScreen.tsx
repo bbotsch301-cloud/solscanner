@@ -16,7 +16,7 @@ import { fetchCandles, CHART_RANGES, type Candle, type ChartRange } from "../pri
 import { candleSnapshots } from "../cache/screens";
 import { cachedLiquidity, MIN_LIQUIDITY_USD } from "../solana/prices";
 import { haptics } from "../ui/haptics";
-import { amount as fmtAmount, colors, compact, font, radius, spacing, usd as fmtUsd } from "../theme";
+import { amount as fmtAmount, colors, compact, font, radius, shortAddress, spacing, usd as fmtUsd } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
 // Last-loaded candles per (chain, asset, range), so switching timeframes / revisiting is instant —
@@ -276,7 +276,10 @@ export function TokenDetailScreen() {
           <Ionicons name="document-text-outline" size={16} color={colors.textMuted} />
           <View style={styles.contractMid}>
             <Text style={styles.contractLabel}>Contract address</Text>
-            <Text style={styles.contractValue} numberOfLines={1}>{view.contract}</Text>
+            {/* First four and last four. The full string was being clipped mid-address by
+                numberOfLines, which hides the tail — and the tail is the half people actually
+                check against an explorer. Tapping still copies the whole thing. */}
+            <Text style={styles.contractValue}>{shortAddress(view.contract)}</Text>
           </View>
           <Ionicons
             name={copied ? "checkmark" : "copy-outline"}
