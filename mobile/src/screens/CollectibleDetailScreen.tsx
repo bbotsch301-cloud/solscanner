@@ -42,7 +42,11 @@ import type { RootNav, RootStackParamList } from "../navigation";
 const KIND_LABEL: Record<Collectible["kind"], string> = {
   ticket: "Ticket",
   membership: "Membership",
+  fellowship: "Fellowship",
+  office: "Office",
   credential: "Credential",
+  community: "Community",
+  subscription: "Subscription",
   book: "Book",
   portal: "Portal",
   file: "File",

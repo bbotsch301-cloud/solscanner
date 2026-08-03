@@ -40,6 +40,10 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
   ticket: { label: "Ticket", icon: "ticket-outline", color: colors.primary },
   membership: { label: "Member", icon: "card-outline", color: colors.accent },
   credential: { label: "Credential", icon: "ribbon-outline", color: colors.primary },
+  fellowship: { label: "Fellowship", icon: "people-outline", color: colors.accent },
+  office: { label: "Office", icon: "shield-outline", color: colors.primary },
+  community: { label: "Community", icon: "people-circle-outline", color: colors.accent },
+  subscription: { label: "Subscription", icon: "refresh-outline", color: colors.warning },
   book: { label: "Book", icon: "book-outline", color: colors.positive },
   portal: { label: "Portal", icon: "planet-outline", color: colors.accent },
   file: { label: "File", icon: "document-outline", color: colors.textMuted },
@@ -48,8 +52,15 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
 /** Show the search field only once the collection is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
 
-/** What the member IS, rather than something they own — shown apart from their property. */
-const CREDENTIAL_KINDS = new Set<CollectibleKind>(["membership", "credential"]);
+/** What the member IS, rather than something they own — shown apart from their property.
+ *  Kept in sync with STANDING_KINDS in identity/membership.ts, which reasons about the same set. */
+const CREDENTIAL_KINDS = new Set<CollectibleKind>([
+  "membership",
+  "fellowship",
+  "office",
+  "credential",
+  "community",
+]);
 
 function ItemCard({
   item,

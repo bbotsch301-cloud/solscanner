@@ -48,6 +48,7 @@ import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
 import { AgreementsScreen } from "./src/screens/AgreementsScreen";
+import { AssociationScreen } from "./src/screens/AssociationScreen";
 import { BrowserScreen } from "./src/browser/BrowserScreen";
 import { loadBrowserData } from "./src/browser/dapps";
 import { loadConnections } from "./src/browser/connections";
@@ -285,6 +286,7 @@ function Root() {
           <Stack.Screen name="Contacts" component={ContactsScreen} />
           <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />
           <Stack.Screen name="Agreements" component={AgreementsScreen} />
+          <Stack.Screen name="Association" component={AssociationScreen} />
           <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>

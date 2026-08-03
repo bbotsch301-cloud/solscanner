@@ -36,9 +36,14 @@ export function resolveAccess(item: Collectible): Access | null {
       mime = f?.mime;
       break;
     }
+    // Standing and access keys all point at whatever they unlock, rather than carrying a payload.
     case "ticket":
     case "membership":
+    case "fellowship":
+    case "office":
     case "credential":
+    case "community":
+    case "subscription":
     case "portal":
       url = item.externalUrl ?? item.animationUrl;
       break;
@@ -76,6 +81,14 @@ export function accessVerb(kind: CollectibleKind): string {
       return "View file";
     case "credential":
       return "View credential";
+    case "fellowship":
+      return "View fellowship";
+    case "office":
+      return "View office";
+    case "community":
+      return "Enter community";
+    case "subscription":
+      return "Open";
     case "art":
       return "Open";
     default:

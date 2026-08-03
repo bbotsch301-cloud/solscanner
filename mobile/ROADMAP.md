@@ -47,15 +47,17 @@ live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
 - **1.1 Generalised wallet auth** — generalise `src/access/vault.ts` into
   prove-you-control-this-wallet-for-this-purpose. *Blocked on the platform shipping
   `/v1/auth/challenge` + `/v1/auth/verify`.*
-- **1.2 Membership as a key type** — extend `CollectibleKind` to the constitutional set
-  (Gateway Membership, Fellowship, Office, Community, Subscription, Credential,
-  Property); derive standing from held keys. **No backend needed.**
-- **1.3 The Identity surface** — membership, offices, credentials, communities,
-  agreements, address/QR in one place. **No backend needed.**
-- **1.4 Authority from keys, not usernames** — display only; the server must re-derive
-  authority on every privileged call.
-
-*Only 1.1 is blocked. If the auth endpoint is far out, ship 1.2 and 1.3 with Phase 0.*
+- ~~**1.2 Membership as a key type.**~~ `CollectibleKind` now carries the constitutional
+  set — membership, fellowship, office, credential, community, subscription — and
+  `src/identity/membership.ts` derives standing from held keys. Spam and archived items
+  confer nothing: an airdropped "Office" NFT must not grant an office.
+- ~~**1.3 The Association surface.**~~ `AssociationScreen` — Gateway Member card,
+  offices, fellowship, credentials, communities, lapsed keys, then Agreements /
+  Governance / Treasury / Settings. Reads the persisted snapshot, so it paints on the
+  first frame and works offline.
+- **1.4 Authority from keys, not usernames** — the derivation exists and is documented
+  as **display only**. Still to do on the platform side: re-derive authority from
+  on-chain ownership on every privileged call. A client can claim anything.
 
 ## Phase 2 — Property + Vault
 Deed served from the platform, ownership history, vault delivery (the contract is

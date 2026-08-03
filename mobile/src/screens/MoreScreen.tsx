@@ -44,6 +44,8 @@ export function MoreScreen() {
       <Text style={styles.header}>More</Text>
 
       <View style={styles.group}>
+        <Row icon="ribbon" label="Association" onPress={() => nav.navigate("Association")} />
+        <View style={styles.divider} />
         <Row icon="wallet" label="Wallets & accounts" onPress={() => nav.navigate("Wallets")} />
         <View style={styles.divider} />
         <Row icon="compass" label="Browser" onPress={() => nav.navigate("Browser")} />
@@ -68,8 +70,6 @@ export function MoreScreen() {
 
       <Text style={styles.sectionTitle}>Legal</Text>
       <View style={styles.group}>
-        <Row icon="ribbon" label="Agreements" onPress={() => nav.navigate("Agreements")} />
-        <View style={styles.divider} />
         <Row icon="shield-checkmark" label="How your keys are protected" onPress={() => nav.navigate("Legal", { doc: "security" })} />
         <View style={styles.divider} />
         <Row icon="lock-closed" label="Privacy Policy" onPress={() => nav.navigate("Legal", { doc: "privacy" })} />

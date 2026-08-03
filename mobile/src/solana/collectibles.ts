@@ -23,11 +23,26 @@ import { toHttp } from "./uri";
 import { connection, CLUSTER, isPublicRpc } from "./connection";
 import { fetchTokenMetas } from "./tokens";
 
+/**
+ * The constitutional key types. The first group is what a member IS — standing, not stock — and the
+ * second is what they OWN. `parseKind` reads whichever the issuer wrote into the metadata.
+ */
 export type CollectibleKind =
-  | "ticket"
+  // --- Standing: who the member is in the Association ---
+  /** Gateway Membership — access to the Association itself. */
   | "membership"
-  /** A certification or office — what the member IS, rather than something they own. */
+  /** Ecclesiastical participation. */
+  | "fellowship"
+  /** Delegated authority. Where authority comes from, instead of a username. */
+  | "office"
+  /** A certification or qualification. */
   | "credential"
+  /** Belonging to a community within the Association. */
+  | "community"
+  // --- Holdings: what the member owns or can use ---
+  /** Time-limited access that lapses. */
+  | "subscription"
+  | "ticket"
   | "book"
   | "portal"
   | "file"
@@ -64,9 +79,13 @@ const SNAP_KEY = "collectibles.snap.v1:";
 const SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const KIND_VALUES: CollectibleKind[] = [
-  "ticket",
   "membership",
+  "fellowship",
+  "office",
   "credential",
+  "community",
+  "subscription",
+  "ticket",
   "book",
   "portal",
   "file",
