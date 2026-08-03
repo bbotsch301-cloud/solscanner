@@ -77,5 +77,8 @@ communities and stewardship. Keys stay with the member; the platform facilitates
 - **`ARCHITECTURE.md`** — assessment of what exists, what's missing, what has to be
   built and by whom, and the assumptions in that model that don't survive contact with
   the code.
+- **`API-CONTRACT.md`** — what the wallet needs from the Goshen platform: endpoints,
+  verification order, and the security requirements that aren't negotiable.
 - **`ROADMAP.md`** — the phased plan, the XGO economics, and the open compliance
   questions.
+- **`TESTING.md`** — the device checklist for what typecheck and lint can't prove.

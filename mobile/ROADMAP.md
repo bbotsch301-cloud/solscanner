@@ -46,7 +46,8 @@ live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
 ## Phase 1 — Identity (blocks every server-side engine)
 - **1.1 Generalised wallet auth** — generalise `src/access/vault.ts` into
   prove-you-control-this-wallet-for-this-purpose. *Blocked on the platform shipping
-  `/v1/auth/challenge` + `/v1/auth/verify`.*
+  `/v1/auth/challenge` + `/v1/auth/verify` — now specified in `API-CONTRACT.md` §1–2,
+  including the mandatory verification order.*
 - ~~**1.2 Membership as a key type.**~~ `CollectibleKind` now carries the constitutional
   set — membership, fellowship, office, credential, community, subscription — and
   `src/identity/membership.ts` derives standing from held keys. Spam and archived items
