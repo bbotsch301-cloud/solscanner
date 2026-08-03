@@ -12,7 +12,7 @@
  */
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
-import { LayoutAnimation, StyleSheet, Text, TextInput, View } from "react-native";
+import { LayoutAnimation, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { PressableScale } from "./PressableScale";
 import { Artwork } from "./Artwork";
@@ -45,12 +45,32 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
   community: { label: "Community", icon: "people-circle-outline", color: colors.accent },
   subscription: { label: "Subscription", icon: "refresh-outline", color: colors.warning },
   book: { label: "Book", icon: "book-outline", color: colors.positive },
+  course: { label: "Course", icon: "school-outline", color: colors.positive },
+  software: { label: "Software", icon: "code-slash-outline", color: colors.textMuted },
+  music: { label: "Music", icon: "musical-notes-outline", color: colors.accent },
+  ai: { label: "AI", icon: "sparkles-outline", color: colors.primary },
   portal: { label: "Portal", icon: "planet-outline", color: colors.accent },
   file: { label: "File", icon: "document-outline", color: colors.textMuted },
 };
 
 /** Show the search field only once the collection is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
+
+/**
+ * Filters for the property grid, in display order. Only ones the member actually holds are shown,
+ * so a chip can never filter the grid to nothing — a filter that leads to an empty screen reads as
+ * a bug, and the member learns nothing from tapping it.
+ */
+const FILTERS: { label: string; kinds: CollectibleKind[] }[] = [
+  { label: "Books", kinds: ["book"] },
+  { label: "Courses", kinds: ["course"] },
+  { label: "Software", kinds: ["software"] },
+  { label: "Music", kinds: ["music"] },
+  { label: "AI", kinds: ["ai"] },
+  { label: "Passes", kinds: ["ticket", "subscription", "portal"] },
+  { label: "Art", kinds: ["art"] },
+  { label: "Files", kinds: ["file"] },
+];
 
 /** What the member IS, rather than something they own — shown apart from their property.
  *  Kept in sync with STANDING_KINDS in identity/membership.ts, which reasons about the same set. */
@@ -140,6 +160,8 @@ export function PropertyGallery({
   const [showHidden, setShowHidden] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
+  /** null = All. Reset whenever the filter it points at stops existing (see `filters` below). */
+  const [filter, setFilter] = useState<string | null>(null);
   // One clock reading for the whole grid, taken at mount. Terms are measured in days, so a value
   // that doesn't tick is exactly right here.
   const [now] = useState(() => Date.now());
@@ -193,6 +215,18 @@ export function PropertyGallery({
     };
   }, [items, query, localRev]);
 
+  // Only offer filters that would actually return something. Computed from the unfiltered set, so
+  // choosing one doesn't make the others disappear underneath the member's finger.
+  const filters = useMemo(
+    () => FILTERS.filter((f) => property.some((c) => f.kinds.includes(c.kind))),
+    [property]
+  );
+  const active = filters.some((f) => f.label === filter) ? filter : null;
+  const shownProperty = useMemo(() => {
+    const f = FILTERS.find((x) => x.label === active);
+    return f ? property.filter((c) => f.kinds.includes(c.kind)) : property;
+  }, [property, active]);
+
   const open = (mint: string) => nav.navigate("Collectible", { mint });
 
   if (loading && items.length === 0) {
@@ -213,12 +247,12 @@ export function PropertyGallery({
   if (items.length === 0) {
     return (
       <EmptyState
-        icon="key-outline"
-        title="No keys yet"
+        icon="library-outline"
+        title="No property yet"
         subtitle={
           isPublicRpc()
-            ? "Access passes, tickets, and collectibles you own will appear here. Set a dedicated RPC in Settings to load full artwork."
-            : "Access passes, tickets, and collectibles you own will appear here."
+            ? "Books, courses, music, passes and credentials you own will appear here. Set a dedicated RPC in Settings to load full artwork."
+            : "Books, courses, music, passes and credentials you own will appear here."
         }
       />
     );
@@ -234,8 +268,8 @@ export function PropertyGallery({
           <Updating />
         ) : (
           <Text style={styles.count}>
-            {property.length + credentials.length} item
-            {property.length + credentials.length === 1 ? "" : "s"}
+            {active ? shownProperty.length : property.length + credentials.length} item
+            {(active ? shownProperty.length : property.length + credentials.length) === 1 ? "" : "s"}
           </Text>
         )}
       </View>
@@ -260,14 +294,44 @@ export function PropertyGallery({
         </View>
       )}
 
+      {/* One category is no choice at all, so the row only appears once there's something to pick
+          between. */}
+      {filters.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {[{ label: "All", kinds: [] as CollectibleKind[] }, ...filters].map((f) => {
+            const on = f.label === "All" ? active === null : active === f.label;
+            return (
+              <PressableScale
+                key={f.label}
+                haptic={null}
+                onPress={() => {
+                  haptics.select();
+                  setFilter(f.label === "All" ? null : f.label);
+                }}
+                style={[styles.filterChip, on && styles.filterChipOn]}
+              >
+                <Text style={[styles.filterText, on && styles.filterTextOn]}>{f.label}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
+      )}
+
       <View style={styles.grid}>
-        {property.map((c) => (
+        {shownProperty.map((c) => (
           <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
         ))}
       </View>
-      {property.length === 0 && (
+      {shownProperty.length === 0 && (
         <Text style={styles.note}>
-          {query.trim()
+          {active
+            ? `No ${active.toLowerCase()} yet.`
+            : query.trim()
             ? `Nothing matches “${query.trim()}”.`
             : credentials.length > 0
               ? "No property yet — your credentials are below."
@@ -400,6 +464,18 @@ const styles = StyleSheet.create({
   subRow: { flexDirection: "row", alignItems: "center", gap: spacing(1) },
   sub: { color: colors.textMuted, fontSize: font.tiny, fontWeight: weight.medium, flex: 1 },
   note: { color: colors.textFaint, fontSize: font.small, textAlign: "center", paddingVertical: spacing(4) },
+  filterRow: { gap: spacing(2), paddingVertical: spacing(1), paddingRight: spacing(4) },
+  filterChip: {
+    paddingHorizontal: spacing(3),
+    paddingVertical: spacing(2),
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.card,
+  },
+  filterChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterText: { color: colors.textMuted, fontSize: font.small, fontWeight: weight.medium },
+  filterTextOn: { color: colors.bg, fontWeight: weight.bold },
   sectionHeader: {
     color: colors.textMuted,
     fontSize: font.tiny,

@@ -62,6 +62,17 @@ Trait names are matched case/space/underscore-insensitively with aliases, so `cr
 - [ ] Archive a credential → it moves to Archived, not to limbo. Restore works.
 - [ ] Hidden still collapses spam.
 
+## 3b. Property filters
+
+- [ ] The filter row appears above the grid **only when there's more than one category held** —
+      a single-category wallet shows no chips, which is correct.
+- [ ] **Every chip returns something.** Filters are built from what's actually held, so tapping any
+      one must never produce an empty grid. *An empty result means the derivation broke.*
+- [ ] The item count above the grid **matches what's on screen** when a filter is active — not the
+      unfiltered total.
+- [ ] Credentials stay visible below regardless of the filter (they're standing, not property).
+- [ ] Search and filter compose: filter to Books, then search — you get books matching the query.
+
 ## 4. Association (More → Association)
 
 - [ ] With a Gateway Membership held: **gold member card**, "Member since <date>", and a standing

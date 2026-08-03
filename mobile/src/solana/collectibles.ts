@@ -39,11 +39,16 @@ export type CollectibleKind =
   | "credential"
   /** Belonging to a community within the Association. */
   | "community"
-  // --- Holdings: what the member owns or can use ---
+  // --- Holdings: what the member owns or can use. The Property Templates set. ---
+  | "book"
+  | "course"
+  | "software"
+  | "music"
+  /** An AI agent or companion the member owns. */
+  | "ai"
   /** Time-limited access that lapses. */
   | "subscription"
   | "ticket"
-  | "book"
   | "portal"
   | "file"
   | "art";
@@ -84,9 +89,13 @@ const KIND_VALUES: CollectibleKind[] = [
   "office",
   "credential",
   "community",
+  "book",
+  "course",
+  "software",
+  "music",
+  "ai",
   "subscription",
   "ticket",
-  "book",
   "portal",
   "file",
   "art",

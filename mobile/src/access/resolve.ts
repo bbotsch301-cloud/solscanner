@@ -29,7 +29,10 @@ export function resolveAccess(item: Collectible): Access | null {
   let mime: string | undefined;
 
   switch (item.kind) {
+    // These carry their payload as a file: the book itself, the album, the installer.
     case "book":
+    case "music":
+    case "software":
     case "file": {
       const f = payloadFile(item);
       url = f?.uri ?? item.animationUrl ?? item.externalUrl;
@@ -44,6 +47,8 @@ export function resolveAccess(item: Collectible): Access | null {
     case "credential":
     case "community":
     case "subscription":
+    case "course":
+    case "ai":
     case "portal":
       url = item.externalUrl ?? item.animationUrl;
       break;
@@ -79,6 +84,14 @@ export function accessVerb(kind: CollectibleKind): string {
       return "Enter portal";
     case "file":
       return "View file";
+    case "course":
+      return "Start course";
+    case "music":
+      return "Listen";
+    case "software":
+      return "Open software";
+    case "ai":
+      return "Open assistant";
     case "credential":
       return "View credential";
     case "fellowship":
