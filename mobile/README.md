@@ -28,7 +28,7 @@ real. A test network is still reachable from Settings for development.
 - **Lock screen** — biometric unlock gate.
 - **Wallet** — live balances, token list with names/logos, pull-to-refresh.
 - **Swap** — Jupiter on Solana, KyberSwap on Ethereum/BSC, with a hold-to-confirm sheet.
-- **Purchases** — NFTs and access passes, with archive and burn-to-reclaim-rent.
+- **Keys** — NFTs and access passes, with archive and burn-to-reclaim-rent.
 - **Ecosystem** — the treasury, its holdings, and recent inflows, all verifiable on-chain.
 - **Send / Receive** — signed transfers with a Solscan link; QR + address.
 - **Activity** — parsed transactions that say what moved and how much.
@@ -64,7 +64,7 @@ src/auth.tsx         session state (onboarded / unlocked)
 src/chains/registry  chain definitions (Solana, Ethereum, BNB Smart Chain)
 src/cache/           disk-backed snapshots so a cold open paints instantly
 src/components/       reusable UI (BalanceCard, TokenRow, Skeleton, Updating, …)
-src/screens/          Wallet, Swap, Purchases, Ecosystem, More + the stack screens
+src/screens/          Wallet, Swap, Keys, Ecosystem, More + the stack screens
 ```
 
 ## Roadmap

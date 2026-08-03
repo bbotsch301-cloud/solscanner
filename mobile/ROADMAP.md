@@ -7,7 +7,7 @@ before any of the financial pieces go live.
 ## Where it is now
 - Gold/black XGO wallet, live as a **general exchange** (Jupiter swaps on Solana,
   KyberSwap on Ethereum/BSC). XGO's own features activate once XGO is listed.
-- Tabs: Wallet · Swap · Purchases · Ecosystem (treasury) · More
+- Tabs: Wallet · Swap · Keys · Ecosystem (treasury) · More
   (Governance / Activity / Contacts / Settings + coming-soon Impact / Marketplace / Map).
 - Self-custody (BIP39 seed backup + import), Token-2022 support, anti-drainer
   safety layer, transparent treasury view.

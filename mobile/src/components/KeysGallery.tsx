@@ -1,6 +1,6 @@
 /**
- * A 2-column gallery of the wallet's non-fungible items (access passes, tickets, books, art),
- * artwork-first. Three buckets, each meaning something different: the live grid, a collapsed
+ * A 2-column gallery of the wallet's Keys — its non-fungible items (access passes, tickets, books,
+ * art), artwork-first. Three buckets, each meaning something different: the live grid, a collapsed
  * "Archived" section the user puts things into once they're done with them, and a collapsed
  * "Hidden" section for spam-looking junk. Paints instantly from the persisted snapshot.
  */
@@ -37,7 +37,7 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
   file: { label: "File", icon: "document-outline", color: colors.textMuted },
 };
 
-/** Show the search field only once a collection is big enough to need it. */
+/** Show the search field only once the set of keys is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
 
 function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boolean; onPress: () => void }) {
@@ -57,6 +57,8 @@ function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boole
         <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
         <View style={styles.subRow}>
           {item.collectionVerified && <Ionicons name="checkmark-circle" size={12} color={colors.primary} />}
+          {/* "Collection" here is the Metaplex grouping this item belongs to — NOT the feature,
+              which is called Keys. Same word, different thing; don't sweep it up in a rename. */}
           <Text style={styles.sub} numberOfLines={1}>
             {item.collection ? (item.collectionVerified ? "Verified" : "Collection") : " "}
           </Text>
@@ -66,10 +68,10 @@ function ItemCard({ item, dimmed, onPress }: { item: Collectible; dimmed?: boole
   );
 }
 
-export function CollectionGallery({
+export function KeysGallery({
   owner,
   refreshKey,
-  title = "Collection",
+  title = "Keys",
 }: {
   owner: string;
   refreshKey: number;
@@ -157,8 +159,8 @@ export function CollectionGallery({
   if (items.length === 0) {
     return (
       <EmptyState
-        icon="images-outline"
-        title="Nothing in your collection yet"
+        icon="key-outline"
+        title="No keys yet"
         subtitle={
           isPublicRpc()
             ? "Access passes, tickets, and collectibles you own will appear here. Set a dedicated RPC in Settings to load full artwork."
@@ -189,7 +191,7 @@ export function CollectionGallery({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search your collection"
+            placeholder="Search your keys"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
