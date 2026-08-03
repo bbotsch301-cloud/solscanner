@@ -1,18 +1,20 @@
 /**
- * Keys — everything the wallet owns that isn't a fungible token: access passes, tickets,
- * memberships, books, art. They're "keys" because that's what they do: each one unlocks something.
- * The grid itself lives in KeysGallery; this screen supplies the header, the chain guard, and
- * pull-to-refresh.
+ * Property — the digital property this wallet owns: books, courses, software, music, art, plus the
+ * credentials that say what the member IS rather than what they hold. Each carries a deed, which is
+ * what makes it property rather than a file someone lets you use.
+ *
+ * The grid (and the property/credentials split) lives in PropertyGallery; this screen supplies the
+ * header, the chain guard, and pull-to-refresh.
  */
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { KeysGallery } from "../components/KeysGallery";
+import { PropertyGallery } from "../components/PropertyGallery";
 import { EmptyState } from "../components/EmptyState";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { useWallet } from "../wallet/WalletContext";
 import { colors, spacing } from "../theme";
 
-export function KeysScreen() {
+export function PropertyScreen() {
   const { activeChain, activeAddress } = useWallet();
   const isSolana = activeChain.kind === "solana";
   const [refreshKey, setRefreshKey] = useState(0);
@@ -28,7 +30,7 @@ export function KeysScreen() {
   return (
     <View style={styles.screen}>
       {/* A tab root — no back affordance, nothing to pop to. */}
-      <ScreenHeader title="Keys" subtitle="Passes, tickets, and collectibles you own" />
+      <ScreenHeader title="Property" subtitle="What you own, and what you hold" />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -38,11 +40,11 @@ export function KeysScreen() {
           <EmptyState
             icon="images-outline"
             title="Switch to Solana"
-            subtitle="Your keys are read from your Solana wallet. Switch the network on the Wallet tab to see them."
+            subtitle="Your property is read from your Solana wallet. Switch the network on the Wallet tab to see it."
           />
         ) : (
           // key per address: the gallery seeds itself from the persisted snapshot on mount.
-          <KeysGallery key={activeAddress} owner={activeAddress} refreshKey={refreshKey} title={null} />
+          <PropertyGallery key={activeAddress} owner={activeAddress} refreshKey={refreshKey} title={null} />
         )}
       </ScrollView>
     </View>

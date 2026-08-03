@@ -1,5 +1,5 @@
 /**
- * One Key: full artwork, what it is, and its actions — Open its content, Send
+ * One piece of Property: full artwork, what it is, and its actions — Open its content, Send
  * (standard NFTs only), View on Solscan, Archive (done with it, still yours) and Mark as spam
  * (junk). The item is read from the collectibles snapshot, so this screen needs no loading state.
  */
@@ -42,6 +42,7 @@ import type { RootNav, RootStackParamList } from "../navigation";
 const KIND_LABEL: Record<Collectible["kind"], string> = {
   ticket: "Ticket",
   membership: "Membership",
+  credential: "Credential",
   book: "Book",
   portal: "Portal",
   file: "File",
@@ -100,9 +101,9 @@ export function CollectibleDetailScreen() {
   if (!item) {
     return (
       <View style={styles.screen}>
-        <ScreenHeader title="Keys" size="modal" onClose={() => nav.goBack()} />
+        <ScreenHeader title="Property" size="modal" onClose={() => nav.goBack()} />
         <Text style={styles.missing}>
-          {resolving ? "Loading…" : "This key is no longer in your wallet."}
+          {resolving ? "Loading…" : "This item is no longer in your wallet."}
         </Text>
       </View>
     );
@@ -297,7 +298,7 @@ export function CollectibleDetailScreen() {
               out of the way. Marking something spam is a different (and rarer) judgement, so it
               sits below and only offers the direction that makes sense for the current state. */}
           <Button
-            label={archivedNow ? "Restore to Keys" : "Archive"}
+            label={archivedNow ? "Restore to Property" : "Archive"}
             variant="secondary"
             icon={archivedNow ? "arrow-undo-outline" : "archive-outline"}
             onPress={() => {

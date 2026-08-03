@@ -10,7 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Font from "expo-font";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
-import { KeysScreen } from "./src/screens/KeysScreen";
+import { PropertyScreen } from "./src/screens/PropertyScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
@@ -87,14 +87,14 @@ const Tab = createBottomTabNavigator();
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Wallet: "wallet",
   Swap: "swap-horizontal",
-  Keys: "key",
+  Property: "library",
   Ecosystem: "planet",
   More: "ellipsis-horizontal",
 };
 const TAB_ICON_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Wallet: "wallet-outline",
   Swap: "swap-horizontal-outline",
-  Keys: "key-outline",
+  Property: "library-outline",
   Ecosystem: "planet-outline",
   More: "ellipsis-horizontal-outline",
 };
@@ -132,15 +132,15 @@ function Tabs() {
       screenListeners={{ tabPress: () => haptics.select() }}
     >
       {/* Wallet leads: it's the only tab that answers "what do I have and what can I do with it",
-          and it's where every session actually starts. Keys earns a tab because the access
-          passes are the product, not a submenu. Ecosystem keeps its place — the treasury being
+          and it's where every session actually starts. Property earns a tab because the digital
+          property is the product, not a submenu. Ecosystem keeps its place — the treasury being
           visible is the point of it — but no longer claims to be "Home". The Browser moved to
           More; it's a power-user surface and was the weakest of the five. */}
       <Tab.Screen name="Wallet" component={HomeScreen} />
       <Tab.Screen name="Swap">
         {() => <SwapScreen asTab />}
       </Tab.Screen>
-      <Tab.Screen name="Keys" component={KeysScreen} />
+      <Tab.Screen name="Property" component={PropertyScreen} />
       <Tab.Screen name="Ecosystem" component={EcosystemScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>

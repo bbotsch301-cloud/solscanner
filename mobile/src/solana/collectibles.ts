@@ -23,7 +23,15 @@ import { toHttp } from "./uri";
 import { connection, CLUSTER, isPublicRpc } from "./connection";
 import { fetchTokenMetas } from "./tokens";
 
-export type CollectibleKind = "ticket" | "membership" | "book" | "portal" | "file" | "art";
+export type CollectibleKind =
+  | "ticket"
+  | "membership"
+  /** A certification or office — what the member IS, rather than something they own. */
+  | "credential"
+  | "book"
+  | "portal"
+  | "file"
+  | "art";
 
 export interface Collectible {
   mint: string;
@@ -55,7 +63,15 @@ const ARCHIVED_KEY = "collectibles.archived.v1";
 const SNAP_KEY = "collectibles.snap.v1:";
 const SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-const KIND_VALUES: CollectibleKind[] = ["ticket", "membership", "book", "portal", "file", "art"];
+const KIND_VALUES: CollectibleKind[] = [
+  "ticket",
+  "membership",
+  "credential",
+  "book",
+  "portal",
+  "file",
+  "art",
+];
 
 // ---- Per-item prefs (user-controlled, persisted; load-once + write-through like pubAddresses).
 //

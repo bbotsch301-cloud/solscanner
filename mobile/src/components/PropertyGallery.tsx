@@ -1,8 +1,14 @@
 /**
- * A 2-column gallery of the wallet's Keys — its non-fungible items (access passes, tickets, books,
- * art), artwork-first. Three buckets, each meaning something different: the live grid, a collapsed
- * "Archived" section the user puts things into once they're done with them, and a collapsed
- * "Hidden" section for spam-looking junk. Paints instantly from the persisted snapshot.
+ * A 2-column gallery of the wallet's digital Property, artwork-first.
+ *
+ * Two of the sections are about what a thing IS, not what the user did with it. Property is what you
+ * own — books, courses, software, music, art. Credentials are what you ARE — memberships, offices,
+ * certifications. They're the same kind of token underneath, but a member's ordination and their
+ * audiobook don't belong in one undifferentiated grid, so they don't share one here. (Credentials
+ * move to Association once that surface exists; this is the simple start.)
+ *
+ * The other two sections are about intent: a collapsed "Archived" for things the user has put away,
+ * and a collapsed "Hidden" for spam-looking junk. Paints instantly from the persisted snapshot.
  */
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
@@ -33,13 +39,17 @@ import type { RootNav } from "../navigation";
 const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }>> = {
   ticket: { label: "Ticket", icon: "ticket-outline", color: colors.primary },
   membership: { label: "Member", icon: "card-outline", color: colors.accent },
+  credential: { label: "Credential", icon: "ribbon-outline", color: colors.primary },
   book: { label: "Book", icon: "book-outline", color: colors.positive },
   portal: { label: "Portal", icon: "planet-outline", color: colors.accent },
   file: { label: "File", icon: "document-outline", color: colors.textMuted },
 };
 
-/** Show the search field only once the set of keys is big enough to need it. */
+/** Show the search field only once the collection is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
+
+/** What the member IS, rather than something they own — shown apart from their property. */
+const CREDENTIAL_KINDS = new Set<CollectibleKind>(["membership", "credential"]);
 
 function ItemCard({
   item,
@@ -85,7 +95,7 @@ function ItemCard({
         <View style={styles.subRow}>
           {item.collectionVerified && <Ionicons name="checkmark-circle" size={12} color={colors.primary} />}
           {/* "Collection" here is the Metaplex grouping this item belongs to — NOT the feature,
-              which is called Keys. Same word, different thing; don't sweep it up in a rename. */}
+              which is called Property. Same word, different thing; leave it out of a rename. */}
           <Text style={styles.sub} numberOfLines={1}>
             {item.collection ? (item.collectionVerified ? "Verified" : "Collection") : " "}
           </Text>
@@ -95,10 +105,10 @@ function ItemCard({
   );
 }
 
-export function KeysGallery({
+export function PropertyGallery({
   owner,
   refreshKey,
-  title = "Keys",
+  title = "Property",
 }: {
   owner: string;
   refreshKey: number;
@@ -155,15 +165,18 @@ export function KeysGallery({
   }, [owner]);
 
   // Every item lands in exactly one bucket. Junk wins over archived: something the spam heuristic
-  // caught shouldn't dress itself up as a pass the user deliberately put away.
-  const { visible, archived, hidden } = useMemo(() => {
+  // caught shouldn't dress itself up as a pass the user deliberately put away. Archived and hidden
+  // are checked BEFORE the property/credential split, so putting a membership away still works.
+  const { property, credentials, archived, hidden } = useMemo(() => {
     void localRev; // recompute after a hide/archive
     const q = query.trim().toLowerCase();
     const match = (c: Collectible) =>
       !q || c.name.toLowerCase().includes(q) || (c.collection ?? "").toLowerCase().includes(q);
     const shown = items.filter(match);
+    const live = shown.filter((c) => !isHiddenItem(c) && !isArchived(c.mint));
     return {
-      visible: shown.filter((c) => !isHiddenItem(c) && !isArchived(c.mint)),
+      property: live.filter((c) => !CREDENTIAL_KINDS.has(c.kind)),
+      credentials: live.filter((c) => CREDENTIAL_KINDS.has(c.kind)),
       archived: shown.filter((c) => !isHiddenItem(c) && isArchived(c.mint)),
       hidden: shown.filter((c) => isHiddenItem(c)),
     };
@@ -210,7 +223,8 @@ export function KeysGallery({
           <Updating />
         ) : (
           <Text style={styles.count}>
-            {visible.length} item{visible.length === 1 ? "" : "s"}
+            {property.length + credentials.length} item
+            {property.length + credentials.length === 1 ? "" : "s"}
           </Text>
         )}
       </View>
@@ -221,7 +235,7 @@ export function KeysGallery({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search your keys"
+            placeholder="Search your property"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -236,18 +250,33 @@ export function KeysGallery({
       )}
 
       <View style={styles.grid}>
-        {visible.map((c) => (
+        {property.map((c) => (
           <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
         ))}
       </View>
-      {visible.length === 0 && (
+      {property.length === 0 && (
         <Text style={styles.note}>
           {query.trim()
             ? `Nothing matches “${query.trim()}”.`
-            : archived.length > 0
-              ? "Everything here is archived — open Archived below."
-              : "Everything here is hidden — check the Hidden section below."}
+            : credentials.length > 0
+              ? "No property yet — your credentials are below."
+              : archived.length > 0
+                ? "Everything here is archived — open Archived below."
+                : "Everything here is hidden — check the Hidden section below."}
         </Text>
+      )}
+
+      {/* Not collapsed like Archived and Hidden: a member's standing is something they should see,
+          not something to go looking for. */}
+      {credentials.length > 0 && (
+        <>
+          <Text style={styles.sectionHeader}>Credentials</Text>
+          <View style={styles.grid}>
+            {credentials.map((c) => (
+              <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
+            ))}
+          </View>
+        </>
       )}
 
       {archived.length > 0 && (
@@ -360,6 +389,15 @@ const styles = StyleSheet.create({
   subRow: { flexDirection: "row", alignItems: "center", gap: spacing(1) },
   sub: { color: colors.textMuted, fontSize: font.tiny, fontWeight: weight.medium, flex: 1 },
   note: { color: colors.textFaint, fontSize: font.small, textAlign: "center", paddingVertical: spacing(4) },
+  sectionHeader: {
+    color: colors.textMuted,
+    fontSize: font.tiny,
+    fontWeight: weight.bold,
+    letterSpacing: tracking.wider,
+    textTransform: "uppercase",
+    marginTop: spacing(5),
+    marginBottom: spacing(3),
+  },
   hiddenToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(2) },
   hiddenText: { color: colors.textFaint, fontSize: font.small, fontWeight: weight.semibold },
   archivedText: { color: colors.textMuted, fontSize: font.small, fontWeight: weight.semibold },

@@ -10,6 +10,7 @@
  * Before this existed, everything used `external_url` and a book's actual content was unreachable.
  */
 import type { Collectible, CollectibleKind } from "../solana/collectibles";
+import { assertNever } from "../chains/registry";
 import { isSafeContentUrl } from "../solana/uri";
 
 export interface Access {
@@ -37,13 +38,19 @@ export function resolveAccess(item: Collectible): Access | null {
     }
     case "ticket":
     case "membership":
+    case "credential":
     case "portal":
       url = item.externalUrl ?? item.animationUrl;
       break;
-    default:
-      // Art: an animation_url is the interactive/video piece; otherwise the project link.
+    case "art":
+      // An animation_url is the interactive/video piece; otherwise the project link.
       url = item.animationUrl ?? item.externalUrl;
       break;
+    default:
+      // Exhaustive on purpose. This used to be a bare `default`, which silently routed any new
+      // kind as art — and more key types are coming (Fellowship, Office, Subscription). Now
+      // adding one is a compile error here, listing every place that has to decide about it.
+      return assertNever(item.kind, "collectible kind in resolveAccess");
   }
 
   // Attacker-controlled metadata — anyone can airdrop a token carrying any URL. Previously this
@@ -67,7 +74,11 @@ export function accessVerb(kind: CollectibleKind): string {
       return "Enter portal";
     case "file":
       return "View file";
-    default:
+    case "credential":
+      return "View credential";
+    case "art":
       return "Open";
+    default:
+      return assertNever(kind, "collectible kind in accessVerb");
   }
 }
