@@ -120,6 +120,33 @@ can claim anything.
 Baking a role into the token at issue time is the failure mode to avoid: it makes standing
 survivable past the loss of the key that granted it.
 
+### 2.1 Signing in on a desktop, from the phone
+
+A desktop browser has no wallet. Rather than a second auth scheme, the phone signs and the desktop
+collects the result:
+
+```
+POST /v1/auth/link            -> { linkId, expiresAt }      the desktop creates it, renders a QR
+POST /v1/auth/link/:id/complete                             the phone posts the /verify body here
+GET  /v1/auth/link/:id        -> { token, expiresAt, wallet }  the desktop claims it, ONCE
+```
+
+Rules, all of which fall out of things already true elsewhere in this document:
+
+- `complete` takes **exactly** the `/v1/auth/verify` body and runs **exactly** the §2 verification in
+  the same order — re-derive the message from stored fields, compare byte-for-byte, burn the nonce on
+  attempt. Do not fork the verifier; two copies of that sequence is how one of them ends up missing a
+  step.
+- The claim is single-use and atomic, with the `usedAt IS NULL` guard in the UPDATE's WHERE clause
+  rather than a read-then-write. `consumeLoginToken` is the existing shape.
+- **The QR carries the domain**, because the wallet refuses to sign a message that does not name its
+  configured one (§1). That check is the whole reason a QR is not a phishing primitive, and it only
+  works if the domain is in the payload for the phone to compare.
+- The phone never receives or transmits the desktop's token. It signs; the server hands the session
+  to whoever created the link.
+- A link that is never claimed expires. `linkId` is unguessable, the TTL matches the 120s challenge,
+  and both creation and claiming are rate-limited.
+
 ---
 
 ## 3. Vault access — `POST /v1/access/challenge`, `POST /v1/access/grant`
@@ -130,8 +157,10 @@ It already covers the verification order, accepting collection-level grants rath
 only, and the signed-URL requirements. The parts most often got wrong:
 
 - **Burn the nonce before the ownership check**, not after.
-- Signed URL TTL **≤300s to first byte**; single-use for pdf/epub/download, expiry-only for
-  video/audio (Range requests need repeat GETs).
+- Signed URL TTL **≤300s to first byte**, and **expiry-only rather than single-use** for anything
+  served inline. This clause used to say "single-use for pdf/epub/download" and it was wrong — see
+  the correction below. Keep single-use only for a true attachment download, where one fetch is the
+  whole transaction.
 - **Must not set cookies** (see §0.6).
 - Carry the token in the URL **fragment** so it stays out of server, CDN and Referer logs.
 - `Cache-Control: private, no-store` · `X-Content-Type-Options: nosniff` · `Referrer-Policy: no-referrer`.
@@ -144,6 +173,29 @@ a gate that opens on failure is theatre.
 **Requested addition:** include a `reason` field on 403 (`not_owner` | `agreement_inactive` |
 `membership_invalid` | `expired`) so the wallet can say *which* of the four checks closed. Today
 every refusal collapses into one message.
+
+### 3.1 Correction: single-use links broke reading, and this document caused it
+
+An earlier version of this contract asked for single-use links on pdf and epub. The server
+implemented that faithfully, and the result is a reader that dies the moment it reconnects: the
+first GET burns the token, so backgrounding the app and returning gives a **404** — inside the
+300-second window, from the wallet that had just proved ownership, indistinguishable from a forged
+link. For a two-hour course it means starting over.
+
+**Anything being read must survive repeated GETs for as long as its grant lives.** A grant is
+already scoped by wallet, asset and expiry; single-use added nothing to that and cost the feature.
+
+Two things follow, and the second is independent of the first:
+
+- **Honour `Range`, or stop sending `Accept-Ranges`.** Advertising a capability that isn't
+  implemented is worse than not having it — a player seeking a video silently re-downloads from byte
+  zero and merely looks slow, which is the hardest class of bug to notice.
+- **Keep a dead link indistinguishable.** Spent, expired and never-existed must stay one 404. That
+  part was right.
+
+The wallet caches a grant for exactly its stated lifetime (`access/entitlement.ts`) so a member does
+not re-sign to turn a page. Until the server is expiry-only it treats a document grant as spent
+after one use, because handing back a burned link produces the very 404 it is avoiding.
 
 ---
 
