@@ -54,7 +54,23 @@ function assertReleaseEnv(): void {
 
 const buildConfig = ({ config }: ConfigContext): ExpoConfig => {
   assertReleaseEnv();
-  return { ...config, name: config.name ?? "XGO", slug: config.slug ?? "mobile" };
+  return {
+    ...config,
+    name: config.name ?? "XGO",
+    slug: config.slug ?? "mobile",
+    /**
+     * Registers `xgowallet://`, which `WC_METADATA.redirect.native` has been advertising to every
+     * dApp since the day WalletConnect was added — with nothing on the other end. A mobile dApp
+     * handing off to the wallet reached nothing at all.
+     *
+     * **This does nothing under Expo Go.** Expo Go owns its own scheme and serves the app under
+     * `exp://`, so a custom scheme only takes effect in a development or production build. The
+     * handler in `WalletConnectContext` is written and correct; it stays dormant until there is a
+     * real build to register it. Said here because "added the scheme" would otherwise read as
+     * "deep links work now", and they do not yet.
+     */
+    scheme: "xgowallet",
+  };
 };
 
 export default buildConfig;

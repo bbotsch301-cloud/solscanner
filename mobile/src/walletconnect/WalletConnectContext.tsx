@@ -9,7 +9,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { getSdkError } from "@walletconnect/utils";
 import { humanizeError } from "../solana/errors";
 import { activeEvmAccount as getEvmAccount } from "../wallet/vault";
@@ -19,6 +28,7 @@ import { connection } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import { requireReauth } from "../security/reauth";
 import { wcEnabled } from "./config";
+import { wcUriFrom } from "./deeplink";
 import { sameAccount, sessionAccount } from "./session";
 import { initWalletKit } from "./client";
 import { approvedNamespaces } from "./namespaces";
@@ -166,10 +176,58 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     })();
   }, [evmAddress, ready, refreshSessions]);
 
+  /**
+   * A pairing URI that arrived before WalletKit finished starting.
+   *
+   * The cold-start deep link is the common case, not the edge one: tapping a WalletConnect link
+   * launches the app, and the URL is delivered well before `initWalletKit` resolves. Dropping it
+   * there — which `if (kit)` alone would do, silently — makes the first tap never work and the
+   * second one work fine, which is the most confusing shape a bug can take.
+   */
+  const pendingUriRef = useRef<string | null>(null);
+
   const pair = useCallback(async (uri: string) => {
+    const clean = uri.trim();
     const kit = kitRef.current;
-    if (kit) await kit.pair({ uri: uri.trim() });
+    if (!kit) {
+      pendingUriRef.current = clean;
+      return;
+    }
+    await kit.pair({ uri: clean });
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const held = pendingUriRef.current;
+    if (!held) return;
+    pendingUriRef.current = null;
+    void pair(held);
+  }, [ready, pair]);
+
+  /**
+   * Honour the deep link the wallet has always claimed to answer.
+   *
+   * `WC_METADATA.redirect.native` advertises `xgowallet://` to every dApp, and until the scheme was
+   * registered in `app.config.ts` nothing was listening — the dApp did its half correctly and the
+   * handoff vanished. Both shapes are accepted; see `deeplink.ts`.
+   *
+   * `getInitialURL` covers a cold start, the listener covers a warm one. Note this stays dormant
+   * under Expo Go, which serves the app under its own `exp://` scheme.
+   */
+  useEffect(() => {
+    if (!wcEnabled) return;
+    let live = true;
+    const handle = (url: string | null | undefined) => {
+      const uri = wcUriFrom(url);
+      if (uri && live) void pair(uri).catch(() => {});
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener("url", (e) => handle(e.url));
+    return () => {
+      live = false;
+      sub.remove();
+    };
+  }, [pair]);
 
   const disconnect = useCallback(
     async (topic: string) => {
