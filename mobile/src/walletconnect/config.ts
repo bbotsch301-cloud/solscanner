@@ -1,8 +1,37 @@
 /**
- * WalletConnect config. Needs a free project id from cloud.reown.com. Without it the
- * whole dApp-connect feature stays hidden (wcEnabled === false).
+ * WalletConnect config.
+ *
+ * The project id is compiled in rather than read from an environment variable, and that is
+ * deliberate: it identifies *this app* to Reown's relay, not the member using it. One id serves
+ * every member forever. Asking each person to obtain and paste one would be asking them to do the
+ * app's job, and leaving it unset — which is how this shipped — meant dApp connect was inert for
+ * everyone and the screen explained itself by naming an environment variable, which no member can
+ * act on.
+ *
+ * It is not a credential. It is inside every published bundle and anyone holding the .apk or .ipa
+ * can read it, so committing it changes how easily it is *found*, not whether it can be found. The
+ * real exposure is relay quota, and the mitigations are Reown's dashboard allowlist and rotating
+ * the id — not secrecy.
+ *
+ * The environment variable remains as an override, which is what makes this a default rather than a
+ * hard-coding: a fork, a second deployment, or a rotation can point elsewhere without a code change.
+ *
+ * The Goshen web app MUST use this same id. A mismatch pairs and then silently fails to relay,
+ * which looks like the wallet ignoring the site.
  */
-export const WC_PROJECT_ID = process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
+const DEFAULT_PROJECT_ID = "d45584cd10d4697e23184ab80044a739";
+
+export const WC_PROJECT_ID = process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID || DEFAULT_PROJECT_ID;
+
+/**
+ * Now true for every build, since the default is never empty.
+ *
+ * Kept rather than deleted because every call site already branches on it and the branches are the
+ * honest thing to keep: `||` was chosen over `??` deliberately, so that a blank
+ * `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID=` in a hand-made `.env` — the single most likely way to
+ * misconfigure this, since that is exactly what `.env.example` shows — falls back to the default
+ * instead of silently switching dApp connect off.
+ */
 export const wcEnabled = WC_PROJECT_ID.length > 0;
 
 export const WC_METADATA = {

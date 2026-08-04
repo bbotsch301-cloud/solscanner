@@ -10,6 +10,7 @@ import { ActivityRow } from "../components/ActivityRow";
 import { SkeletonRow } from "../components/Skeleton";
 import { Updating } from "../components/Updating";
 import { activitySnapshots } from "../cache/screens";
+import { configNotice } from "../config/notice";
 import { colors, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -87,7 +88,11 @@ export function ActivityScreen() {
                 title="No transactions yet"
                 subtitle={
                   activeChain.kind === "evm" && !evmHistoryEnabled
-                    ? "Transaction history on this chain needs an Etherscan API key (set EXPO_PUBLIC_ETHERSCAN_KEY)."
+                    ? configNotice(
+                        "EXPO_PUBLIC_ETHERSCAN_KEY",
+                        "Transaction history isn’t available for this network in this build.",
+                        "Free key at etherscan.io/apis — one key covers every EVM chain.",
+                      )
                     : "Send or receive a transaction to see it here."
                 }
               />

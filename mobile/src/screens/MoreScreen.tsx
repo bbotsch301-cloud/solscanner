@@ -1,8 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
+import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { IconChip } from "../components/IconChip";
+import { ENV, summarize, unreadKeys } from "../config/env";
 import { webappUrl } from "../config/webapp";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { haptics } from "../ui/haptics";
@@ -36,9 +38,53 @@ function Row({
   );
 }
 
+/**
+ * Every configurable variable and what this build was given for it. Development only — a member has
+ * no `.env`, no Metro and no way to act on any of it, which is the whole reason this app stopped
+ * printing variable names into its own interface.
+ *
+ * Values are truncated by `summarize`, and the two that carry API keys report only their length.
+ */
+function EnvList() {
+  const unread = unreadKeys();
+  return (
+    <View style={styles.envList}>
+      {unread.length > 0 && (
+        // Declared in env.json with no literal read in env.ts, so it reads as unset on the device no
+        // matter what `.env` says. Silent by nature; loud here.
+        <Text style={styles.envBroken}>
+          No value is read for: {unread.join(", ")} — add a literal read in src/config/env.ts.
+        </Text>
+      )}
+      {ENV.map((v) => (
+        <View key={v.key} style={styles.envRow}>
+          <Text style={styles.envKey} numberOfLines={1}>
+            {v.key.replace("EXPO_PUBLIC_", "")}
+          </Text>
+          <Text
+            style={[
+              styles.envValue,
+              !v.value.trim() && (v.tier === "release" ? styles.envMissing : styles.envUnset),
+            ]}
+            numberOfLines={1}
+          >
+            {summarize(v)}
+          </Text>
+        </View>
+      ))}
+      <Text style={styles.envFootnote}>
+        Red is required for a release build and missing — `app.config.ts` refuses an EAS
+        preview/production build in that state. Grey is unset and legitimately optional. See
+        CONFIG.md.
+      </Text>
+    </View>
+  );
+}
+
 export function MoreScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
+  const [showEnv, setShowEnv] = useState(false);
 
   // Null when no web app is configured, which is what disables the rows below rather than a
   // separate flag — the link and the reason it works are the same value.
@@ -115,6 +161,17 @@ export function MoreScreen() {
           <View style={styles.group}>
             {/* Gone entirely from a release build — see the route registration in App.tsx. */}
             <Row icon="ribbon" label="Deed preview" onPress={() => nav.navigate("DeedPreview")} />
+            <View style={styles.divider} />
+            {/* What this build was actually given. Every feature that reaches the network is gated
+                on one of these, and until now the only way to find out one was unset was to use the
+                feature and watch it not work. Inline rather than its own route: it is a list, it is
+                read-only, and it should not outlive being useful. */}
+            <Row
+              icon="construct"
+              label="Build configuration"
+              onPress={() => setShowEnv((v) => !v)}
+            />
+            {showEnv && <EnvList />}
           </View>
         </>
       )}
@@ -145,4 +202,12 @@ const styles = StyleSheet.create({
   rowLabel: { flex: 1, color: colors.text, fontSize: font.body, fontWeight: "600" },
   soon: { color: colors.textFaint, fontSize: font.small },
   divider: { height: 1, backgroundColor: colors.cardBorder },
+  envList: { paddingBottom: spacing(3), gap: spacing(1) },
+  envRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  envKey: { flex: 1, color: colors.textMuted, fontSize: font.tiny, fontWeight: "700" },
+  envValue: { flex: 1, color: colors.text, fontSize: font.tiny, textAlign: "right" },
+  envUnset: { color: colors.textFaint },
+  envMissing: { color: colors.negative, fontWeight: "700" },
+  envBroken: { color: colors.negative, fontSize: font.tiny, marginBottom: spacing(2) },
+  envFootnote: { color: colors.textFaint, fontSize: font.tiny, marginTop: spacing(2) },
 });

@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useWalletConnect } from "../walletconnect/WalletConnectContext";
 import { humanizeWcError } from "../walletconnect/errors";
+import { configNotice } from "../config/notice";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -59,11 +60,18 @@ export function WalletConnectScreen() {
         </Pressable>
       </View>
 
+      {/* Unreachable in a normal build: `walletconnect/config.ts` compiles a project id in, so
+          `enabled` is true. It stays for the one case that can still turn it off — a fork that
+          overrides the id with an empty string — and it no longer prints a variable name at a
+          member, which is what this screen used to do. */}
       {!enabled ? (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>
-            dApp connect needs a WalletConnect project id. Set EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID
-            (free at cloud.reown.com) and restart.
+            {configNotice(
+              "EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID",
+              "Connecting to a dApp isn’t available in this build.",
+              "Free project id at cloud.reown.com — the web app must use the same one.",
+            )}
           </Text>
         </View>
       ) : (
