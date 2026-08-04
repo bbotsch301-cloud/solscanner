@@ -68,7 +68,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "sync": "git restore package.json package-lock.json 2>/dev/null || true; git pull origin claude/practical-mendel-3im7fw && npm install --no-audit --no-fund",
-    "check:wc": "node scripts/check-wc-signature.cjs"
+    "check:wc": "node scripts/check-walletconnect.cjs"
   },
   "private": true
 }

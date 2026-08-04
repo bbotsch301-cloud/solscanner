@@ -279,7 +279,7 @@ export async function handleEvmRequest(
  * signatures over one session with a mint keypair co-signing, so the wallet routinely lands at index
  * 1 or later. A single-signer test passes with this bug fully intact, which is how it survived.
  *
- * See `scripts/check-wc-signature.cjs`, which builds a sponsored transaction and asserts that
+ * See `scripts/check-walletconnect.cjs`, which builds a sponsored transaction and asserts that
  * `signatures[0]` fails ed25519 verification while the looked-up index passes.
  *
  * `staticAccountKeys` is the right list and needs no address-lookup-table resolution: lookup tables

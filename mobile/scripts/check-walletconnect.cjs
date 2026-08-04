@@ -1,7 +1,10 @@
 /**
- * Proof that the WalletConnect signature extraction returns THIS wallet's signature.
+ * The parts of WalletConnect that can be proven without a device, a camera or a relay.
  *
- *   node scripts/check-wc-signature.cjs
+ *   npm run check:wc
+ *
+ * Two things: that signature extraction returns THIS wallet's signature, and that the account-switch
+ * guard recognises a session pointed at a different account.
  *
  * There is no test runner in this project, and this is the one piece of WalletConnect that can be
  * checked without a device, a camera or a relay — so it is checked here rather than asserted in a
@@ -101,6 +104,58 @@ try {
   refused = true;
 }
 check("a wallet that isn't a required signer is refused", refused, true);
+
+// ── The account-switch guard ─────────────────────────────────────────────────
+//
+// Mirrors `sessionAccount` / `sameAccount` in `src/walletconnect/WalletConnectContext.tsx`. The
+// signer uses whichever account is active now, while the session still advertises the one it was
+// approved with; switching wallets with a site connected makes those disagree, and for a message
+// signature there is nothing else to catch it — the site gets B's signature on something it
+// attributes to A.
+
+function sessionAccount(session, chainId) {
+  const ns = String(chainId).split(":")[0];
+  const accounts = session?.namespaces?.[ns]?.accounts ?? [];
+  const hit = accounts.find((a) => a.startsWith(`${chainId}:`));
+  return hit ? hit.slice(String(chainId).length + 1) : null;
+}
+function sameAccount(namespace, a, b) {
+  return namespace === "eip155" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+console.log("\nAccount-switch guard\n");
+
+const SOL_DEVNET = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+const A = wallet.publicKey.toBase58();
+const B = sponsor.publicKey.toBase58();
+const session = {
+  namespaces: {
+    solana: { accounts: [`${SOL_DEVNET}:${A}`] },
+    eip155: { accounts: ["eip155:1:0xAbC0000000000000000000000000000000000001"] },
+  },
+};
+
+check("reads the address the session promised", sessionAccount(session, SOL_DEVNET), A);
+check("null for a chain the session never named", sessionAccount(session, "solana:nope"), null);
+check("same account passes", sameAccount("solana", A, A), true);
+check("a switched account is caught", sameAccount("solana", A, B), false);
+
+// Solana is base58 and case-carrying: treating it case-insensitively would let two DIFFERENT
+// addresses compare equal. EVM hex is checksummed for display only, so it must not.
+check(
+  "solana comparison is case-sensitive",
+  sameAccount("solana", A, A.toLowerCase()),
+  A === A.toLowerCase(),
+);
+check(
+  "evm comparison ignores checksum case",
+  sameAccount(
+    "eip155",
+    "0xAbC0000000000000000000000000000000000001",
+    "0xabc0000000000000000000000000000000000001",
+  ),
+  true,
+);
 
 console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} FAILED.\n`);
 process.exit(failures === 0 ? 0 : 1);

@@ -16,7 +16,7 @@ import { activeEvmAccount as getEvmAccount } from "../wallet/vault";
 import type { EvmAccount } from "../wallet/evm";
 import { useWallet } from "../wallet/WalletContext";
 import { connection } from "../solana/connection";
-import { colors, font, radius, spacing } from "../theme";
+import { colors, font, radius, shortAddress, spacing } from "../theme";
 import { requireReauth } from "../security/reauth";
 import { wcEnabled } from "./config";
 import { initWalletKit } from "./client";
@@ -32,6 +32,24 @@ interface WCState {
 }
 
 const Ctx = createContext<WCState | null>(null);
+
+/**
+ * The address a session actually promised the dApp for one chain, or null if it named none.
+ *
+ * A session's `namespaces[ns].accounts` are CAIP-10 strings — `solana:<genesis>:<address>` — so the
+ * address is whatever follows the chain id.
+ */
+function sessionAccount(session: any, chainId: string): string | null {
+  const ns = String(chainId).split(":")[0];
+  const accounts: string[] = session?.namespaces?.[ns]?.accounts ?? [];
+  const hit = accounts.find((a) => a.startsWith(`${chainId}:`));
+  return hit ? hit.slice(String(chainId).length + 1) : null;
+}
+
+/** EVM addresses are case-insensitive hex; Solana addresses are case-sensitive base58. */
+function sameAccount(namespace: string, a: string, b: string): boolean {
+  return namespace === "eip155" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
 
 export function WalletConnectProvider({ children }: { children: ReactNode }) {
   const { evmAddress, solanaAddress, keypair } = useWallet();
@@ -105,6 +123,65 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     };
   }, [keypair, refreshSessions]);
 
+  /**
+   * Tell connected EVM dApps that the account changed.
+   *
+   * Nothing did this, so a live session went on advertising the account it was approved with while
+   * the wallet signed as whichever one was active. The guard in `approveRequest` makes that refuse
+   * rather than mis-sign; this is the other half, so EVM sessions keep WORKING across a switch
+   * instead of only failing safely.
+   *
+   * Both steps are required and in this order. `updateSession` changes what the session promises —
+   * without it the new account isn't in the namespace and the guard would still refuse — and
+   * `accountsChanged` is what an EIP-1193 dApp listens for. Emitting without updating tells a site
+   * about an account its session doesn't hold; updating without emitting changes the answer under a
+   * site that never hears about it.
+   *
+   * **Solana gets neither, deliberately.** The wallet advertises `events: []` for that namespace
+   * (`namespaces.ts`) because WalletConnect has no agreed Solana account-change event, so there is no
+   * way to inform the dApp. Silently repointing the session at a different account would be the
+   * dangerous half of this without the honest half. Those sessions rely on the guard.
+   *
+   * Per-chain, because a session can hold several EVM chains and `accountsChanged` is scoped to one.
+   */
+  useEffect(() => {
+    const kit = kitRef.current;
+    if (!kit || !ready || !evmAddress) return;
+    (async () => {
+      for (const s of Object.values(kit.getActiveSessions?.() ?? {}) as any[]) {
+        const eip155 = s?.namespaces?.eip155;
+        if (!eip155?.accounts?.length) continue;
+
+        const chains: string[] = Array.from(
+          new Set(eip155.accounts.map((a: string) => a.split(":").slice(0, 2).join(":"))),
+        );
+        if (chains.every((c) => sessionAccount(s, c) === evmAddress)) continue; // already current
+
+        try {
+          await kit.updateSession({
+            topic: s.topic,
+            namespaces: {
+              ...s.namespaces,
+              eip155: { ...eip155, accounts: chains.map((c) => `${c}:${evmAddress}`) },
+            },
+          });
+          for (const chainId of chains) {
+            await kit.emitSessionEvent({
+              topic: s.topic,
+              chainId,
+              event: { name: "accountsChanged", data: [evmAddress] },
+            });
+          }
+        } catch {
+          // A relay hiccup or a peer that has gone away. The session keeps its old accounts, the
+          // guard refuses anything signed against them, and nothing is signed as the wrong account —
+          // which is the outcome that has to hold whether or not this succeeds.
+        }
+      }
+      refreshSessions();
+    })();
+  }, [evmAddress, ready, refreshSessions]);
+
   const pair = useCallback(async (uri: string) => {
     const kit = kitRef.current;
     if (kit) await kit.pair({ uri: uri.trim() });
@@ -154,6 +231,47 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     const { topic, params, id } = request;
     const { request: rpc, chainId } = params;
+
+    /**
+     * Refuse to sign as an account this session was never approved for.
+     *
+     * The signer reaches for `keypairRef.current` / `evmAccountRef.current` — whatever account is
+     * active RIGHT NOW — while the session still advertises the account it was approved with. Switch
+     * wallets with a site connected and those two disagree: the dApp builds a request for A and the
+     * wallet signs it as B. For a transaction that mostly fails loudly (B isn't a required signer).
+     * For `personal_sign` and `solana_signMessage` there is no such check, so B's signature comes
+     * back on a message the site attributes to A — the site believes A said something A never said.
+     *
+     * Checked BEFORE the biometric prompt: a request that is going to be refused should not cost a
+     * fingerprint first.
+     *
+     * EVM sessions are also actively updated on a switch (see the effect below), so this fires mainly
+     * for Solana, where the wallet advertises no `accountsChanged` event and the protocol gives no
+     * way to tell the dApp. Refusing and saying why is the honest answer there.
+     */
+    const ns = String(chainId).split(":")[0];
+    const promised = sessionAccount(kit.getActiveSessions?.()?.[topic], chainId);
+    const active = ns === "eip155" ? evmAddrRef.current : solAddrRef.current;
+    if (promised && active && !sameAccount(ns, promised, active)) {
+      Alert.alert(
+        "That site is connected to a different account",
+        `It expects ${shortAddress(promised)}, but ${shortAddress(active)} is active now. ` +
+          `Switch back to that account, or disconnect the site and connect again as this one.`,
+      );
+      await kit
+        .respondSessionRequest({
+          topic,
+          response: {
+            id,
+            jsonrpc: "2.0",
+            error: { code: 5001, message: "The wallet is no longer on the account this session was approved for." },
+          },
+        })
+        .catch(() => {});
+      setBusy(false);
+      shift();
+      return;
+    }
     // EVERY request here is a signing operation — these handlers implement no read-only method — so
     // every one needs a fresh possession proof (biometric or device passcode). The app being
     // unlocked is not assent to a specific signature.
