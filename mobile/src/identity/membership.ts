@@ -16,16 +16,13 @@
  * same reasoning as the Send button: the wallet describes the agreement, it doesn't enforce it.
  */
 import { parseDeed, propertyStatus, type PropertyStatus } from "../property/deed";
-import { isArchived, isHiddenItem, type Collectible, type CollectibleKind } from "../solana/collectibles";
+import { isArchived, isHiddenItem, isStandingKind, type Collectible } from "../solana/collectibles";
+import { assertNever } from "../chains/registry";
 
-/** The kinds that say what a member IS. Everything else is a holding. */
-export const STANDING_KINDS: CollectibleKind[] = [
-  "membership",
-  "fellowship",
-  "office",
-  "credential",
-  "community",
-];
+// The list of standing kinds used to live here, hand-copied from the union in
+// solana/collectibles.ts and hand-synced with a third copy in components/PropertyGallery.tsx. It is
+// now `STANDING_VALUES`, exported from the module that owns the type, and `isStandingKind` is the
+// guard. Re-exporting it under a second name here would just start the drift over again.
 
 export interface StandingKey {
   item: Collectible;
@@ -39,9 +36,13 @@ export interface StandingKey {
 export interface Standing {
   /** Gateway Membership: the key to the Association itself. The deepest-standing one held. */
   gateway: StandingKey | null;
-  fellowships: StandingKey[];
   offices: StandingKey[];
   credentials: StandingKey[];
+  /**
+   * Every community the member belongs to — including under whatever name that community gives the
+   * belonging. Fellowship used to be a separate bucket here; it was one association's word for this,
+   * and the rails don't get to assume it. The key's own metadata carries the name.
+   */
   communities: StandingKey[];
   /** Anything above whose term has ended. Still owned — worth showing, not worth counting. */
   lapsed: StandingKey[];
@@ -51,7 +52,6 @@ export interface Standing {
 
 const EMPTY: Standing = {
   gateway: null,
-  fellowships: [],
   offices: [],
   credentials: [],
   communities: [],
@@ -79,10 +79,10 @@ function toKey(item: Collectible, now: number): StandingKey {
 export function deriveStanding(items: Collectible[], now: number): Standing {
   if (items.length === 0) return EMPTY;
 
-  const out: Standing = { ...EMPTY, fellowships: [], offices: [], credentials: [], communities: [], lapsed: [] };
+  const out: Standing = { ...EMPTY, offices: [], credentials: [], communities: [], lapsed: [] };
 
   for (const item of items) {
-    if (!STANDING_KINDS.includes(item.kind)) continue;
+    if (!isStandingKind(item.kind)) continue;
     if (isHiddenItem(item) || isArchived(item.mint)) continue;
 
     const key = toKey(item, now);
@@ -96,9 +96,6 @@ export function deriveStanding(items: Collectible[], now: number): Standing {
         // Longest-held wins, so a newer duplicate can't reset "Member since".
         if (!out.gateway || (key.issuedAt ?? Infinity) < (out.gateway.issuedAt ?? Infinity)) out.gateway = key;
         break;
-      case "fellowship":
-        out.fellowships.push(key);
-        break;
       case "office":
         out.offices.push(key);
         break;
@@ -109,7 +106,9 @@ export function deriveStanding(items: Collectible[], now: number): Standing {
         out.communities.push(key);
         break;
       default:
-        break; // a holding, not standing — filtered above, listed here for readability
+        // Real exhaustiveness now that `isStandingKind` has narrowed the kind: a new standing kind
+        // stops the build here rather than being silently dropped from a member's standing.
+        assertNever(item.kind, "standing kind in deriveStanding");
     }
   }
 
@@ -121,7 +120,6 @@ export function deriveStanding(items: Collectible[], now: number): Standing {
 export function standingCount(s: Standing): number {
   return (
     (s.gateway ? 1 : 0) +
-    s.fellowships.length +
     s.offices.length +
     s.credentials.length +
     s.communities.length

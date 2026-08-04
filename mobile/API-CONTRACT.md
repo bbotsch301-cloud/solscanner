@@ -2,6 +2,17 @@
 
 What the wallet needs from the Goshen platform, stated exactly enough to implement against.
 
+> **§1–2 are built.** `POST /v1/auth/challenge` and `POST /v1/auth/verify` are live on the platform
+> and consumed by `src/access/siws.ts`. Three deliberate deviations, each argued at its call site in
+> the platform code: the nonce burns at lookup rather than after signature verification (stricter);
+> the composed message is stored verbatim and compared byte-for-byte rather than re-derived
+> (recomputation was a real bug there); and the server imposes its own domain and validates the
+> cluster, rather than echoing what a caller sends. Paths carry the platform's `/_api` prefix, so
+> set `EXPO_PUBLIC_VAULT_API` to include it.
+>
+> The canonical description of the wider system lives in the platform repo at
+> `docs/ARCHITECTURE.md`; this file stays authoritative for the endpoint shapes themselves.
+
 The division: **the web app facilitates** (marketplace, communities, creation, delivery); **the
 wallet holds the keys** and never gives them up. Every endpoint below is designed so the server
 proves things about a member without ever possessing anything that could impersonate them.

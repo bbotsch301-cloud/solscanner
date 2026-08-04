@@ -59,7 +59,7 @@ function experienceOf(item: Collectible, mime?: string): ExperienceId | null {
       // An art piece with an animation_url is something to watch; otherwise it isn't vault content.
       return item.kind === "art" ? (item.animationUrl ? "media" : null) : "documents";
     default:
-      // Standing (membership, office, fellowship, credential, community) isn't vault content —
+      // Standing (see STANDING_VALUES in solana/collectibles.ts) isn't vault content —
       // it belongs on the Association screen. Deliberately not an assertNever: a new HOLDING kind
       // should land here and be triaged, not fail to compile a screen that merely groups things.
       return null;

@@ -9,10 +9,20 @@ import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
 /**
- * First-run acceptance gate. Renders OUTSIDE the NavigationContainer (from App's Root), so the full
- * Privacy / Terms documents are shown in a local Modal rather than via navigation.
+ * Acceptance gate. Renders OUTSIDE the NavigationContainer (from App's Root), so the full documents
+ * are shown in a local Modal rather than via navigation.
+ *
+ * It also re-appears whenever `LEGAL_VERSION` is bumped, which is a different situation from a first
+ * run and used to look identical to one — same "Welcome", no hint that anything had changed. Being
+ * asked to agree again without being told why is exactly the moment a member should be told why.
  */
-export function LegalAcceptScreen({ onAccept }: { onAccept: () => void }) {
+export function LegalAcceptScreen({
+  onAccept,
+  returning = false,
+}: {
+  onAccept: () => void;
+  returning?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const [agreed, setAgreed] = useState(false);
   const [openDoc, setOpenDoc] = useState<LegalDocKey | null>(null);
@@ -23,8 +33,19 @@ export function LegalAcceptScreen({ onAccept }: { onAccept: () => void }) {
         <View style={styles.crownWrap}>
           <Crown size={72} />
         </View>
-        <Text style={styles.title}>Welcome to XGO</Text>
-        <Text style={styles.sub}>Building the Kingdom Economy</Text>
+        <Text style={styles.title}>{returning ? "Our terms have changed" : "Welcome to XGO"}</Text>
+        <Text style={styles.sub}>{returning ? "Please review and accept" : "Building the Kingdom Economy"}</Text>
+
+        {returning && (
+          // Name the change rather than making them diff two documents to find it. The whole reason
+          // this screen came back is worth one sentence.
+          <View style={styles.card}>
+            <Point
+              icon="server"
+              text="Signing in to the Association and opening Vault content now use a server, which records your public wallet address. It never receives your keys, phrase, or funds."
+            />
+          </View>
+        )}
 
         <View style={styles.card}>
           <Point icon="key" text="XGO is non-custodial — you alone hold your keys and funds. We can't access or recover them." />
@@ -41,6 +62,10 @@ export function LegalAcceptScreen({ onAccept }: { onAccept: () => void }) {
           <Pressable onPress={() => setOpenDoc("terms")} style={styles.link}>
             <Ionicons name="document-text-outline" size={16} color={colors.primary} />
             <Text style={styles.linkText}>Terms of Service</Text>
+          </Pressable>
+          <Pressable onPress={() => setOpenDoc("security")} style={styles.link}>
+            <Ionicons name="lock-closed-outline" size={16} color={colors.primary} />
+            <Text style={styles.linkText}>How your keys are protected</Text>
           </Pressable>
         </View>
       </ScrollView>

@@ -42,7 +42,6 @@ export function resolveAccess(item: Collectible): Access | null {
     // Standing and access keys all point at whatever they unlock, rather than carrying a payload.
     case "ticket":
     case "membership":
-    case "fellowship":
     case "office":
     case "credential":
     case "community":
@@ -58,8 +57,8 @@ export function resolveAccess(item: Collectible): Access | null {
       break;
     default:
       // Exhaustive on purpose. This used to be a bare `default`, which silently routed any new
-      // kind as art — and more key types are coming (Fellowship, Office, Subscription). Now
-      // adding one is a compile error here, listing every place that has to decide about it.
+      // kind as art — and more key types are still coming. Now adding one is a compile error here,
+      // listing every place that has to decide about it.
       return assertNever(item.kind, "collectible kind in resolveAccess");
   }
 
@@ -94,8 +93,6 @@ export function accessVerb(kind: CollectibleKind): string {
       return "Open assistant";
     case "credential":
       return "View credential";
-    case "fellowship":
-      return "View fellowship";
     case "office":
       return "View office";
     case "community":

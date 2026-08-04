@@ -72,6 +72,11 @@ export function MoreScreen() {
 
       <Text style={styles.sectionTitle}>Legal</Text>
       <View style={styles.group}>
+        {/* The way in to the agreement records — and to signing the ones made before a wallet
+            existed. The screen was built and routed but nothing ever navigated to it, so every
+            first-run acceptance stayed permanently unsigned. */}
+        <Row icon="create" label="Agreements" onPress={() => nav.navigate("Agreements")} />
+        <View style={styles.divider} />
         <Row icon="shield-checkmark" label="How your keys are protected" onPress={() => nav.navigate("Legal", { doc: "security" })} />
         <View style={styles.divider} />
         <Row icon="lock-closed" label="Privacy Policy" onPress={() => nav.navigate("Legal", { doc: "privacy" })} />

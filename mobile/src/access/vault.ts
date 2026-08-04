@@ -64,6 +64,7 @@ import type { Keypair } from "@solana/web3.js";
 import { signMessageUtf8 } from "../solana/signMessage";
 import { requireReauth } from "../security/reauth";
 import { VAULT_API, VAULT_DOMAIN, vaultConfigured } from "../config/vault";
+import { bindsWalletAndDomain } from "./siws";
 import { CLUSTER } from "../solana/connection";
 import type { Collectible } from "../solana/collectibles";
 
@@ -104,10 +105,11 @@ async function postJson<T>(path: string, body: unknown): Promise<{ status: numbe
  * the configured domain before the private key ever touches it.
  */
 function challengeIsSafe(message: string, wallet: string, mint: string): boolean {
-  if (!message.includes(`Wallet: ${wallet}`)) return false;
-  if (!message.includes(`Asset: ${mint}`)) return false;
-  if (VAULT_DOMAIN && !message.includes(VAULT_DOMAIN)) return false;
-  return true;
+  // The wallet and domain clauses are shared with sign-in (`access/siws.ts`), which applies the same
+  // rule with a purpose in place of the asset. Keeping them in one place is deliberate: this check
+  // is the reason a hostile server can't harvest a signature, and two copies of it would drift.
+  if (!bindsWalletAndDomain(message, wallet, VAULT_DOMAIN)) return false;
+  return message.includes(`Asset: ${mint}`);
 }
 
 /**

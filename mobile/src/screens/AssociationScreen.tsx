@@ -131,7 +131,7 @@ export function AssociationScreen() {
           <Card style={styles.noMember}>
             <Text style={styles.noMemberTitle}>No Gateway Membership held</Text>
             <Text style={styles.noMemberBody}>
-              Membership, offices, fellowships and credentials all appear here once the keys granting
+              Membership, offices, communities and credentials all appear here once the keys granting
               them are in this wallet. Nothing is stored in an account — your standing is whatever
               your keys say it is.
             </Text>
@@ -139,7 +139,6 @@ export function AssociationScreen() {
         )}
 
         <KeyList title="Offices" keys={standing.offices} onOpen={open} />
-        <KeyList title="Fellowship" keys={standing.fellowships} onOpen={open} />
         <KeyList title="Credentials" keys={standing.credentials} onOpen={open} />
         <KeyList title="Communities" keys={standing.communities} onOpen={open} />
         <KeyList title="Lapsed" keys={standing.lapsed} onOpen={open} />

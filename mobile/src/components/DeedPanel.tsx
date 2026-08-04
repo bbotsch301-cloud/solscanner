@@ -1,17 +1,24 @@
 /**
  * The Property Deed, rendered as the agreement it is rather than a row of anonymous trait chips.
  *
- * Three blocks, in the order a holder actually asks the questions: what may I do with this, what
- * does it cost to resell, and who issued it when.
+ * Blocks in the order a holder actually asks the questions: what may I do with this, who holds it
+ * and under what law, what does it cost to resell, and who issued it when.
  *
- * The one rule that shapes the whole component: a right the deed never mentions is NOT shown as
- * denied. Unstated rights are omitted entirely, because rendering a cross next to "Commercial
- * rights" would have the app inventing a restriction the creator never wrote.
+ * Two rules shape the whole component.
+ *
+ * **A right the deed never mentions is NOT shown as denied.** Unstated rights are omitted entirely,
+ * because rendering a cross next to "Commercial rights" would have the app inventing a restriction
+ * the creator never wrote.
+ *
+ * **Rights the app acts on are shown apart from rights that are only promises.** They used to render
+ * identically, which meant "Resale allowed: No" — which turns a button off — looked exactly like
+ * "Printing rights: No", which nothing anywhere reads. Both are real terms of the agreement; only
+ * one has a mechanism, and a member deciding what they may safely do needs to know which is which.
  */
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Card } from "./Card";
-import { RIGHT_LABEL, RIGHT_ORDER, type Deed } from "../property/deed";
+import { ACTED_ON_RIGHTS, RIGHT_LABEL, RIGHT_ORDER, type Deed, type RightKey } from "../property/deed";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
 
 /** Two decimals, trailing zeros dropped — so 0.11% stays 0.11% and 10% doesn't read as "10.00%". */
@@ -31,9 +38,31 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Rights({ deed, keys }: { deed: Deed; keys: RightKey[] }) {
+  return (
+    <View style={styles.rights}>
+      {keys.map((r) => {
+        const granted = deed.rights[r] === true;
+        return (
+          <View key={r} style={styles.rightRow}>
+            <Ionicons
+              name={granted ? "checkmark-circle" : "close-circle"}
+              size={16}
+              color={granted ? colors.positive : colors.negative}
+            />
+            <Text style={[styles.rightLabel, !granted && styles.rightDenied]}>{RIGHT_LABEL[r]}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export function DeedPanel({ deed, owner }: { deed: Deed; owner?: string }) {
   // Only rights the deed actually states — see the note at the top of this file.
   const stated = RIGHT_ORDER.filter((r) => deed.rights[r] !== undefined);
+  const actedOn = stated.filter((r) => ACTED_ON_RIGHTS.has(r));
+  const agreedOnly = stated.filter((r) => !ACTED_ON_RIGHTS.has(r));
 
   const economics: { label: string; value: string }[] = [];
   if (deed.creatorRoyaltyBps != null)
@@ -42,6 +71,15 @@ export function DeedPanel({ deed, owner }: { deed: Deed; owner?: string }) {
     economics.push({ label: "Treasury assessment", value: pct(deed.treasuryAssessmentBps) });
   if (deed.royaltyModel && deed.creatorRoyaltyBps == null)
     economics.push({ label: "Royalty model", value: deed.royaltyModel });
+
+  // Who holds legal title, under what law, and where a dispute would be heard. A deed that says
+  // none of this renders nothing rather than implying a structure that isn't there.
+  const trust: { label: string; value: string }[] = [];
+  if (deed.holdingTrust) trust.push({ label: "Held in trust by", value: deed.holdingTrust });
+  if (deed.trustee) trust.push({ label: "Trustee", value: deed.trustee });
+  if (deed.governingLaw) trust.push({ label: "Governing law", value: deed.governingLaw });
+  if (deed.venue) trust.push({ label: "Venue", value: deed.venue });
+  if (deed.trustVersion) trust.push({ label: "Trust version", value: deed.trustVersion });
 
   const footer: { label: string; value: string }[] = [];
   if (owner) footer.push({ label: "Owner", value: owner });
@@ -59,21 +97,35 @@ export function DeedPanel({ deed, owner }: { deed: Deed; owner?: string }) {
         <Text style={styles.title}>Property Deed</Text>
       </View>
 
-      {stated.length > 0 && (
-        <View style={styles.rights}>
-          {stated.map((r) => {
-            const granted = deed.rights[r] === true;
-            return (
-              <View key={r} style={styles.rightRow}>
-                <Ionicons
-                  name={granted ? "checkmark-circle" : "close-circle"}
-                  size={16}
-                  color={granted ? colors.positive : colors.negative}
-                />
-                <Text style={[styles.rightLabel, !granted && styles.rightDenied]}>{RIGHT_LABEL[r]}</Text>
-              </View>
-            );
-          })}
+      {actedOn.length > 0 && (
+        <>
+          <Text style={styles.groupTitle}>The app follows these</Text>
+          <Rights deed={deed} keys={actedOn} />
+        </>
+      )}
+
+      {agreedOnly.length > 0 && (
+        <>
+          <Text style={styles.groupTitle}>Agreed with the creator</Text>
+          <Rights deed={deed} keys={agreedOnly} />
+          {/* Say what's actually true. These terms are real — they're just not ones any software
+              here can act on, and rendering them identically to the ones it does act on quietly
+              implies a mechanism that doesn't exist. */}
+          <Text style={styles.groupNote}>Terms between you and the creator. Nothing here enforces them.</Text>
+        </>
+      )}
+
+      {trust.length > 0 && (
+        <View style={styles.block}>
+          {trust.map((t) => (
+            <Row key={t.label} label={t.label} value={t.value} />
+          ))}
+          {deed.interestFollowsKey === true && (
+            <Text style={styles.groupNote}>
+              The trust states that beneficial interest follows the key, so whoever holds this key
+              holds the interest.
+            </Text>
+          )}
         </View>
       )}
 
@@ -115,7 +167,16 @@ const styles = StyleSheet.create({
     letterSpacing: tracking.wider,
     textTransform: "uppercase",
   },
-  rights: { marginTop: spacing(3), gap: spacing(2) },
+  groupTitle: {
+    color: colors.textMuted,
+    fontSize: font.tiny,
+    fontWeight: weight.bold,
+    letterSpacing: tracking.wider,
+    textTransform: "uppercase",
+    marginTop: spacing(3),
+  },
+  groupNote: { color: colors.textFaint, fontSize: font.tiny, marginTop: spacing(2) },
+  rights: { marginTop: spacing(2), gap: spacing(2) },
   rightRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rightLabel: { color: colors.text, fontSize: font.body },
   rightDenied: { color: colors.textMuted },

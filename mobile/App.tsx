@@ -208,13 +208,19 @@ function Root() {
         <StatusBar style="light" />
         <Fade>
           <LegalAcceptScreen
+            // A member who accepted an earlier version is not seeing this for the first time, and
+            // "Welcome to XGO" would be both wrong and evasive about why they're being asked again.
+            returning={getAcceptedLegalVersion() > 0}
             onAccept={() => {
               void setAcceptedLegalVersion(LEGAL_VERSION);
               // A record of WHAT was agreed and WHEN, alongside the gate's version flag. This runs
               // before any wallet exists, so it starts unsigned; More → Agreements signs it once
               // there's a key. Fire-and-forget on purpose — the record is evidence, and a member
               // who has agreed must get into the app whether or not it could be written.
-              void recordAcceptance(["terms", "privacy"], null, null);
+              //
+              // All three documents: they share LEGAL_VERSION, so recording only two left the third
+              // versioned, accepted in practice, and unrecorded.
+              void recordAcceptance(["terms", "privacy", "security"], null, null);
               setLegalOk(true);
             }}
           />

@@ -22,24 +22,28 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { toHttp } from "./uri";
 import { connection, CLUSTER, isPublicRpc } from "./connection";
 import { fetchTokenMetas } from "./tokens";
+import { norm } from "../metadata/traits";
 
 /**
- * The constitutional key types. The first group is what a member IS — standing, not stock — and the
- * second is what they OWN. `parseKind` reads whichever the issuer wrote into the metadata.
+ * What a member IS — standing, not stock.
+ *
+ * These are the classes the rails carry. **A community's own titles are not types here.** One
+ * association's "Fellowship" is another's "Chapter" and another's nothing at all; hard-coding any of
+ * them makes the rails one community's software. A title is metadata on a Community Key, named by
+ * whoever issued it — see `LEGACY_KINDS` for what happened to the one that used to be a type.
  */
-export type CollectibleKind =
-  // --- Standing: who the member is in the Association ---
+export type StandingKind =
   /** Gateway Membership — access to the Association itself. */
   | "membership"
-  /** Ecclesiastical participation. */
-  | "fellowship"
   /** Delegated authority. Where authority comes from, instead of a username. */
   | "office"
   /** A certification or qualification. */
   | "credential"
-  /** Belonging to a community within the Association. */
-  | "community"
-  // --- Holdings: what the member owns or can use. The Property Templates set. ---
+  /** Belonging to a community within the Association — including its own name for that belonging. */
+  | "community";
+
+/** What a member OWNS or can use. The Property Templates set. */
+export type TemplateKind =
   | "book"
   | "course"
   | "software"
@@ -52,6 +56,16 @@ export type CollectibleKind =
   | "portal"
   | "file"
   | "art";
+
+/**
+ * The two together. `parseKind` reads whichever the issuer wrote into the metadata.
+ *
+ * Split into two named types rather than one flat union because the standing/holdings distinction is
+ * load-bearing in four separate places — standing confers membership, holdings fill the Vault — and
+ * it used to be re-typed by hand at each of them, with a comment in one admitting it was hand-synced
+ * with another. Now `STANDING_VALUES` below is the single copy and everything derives from it.
+ */
+export type CollectibleKind = StandingKind | TemplateKind;
 
 export interface Collectible {
   mint: string;
@@ -80,15 +94,22 @@ export interface Collectible {
 
 const HIDDEN_KEY = "collectibles.hidden.v1";
 const ARCHIVED_KEY = "collectibles.archived.v1";
-const SNAP_KEY = "collectibles.snap.v1:";
+// v2: `fellowship` stopped being a kind. Snapshots store items verbatim for a week and are read back
+// with no runtime guard, so a v1 entry would resurrect a string the type no longer admits — and the
+// cold-open surfaces read straight from this cache. Bumping the key retires those entries instead.
+const SNAP_KEY = "collectibles.snap.v2:";
 const SNAP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-const KIND_VALUES: CollectibleKind[] = [
-  "membership",
-  "fellowship",
-  "office",
-  "credential",
-  "community",
+/**
+ * The kinds that say what a member IS. **The only copy.**
+ *
+ * `identity/membership.ts` and `components/PropertyGallery.tsx` both derive their sets from this
+ * rather than restating it, which is what they used to do — three hand-maintained copies of the same
+ * four names, in three shapes, in three modules.
+ */
+export const STANDING_VALUES = ["membership", "office", "credential", "community"] as const;
+
+const TEMPLATE_VALUES = [
   "book",
   "course",
   "software",
@@ -99,7 +120,40 @@ const KIND_VALUES: CollectibleKind[] = [
   "portal",
   "file",
   "art",
-];
+] as const;
+
+// A value missing from the arrays above is unparseable forever — `parseKind` would quietly answer
+// "art" for it, and nothing would fail. These two lines make that a compile error instead: adding a
+// kind to either union without listing it here stops the build.
+type _StandingListed = Exclude<StandingKind, (typeof STANDING_VALUES)[number]>;
+type _TemplateListed = Exclude<TemplateKind, (typeof TEMPLATE_VALUES)[number]>;
+const _kindsAreListed: [_StandingListed, _TemplateListed] extends [never, never] ? true : never = true;
+void _kindsAreListed;
+
+const KIND_VALUES = new Set<string>([...STANDING_VALUES, ...TEMPLATE_VALUES]);
+
+/**
+ * Whether a kind says what a member IS rather than what they own.
+ *
+ * A type guard rather than a bare `includes`, so a caller that has filtered on it can then switch
+ * over `StandingKind` exhaustively — which is how `deriveStanding` gets a real `assertNever` instead
+ * of a `default` branch it had to describe as "listed here for readability".
+ */
+export function isStandingKind(kind: CollectibleKind): kind is StandingKind {
+  return (STANDING_VALUES as readonly string[]).includes(kind);
+}
+
+/**
+ * Kinds that were types once and are metadata now. Permanent — assets are already minted with them.
+ *
+ * `fellowship` was "ecclesiastical participation", which is one association's word for belonging.
+ * The rails carry Community; what a community calls its members is theirs to name. An existing
+ * Fellowship key keeps working and keeps the name its own metadata gives it, rather than degrading
+ * into generic art the way an unrecognised value otherwise would.
+ */
+const LEGACY_KINDS: Record<string, CollectibleKind> = {
+  fellowship: "community",
+};
 
 // ---- Per-item prefs (user-controlled, persisted; load-once + write-through like pubAddresses).
 //
@@ -223,9 +277,20 @@ export function removeCollectible(owner: string, mint: string): void {
 
 // ---- Fetching ----
 
+/**
+ * The kind the issuer stated, or `art` when they stated nothing we recognise.
+ *
+ * Trait name and value both go through `norm`, so "Asset Type", "asset_type" and "Type " all match,
+ * and a value of "Book " or "E-Book" lands on `book` instead of silently becoming art. This used to
+ * be an exact-equality check, while the deed parser next door — whose comment says it follows "the
+ * same tolerant spirit as parseKind" — was doing the tolerant thing all along.
+ */
 function parseKind(attrs: { trait: string; value: string }[] | undefined): CollectibleKind {
-  const t = attrs?.find((a) => /^(type|kind)$/i.test(a.trait))?.value?.toLowerCase();
-  return (KIND_VALUES as string[]).includes(t ?? "") ? (t as CollectibleKind) : "art";
+  const raw = attrs?.find((a) => ["type", "kind", "assettype", "keytype"].includes(norm(a.trait)))?.value;
+  if (!raw) return "art";
+  const v = norm(raw);
+  if (KIND_VALUES.has(v)) return v as CollectibleKind;
+  return LEGACY_KINDS[v] ?? "art";
 }
 
 /** Extension → mime, for the common case where the DAS indexer left `mime` empty. */

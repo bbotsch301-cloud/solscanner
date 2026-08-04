@@ -7,6 +7,10 @@ before any of the financial pieces go live.
 Architecture, the ten-section assessment, and the reasoning behind the phase order below
 live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
 
+The canonical description of the ecosystem — what it is, what it claims, and what is still
+undecided — lives in the platform repo at **`docs/ARCHITECTURE.md`**. Where this file disagrees
+with it, that one is right.
+
 ## Where it is now
 - Gold/black XGO wallet, live as a **general exchange** (Jupiter swaps on Solana,
   KyberSwap on Ethereum/BSC). XGO's own features activate once XGO is listed.
@@ -44,10 +48,14 @@ live in **`ARCHITECTURE.md`**. This file is the plan; that file is the analysis.
   language is used (`ARCHITECTURE.md` §2, Challenge 2).
 
 ## Phase 1 — Identity (blocks every server-side engine)
-- **1.1 Generalised wallet auth** — generalise `src/access/vault.ts` into
-  prove-you-control-this-wallet-for-this-purpose. *Blocked on the platform shipping
-  `/v1/auth/challenge` + `/v1/auth/verify` — now specified in `API-CONTRACT.md` §1–2,
-  including the mandatory verification order.*
+- ~~**1.1 Generalised wallet auth.**~~ `src/access/siws.ts` — challenge → validate before
+  signing → biometric → sign → short-lived bearer token, with `challengeIsSafe` generalised
+  to wallet + purpose + domain and shared with the vault so the two can't drift. Session in
+  memory only; no refresh, because the key is the credential. The platform half is live at
+  `/_api/v1/auth/challenge` + `/verify`. Dormant until `EXPO_PUBLIC_VAULT_API` is set.
+  **Cluster note:** the challenge names the cluster and the server refuses one it doesn't
+  speak for. This app defaults to mainnet-beta and the server defaults to devnet, so a
+  deployment must set the server's `SOLANA_CLUSTER` or every real sign-in is refused.
 - ~~**1.2 Membership as a key type.**~~ `CollectibleKind` now carries the constitutional
   set — membership, fellowship, office, credential, community, subscription — and
   `src/identity/membership.ts` derives standing from held keys. Spam and archived items

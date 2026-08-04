@@ -14,11 +14,13 @@
  * shape — but never about certainty. See `bool()` for the part that matters most.
  */
 import type { Collectible } from "../solana/collectibles";
+import { norm } from "../metadata/traits";
 
 /** The rights a deed can grant or withhold. */
 export type RightKey =
   | "personalUse"
   | "download"
+  | "retainedCopy"
   | "vaultStorage"
   | "updates"
   | "resell"
@@ -29,6 +31,7 @@ export type RightKey =
 export const RIGHT_ORDER: RightKey[] = [
   "personalUse",
   "download",
+  "retainedCopy",
   "vaultStorage",
   "updates",
   "resell",
@@ -39,12 +42,28 @@ export const RIGHT_ORDER: RightKey[] = [
 export const RIGHT_LABEL: Record<RightKey, string> = {
   personalUse: "Personal use",
   download: "Download",
+  retainedCopy: "Downloaded copy stays yours",
   vaultStorage: "Vault storage",
   updates: "Updates included",
   resell: "Resale allowed",
   commercial: "Commercial rights",
   printing: "Printing rights",
 };
+
+/**
+ * The rights the app itself acts on, as opposed to the ones that are promises between the buyer and
+ * the creator.
+ *
+ * Every right used to render identically — the same green tick or red cross — while exactly one of
+ * them changed what the app did. A member could not tell that "Resale allowed: No" turns a button
+ * off while "Printing rights: No" is read by nothing anywhere. Both are real terms; only one has a
+ * mechanism behind it, and showing them the same way quietly overstates the second.
+ *
+ * Be careful about what "acts on" means. Even for `resell`, the app declines to *participate* — it
+ * withholds Send. It cannot stop a transfer: a plain SPL NFT moves with any other wallet or a CLI.
+ * The copy in the UI must say what the app does, never that it prevents anything.
+ */
+export const ACTED_ON_RIGHTS: ReadonlySet<RightKey> = new Set<RightKey>(["resell"]);
 
 export interface Deed {
   creator?: string;
@@ -66,6 +85,40 @@ export interface Deed {
   /** True when a stated percentage sits outside the platform's 0–25% limit — shown, but flagged. */
   royaltyOutOfRange: boolean;
   agreementVersion?: string;
+
+  // ---- The trust the property is held under ----
+  //
+  // A deed is a private contract, and these are the fields that make it one a court could read. The
+  // asset sits in a sub-trust under a community's master trust; this deed is that sub-trust's
+  // instrument. Each is optional because plenty of assets predate the structure and a deed that
+  // doesn't say must not be rendered as though it did.
+
+  /** The trust holding legal title, e.g. "Goshen Trust". */
+  holdingTrust?: string;
+  /** Who holds it in that capacity. A trustee has a name and an address; a public key does not. */
+  trustee?: string;
+  /**
+   * Governing law, per deed rather than per platform — there is no single jurisdiction for neutral
+   * rails, so each contract names its own. Venue is the forum for a dispute under that law.
+   */
+  governingLaw?: string;
+  venue?: string;
+  /**
+   * The master trust instrument version this deed was issued under. Pinned for the same reason
+   * `agreementVersion` is: a trustee amending the master deed later must not retroactively change
+   * what a member agreed to years earlier.
+   */
+  trustVersion?: string;
+  /**
+   * Whether the trust states that beneficial interest follows the key.
+   *
+   * This is the clause that keeps the chain authoritative under a trust structure: without it,
+   * legal title sits with the trustees and a register decides who benefits, which inverts "the chain
+   * is the authority on ownership" into "the chain is an index of the register". Tri-state, because
+   * a deed that is silent on it has not made the promise.
+   */
+  interestFollowsKey?: boolean;
+
   /** Traits that weren't deed fields, so the detail screen can still show them. */
   extraTraits: { trait: string; value: string }[];
 }
@@ -81,10 +134,9 @@ const MAX_ROYALTY_BPS = 2500;
 // ---- Trait matching ---------------------------------------------------------------------------
 //
 // Issuers write "Creator Royalty", "creator_royalty" and "Royalty" for the same field, so match on
-// a normalised key and accept a list of aliases per field. Same tolerant spirit as `parseKind` in
-// solana/collectibles.ts, which already reads the asset's type out of these traits.
-
-const norm = (s: string): string => s.toLowerCase().replace(/[\s_-]+/g, "");
+// a normalised key and accept a list of aliases per field. `norm` is shared with `parseKind` in
+// solana/collectibles.ts, which reads the asset's type out of these same traits — this comment used
+// to claim they agreed while parseKind was in fact matching exactly.
 
 /** Field → the trait names an issuer might plausibly have used, normalised. */
 const ALIASES = {
@@ -93,13 +145,23 @@ const ALIASES = {
   // licence summary, not a boolean right, so it belongs here rather than in the rights checklist.
   license: ["license", "licence", "licensetype", "rights"],
   royaltyModel: ["royaltymodel", "royalties"],
-  issuedAt: ["issued", "issuedate", "issued", "purchased", "purchasedate", "acquired"],
+  issuedAt: ["issued", "issuedate", "issuedon", "purchased", "purchasedate", "acquired"],
   expiresAt: ["expiration", "expires", "expiry", "expiresat", "validuntil"],
   creatorRoyalty: ["creatorroyalty", "royalty", "royaltypercent", "sellerfee"],
   treasuryAssessment: ["treasuryassessment", "treasuryfee", "platformfee", "treasury"],
   agreementVersion: ["agreementversion", "version", "deedversion"],
+  holdingTrust: ["holdingtrust", "trust", "heldintrust", "heldby"],
+  trustee: ["trustee", "trustees"],
+  governingLaw: ["governinglaw", "jurisdiction", "law"],
+  venue: ["venue", "forum", "disputevenue"],
+  trustVersion: ["trustversion", "mastertrustversion", "instrumentversion"],
+  interestFollowsKey: ["interestfollowskey", "beneficialinterestfollowskey", "interestfollowsthekey"],
   personalUse: ["personaluse", "personal"],
   download: ["download", "downloadable", "downloadallowed"],
+  // Whether a downloaded copy survives transfer or revocation. "Download: Yes" says you may take a
+  // copy; this says whether that copy is still yours afterwards. They are different products at
+  // different prices, and a buyer should not find out which one they bought when they lose signal.
+  retainedCopy: ["retainedcopy", "copyretained", "keepsyourcopy", "permanentcopy", "offlinecopy"],
   vaultStorage: ["vaultstorage", "vault", "vaultaccess"],
   updates: ["updates", "updatesincluded", "freeupdates"],
   resell: ["resellallowed", "resell", "resale", "resaleallowed", "transferable", "transferrable"],
@@ -149,10 +211,18 @@ function bps(raw: string): number | undefined {
   return /\bbps\b|basispoints?/i.test(v) ? Math.round(n) : Math.round(n * 100);
 }
 
-/** A date, or `null` for a deed that explicitly never expires. undefined = unparseable/unstated. */
+/**
+ * A date, or `null` for a deed that explicitly never expires. undefined = unparseable/unstated.
+ *
+ * `permanent` and `unlimited` are here because `bool` already accepts them as "yes, forever" and the
+ * two readers disagreeing on the same word is how "Vault Access: Permanent" and "Expires: Permanent"
+ * end up meaning different things in one deed. `none` is the one word they must NOT share: to a
+ * right it means the right is denied, and to a term it means there is no end date. Same word,
+ * opposite senses, and both are what an issuer would plausibly write.
+ */
 function when(raw: string): number | null | undefined {
   const v = norm(raw);
-  if (/^(never|none|lifetime|perpetual|forever|n\/a)$/.test(v)) return null;
+  if (/^(never|none|lifetime|perpetual|forever|permanent|unlimited|n\/a)$/.test(v)) return null;
   const t = Date.parse(raw.trim());
   return Number.isFinite(t) ? t : undefined;
 }
@@ -220,6 +290,12 @@ export function parseDeed(item: Collectible): Deed | null {
     treasuryAssessmentBps,
     royaltyOutOfRange: creatorRoyaltyBps != null && creatorRoyaltyBps > MAX_ROYALTY_BPS,
     agreementVersion: read("agreementVersion"),
+    holdingTrust: read("holdingTrust"),
+    trustee: read("trustee"),
+    governingLaw: read("governingLaw"),
+    venue: read("venue"),
+    trustVersion: read("trustVersion"),
+    interestFollowsKey: readBool("interestFollowsKey"),
     extraTraits,
   };
 }

@@ -10,10 +10,21 @@
  * These are solid drafts, NOT a substitute for review by a qualified lawyer. Fill the bracketed
  * placeholders ([LEGAL ENTITY], [GOVERNING JURISDICTION]) before publishing to the app stores,
  * which additionally require a PUBLICLY HOSTED privacy-policy URL (this same text can be hosted).
+ *
+ * THOSE PLACEHOLDERS NOW BLOCK THE RELEASE, not just the store listing. As of v2 this policy makes
+ * a specific promise about what a first-party server does with a member's data, and a promise made
+ * by "[LEGAL ENTITY]" is made by nobody. `[GOVERNING JURISDICTION]` in the Terms is the app's own
+ * governing law — a separate question from the per-deed governing law a Property Deed states, which
+ * each creator sets for their own contract.
  */
 
-export const LEGAL_VERSION = 1;
-export const LAST_UPDATED = "August 1, 2026";
+// v2 — the Association platform. Earlier versions promised no servers stored member data; the
+// sign-in and Vault services make that false, so the policy, the app-store data-safety disclosures
+// and this bump ship together. Shipping the service and the policy in different releases is the one
+// mistake here that cannot be repaired afterwards: members would have transmitted data under a
+// promise it wouldn't be.
+export const LEGAL_VERSION = 2;
+export const LAST_UPDATED = "August 4, 2026";
 
 export type LegalDocKey = "privacy" | "terms" | "security";
 
@@ -26,13 +37,34 @@ _Last updated: ${LAST_UPDATED}_
 
 ${APP_NAME} is a self-custodial (non-custodial) crypto wallet published by [LEGAL ENTITY] ("we",
 "us"). This policy explains what happens to your information when you use the app. The short
-version: **we don't run accounts, we don't have servers that store your data, and we never receive
-your keys or funds.**
+version: **we don't run accounts, we never receive your keys or funds, and the one service we do
+run only ever learns what you deliberately choose to prove to it.**
+
+**What changed in this version.** Earlier versions said we had no servers storing your data. That
+is no longer true, and we would rather say so plainly than leave it buried. The Association platform
+described below records your public wallet address when you sign in or unlock content you own. It
+still never receives a key, a recovery phrase, or funds, and there is still no account to create.
 
 ## We are non-custodial
 Your recovery phrase, private keys, and PIN are created and stored **only on your device**. We never
 see them, receive them, or transmit them anywhere. We cannot access your wallet, move your funds, or
 recover your keys for you. There is no ${APP_NAME} account and no sign-up.
+
+## The Association platform, and what it learns about you
+Some features — signing in to the Association, opening content you own from the Vault — need a
+server that can check what your wallet holds. When you use one, and only then, that server receives:
+- your **public wallet address**;
+- a **signature** you approve on your device, proving you hold that wallet's key;
+- the **time** of the request, and your device's **IP address**, as any web request carries;
+- for a Vault unlock, **which item** you are opening.
+
+It records these so it can show you what you own and prove later that a request was really yours.
+**It never receives a private key, a recovery phrase, or funds**, and it never asks for one — no
+service of ours will ever ask you for a recovery phrase, and anyone who does is trying to rob you.
+
+Signing in is not registering. There is no account, no password, and nothing to reset: proving you
+hold a key is the whole of it, and it lasts minutes rather than indefinitely. If you never use these
+features, this server never hears from you at all.
 
 ## Information that stays on your device
 The app stores the following locally and never sends it to us:

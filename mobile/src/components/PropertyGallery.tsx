@@ -26,6 +26,7 @@ import {
   onCollectiblesChange,
   isArchived,
   onPrefsChange,
+  STANDING_VALUES,
   type Collectible,
   type CollectibleKind,
 } from "../solana/collectibles";
@@ -40,7 +41,6 @@ const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof t
   ticket: { label: "Ticket", icon: "ticket-outline", color: colors.primary },
   membership: { label: "Member", icon: "card-outline", color: colors.accent },
   credential: { label: "Credential", icon: "ribbon-outline", color: colors.primary },
-  fellowship: { label: "Fellowship", icon: "people-outline", color: colors.accent },
   office: { label: "Office", icon: "shield-outline", color: colors.primary },
   community: { label: "Community", icon: "people-circle-outline", color: colors.accent },
   subscription: { label: "Subscription", icon: "refresh-outline", color: colors.warning },
@@ -73,14 +73,8 @@ const FILTERS: { label: string; kinds: CollectibleKind[] }[] = [
 ];
 
 /** What the member IS, rather than something they own — shown apart from their property.
- *  Kept in sync with STANDING_KINDS in identity/membership.ts, which reasons about the same set. */
-const CREDENTIAL_KINDS = new Set<CollectibleKind>([
-  "membership",
-  "fellowship",
-  "office",
-  "credential",
-  "community",
-]);
+ *  Derived from STANDING_VALUES rather than restated; this used to be a hand-synced copy. */
+const CREDENTIAL_KINDS = new Set<CollectibleKind>(STANDING_VALUES);
 
 function ItemCard({
   item,

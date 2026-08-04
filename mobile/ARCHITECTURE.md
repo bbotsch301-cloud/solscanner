@@ -1,5 +1,11 @@
 # XGO Wallet — Architecture Assessment
 
+> **This is the wallet's own assessment, not the system's definition.** The canonical description of
+> what the ecosystem is and what it claims lives in the platform repo at `docs/ARCHITECTURE.md`.
+> Where the two disagree, that file is correct and this one is out of date — in particular its §6
+> is the only place key types are enumerated, §17 lists decisions still open, and §18 lists claims
+> the system does not make.
+
 An assessment of the wallet as it stands against the goal of becoming the member interface for a
 constitutional digital ecosystem: identity, property, agreements, vault, settlement, community,
 stewardship.
