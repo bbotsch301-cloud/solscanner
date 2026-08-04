@@ -10,10 +10,6 @@ import { toBaseUnits } from "../units";
 
 export const XGO_MINT = "4a6CPi8mjbJvpWHajbSjd9CMbKL8UniByoSx7tomLJa7";
 
-export function isXgo(mint: string): boolean {
-  return mint === XGO_MINT;
-}
-
 export interface TransferFee {
   bps: number; // basis points (111 = 1.11%)
   maxFee: bigint;

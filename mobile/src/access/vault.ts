@@ -156,7 +156,7 @@ export async function attemptGatedGrant(
 ): Promise<Entitlement | null> {
   if (!vaultConfigured()) return null;
 
-  const cached = await liveEntitlement(item.mint);
+  const cached = await liveEntitlement(wallet, item.mint);
   if (cached) return cached;
 
   let ch: Challenge | null;
@@ -208,7 +208,7 @@ export async function attemptGatedGrant(
     // one; see the note on `Entitlement.reusable`.
     reusable: isReusable(g.json.mime),
   };
-  void rememberEntitlement(item.mint, grant);
+  void rememberEntitlement(wallet, item.mint, grant);
   return grant;
 }
 

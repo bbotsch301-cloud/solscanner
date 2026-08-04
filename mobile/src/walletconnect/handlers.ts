@@ -22,6 +22,39 @@ import { CLUSTER } from "../solana/connection";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
 
+/**
+ * The typed-data payload out of an `eth_signTypedData*` params array, whichever slot it is in.
+ *
+ * The two generations disagree about order, and the code read `params[1]` for both:
+ *
+ *   • `eth_signTypedData` (v1) is `[typedData, address]`
+ *   • `eth_signTypedData_v4`   is `[address, typedData]`
+ *
+ * So legacy typed-data signing read an address where the payload should be, and `JSON.parse` threw.
+ * It failed safe — nothing was mis-signed — but the method simply did not work, and the preview
+ * showed "unknown" for every field.
+ *
+ * Detecting by shape rather than by method name is the point. The alternative, branching on the
+ * method string, leaves the preview and the signer free to disagree about which argument is the
+ * payload — and a preview that describes something other than what gets signed is worse than no
+ * preview at all. One function, both callers.
+ */
+export function pickTypedData(params: any): TypedData | null {
+  const candidates = Array.isArray(params) ? params : [params];
+  for (const c of candidates) {
+    let v: any = c;
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        continue; // an address, or anything else that isn't JSON
+      }
+    }
+    if (v && typeof v === "object" && (v.types || v.primaryType || v.domain)) return v as TypedData;
+  }
+  return null;
+}
+
 function evmChainOf(chainId: string) {
   const id = Number(chainId.split(":")[1]);
   return CHAINS.find((c) => c.evmChainId === id) ?? null;
@@ -103,12 +136,8 @@ export function describeRequest(method: string, params: any, chainId?: string): 
       };
     case "eth_signTypedData":
     case "eth_signTypedData_v4": {
-      let td: any = params?.[1];
-      try {
-        if (typeof td === "string") td = JSON.parse(td);
-      } catch {
-        /* leave as-is */
-      }
+      // Same picker the signer uses, so the preview cannot describe a different argument.
+      const td = pickTypedData(params) as any;
       const msg = td?.message ?? {};
       const lines = [
         { label: "App domain", value: td?.domain?.name ?? "unknown" },
@@ -178,8 +207,8 @@ export async function handleEvmRequest(
     // eth_sign (raw-bytes blind signing, a known drainer vector) is deliberately NOT supported.
     case "eth_signTypedData":
     case "eth_signTypedData_v4": {
-      const data = params[1];
-      const td = (typeof data === "string" ? JSON.parse(data) : data) as TypedData;
+      const td = pickTypedData(params);
+      if (!td) throw new Error("That request didn't contain readable typed data.");
       return signTypedData(td, acct.privateKey);
     }
     case "eth_sendTransaction":

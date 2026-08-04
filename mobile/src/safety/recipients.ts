@@ -46,11 +46,6 @@ export async function recordRecipient(address: string): Promise<void> {
   }
 }
 
-/** True if the user has sent to this exact address before. */
-export function isKnownRecipient(address: string): boolean {
-  return history.includes(norm(address));
-}
-
 /**
  * A previously-used address that this one imitates (same first & last chars, different
  * middle) — the address-poisoning signature — or null if none. An exact repeat returns

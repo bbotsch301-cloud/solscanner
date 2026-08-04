@@ -1,6 +1,18 @@
 /**
  * Proving control of this wallet to the Association platform.
  *
+ * ## NOTHING CALLS `signIn` YET
+ *
+ * Said here because an audit found it and the file gave no hint. This module is complete and written
+ * against endpoints that exist (`/v1/auth/challenge`, `/v1/auth/verify`), but no screen or context
+ * has ever asked it for a session, so `signIn`, `cachedSession` and `authHeader` are unreachable in
+ * the shipped app. `bindsWalletAndDomain` and `clearSessions` are used — by `access/vault.ts` and
+ * `wallet/WalletContext.tsx` respectively — so the file as a whole is live.
+ *
+ * It is kept rather than deleted because the server half is built and the wiring is the remaining
+ * step, not a rewrite. What is NOT acceptable is it being unreachable *and* looking wired up: a
+ * reader should not have to grep to learn that the sign-in path is unused.
+ *
  * Generalised from `access/vault.ts`, which proves ownership of one *asset* to unlock one piece of
  * content. Same sequence, and the sequence is the point: ask for a challenge → validate what we were
  * asked to sign → biometric confirm → sign → exchange the signature for a short-lived token. The
@@ -120,7 +132,17 @@ export function challengeIsSafe(message: string, wallet: string, purpose: string
  */
 export function bindsWalletAndDomain(message: string, wallet: string, domain: string): boolean {
   if (!message.includes(`Wallet: ${wallet}`)) return false;
-  if (domain && !message.includes(domain)) return false;
+  // An unconfigured domain used to SKIP this clause — `if (domain && …)` — which meant the check
+  // that stops a hostile server harvesting a signature for somewhere else was silently absent for
+  // exactly the deployments most likely to be misconfigured. A missing domain is not permission to
+  // sign anything; it is a reason to sign nothing.
+  //
+  // In practice this is a second line: `vaultConfigured`/`platformConfigured` now require the domain
+  // too, so a half-configured build leaves the gated path off rather than on-and-unbound. This is
+  // here because the function is exported and shared, and a future caller should not be able to
+  // reintroduce the hole by passing "".
+  if (!domain) return false;
+  if (!message.includes(domain)) return false;
   return true;
 }
 

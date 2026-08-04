@@ -229,23 +229,10 @@ export async function evmAccountFor(seedId: string, index: number): Promise<EvmA
   }
 }
 
-export async function activeKeypair(): Promise<Keypair | null> {
-  const v = await readIndex();
-  if (!v) return null;
-  return keypairFor(v.active.seedId, v.active.index);
-}
-
 export async function activeEvmAccount(): Promise<EvmAccount | null> {
   const v = await readIndex();
   if (!v) return null;
   return evmAccountFor(v.active.seedId, v.active.index);
-}
-
-/** Metadata for the currently active seed (or null if no wallet). */
-export async function activeSeedMeta(): Promise<SeedMeta | null> {
-  const v = await readIndex();
-  if (!v) return null;
-  return v.seeds.find((s) => s.id === v.active.seedId) ?? null;
 }
 
 /** The active seed's recovery phrase (for the Backup screen). */
@@ -353,17 +340,6 @@ export async function addAccount(seedId: string): Promise<{ vault: VaultIndex; i
   return { vault: v, index: next };
 }
 
-/** Add specific account indices (from a re-scan) to an existing seed. */
-export async function addAccounts(seedId: string, indices: number[]): Promise<VaultIndex> {
-  const v = await readIndex();
-  if (!v) throw new Error("No wallet exists yet.");
-  const seed = v.seeds.find((s) => s.id === seedId);
-  if (!seed) throw new Error("That wallet doesn't exist.");
-  seed.accounts = Array.from(new Set([...seed.accounts, ...indices])).sort((a, b) => a - b);
-  await writeIndex(v);
-  return v;
-}
-
 export async function renameSeed(seedId: string, label: string): Promise<VaultIndex> {
   const v = await readIndex();
   if (!v) throw new Error("No wallet exists yet.");
@@ -403,12 +379,7 @@ export async function removeSeed(seedId: string): Promise<VaultIndex | null> {
   return vault;
 }
 
-/** The stored recovery phrase for a seed (decrypted if a PIN is set). */
-export async function getSeedMnemonic(seedId: string): Promise<string | null> {
-  return getSecret(seedId, "mnemonic");
-}
-
-export async function seedHasPassphrase(seedId: string): Promise<boolean> {
+async function seedHasPassphrase(seedId: string): Promise<boolean> {
   return !!(await SecureStore.getItemAsync(seedKey(seedId, "passphrase")));
 }
 

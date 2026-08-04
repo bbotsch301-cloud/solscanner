@@ -102,15 +102,6 @@ export function unreadKeys(): readonly string[] {
   return manifest.filter((m) => !(m.key in VALUES)).map((m) => m.key);
 }
 
-/** The variables a member-facing build cannot do without, and which this build has not been given. */
-export function missingForRelease(): readonly string[] {
-  return ENV.filter((v) => v.tier === "release" && v.value.trim() === "").map((v) => v.key);
-}
-
-export function envVar(key: string): EnvVar | undefined {
-  return ENV.find((v) => v.key === key);
-}
-
 /**
  * What to show a developer for one variable. Never rendered in a release build (see `MoreScreen`),
  * and truncated regardless — long RPC URLs carry keys, and a diagnostics row is not a place to

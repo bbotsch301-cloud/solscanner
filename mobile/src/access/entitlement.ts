@@ -77,9 +77,24 @@ export interface Entitlement {
 interface Stored extends Entitlement {
   /** Which mint this opens, checked on read so a mis-keyed entry can't open the wrong asset. */
   mint: string;
+  /** Whose proof of ownership produced it. Checked on read for the same reason. */
+  owner: string;
 }
 
-const storageKey = (mint: string) => `${STORE_PREFIX}${CLUSTER}:${mint}`;
+/**
+ * Scoped by owner as well as mint, and that is not decoration.
+ *
+ * A grant is a bearer URL: whatever holds it can read the content until it expires, with no further
+ * proof. Keyed on `cluster:mint` alone, the entry a member earned by proving ownership was readable
+ * by whichever account happened to be active next — including one that owns nothing.
+ *
+ * It was *nearly* safe, because `WalletContext.applyActive` clears the cache on an account switch.
+ * But it does so with `void clearEntitlements()` — un-awaited — so the whole guarantee rested on a
+ * promise nobody waited for, and a fast open on the new account could read the old one's grant
+ * before the clear landed. Putting the owner in the key removes the race rather than narrowing it.
+ * The clear stays; belt and braces.
+ */
+const storageKey = (owner: string, mint: string) => `${STORE_PREFIX}${CLUSTER}:${owner}:${mint}`;
 
 /** How close to expiry an entitlement stops being worth handing out. */
 const SKEW_MS = 10_000;
@@ -129,18 +144,22 @@ async function entitlementKey(): Promise<Uint8Array | null> {
  * Never throws — failing to cache costs one extra round trip on the next open, which is strictly
  * better than an unopenable screen.
  */
-export async function rememberEntitlement(mint: string, e: Entitlement): Promise<void> {
+export async function rememberEntitlement(
+  owner: string,
+  mint: string,
+  e: Entitlement,
+): Promise<void> {
   if (e.expiresAt <= Date.now()) return; // already dead; nothing worth sealing
   try {
     const key = await entitlementKey();
     if (!key) return;
     const nonce = rand(24);
-    const payload: Stored = { ...e, mint };
+    const payload: Stored = { ...e, mint, owner };
     const sealed = xchacha20poly1305(key, nonce).encrypt(
       new TextEncoder().encode(JSON.stringify(payload)),
     );
     await AsyncStorage.setItem(
-      storageKey(mint),
+      storageKey(owner, mint),
       JSON.stringify({ n: b64(nonce), c: b64(sealed) }),
     );
   } catch {
@@ -149,15 +168,15 @@ export async function rememberEntitlement(mint: string, e: Entitlement): Promise
 }
 
 /**
- * A still-valid grant for this mint, or null.
+ * A still-valid grant this owner earned for this mint, or null.
  *
  * A single-use entitlement is **consumed by being returned** — it is handed back once and deleted in
  * the same breath, because the server will refuse the second read and a cached 404 is worse than no
  * cache at all.
  */
-export async function liveEntitlement(mint: string): Promise<Entitlement | null> {
+export async function liveEntitlement(owner: string, mint: string): Promise<Entitlement | null> {
   try {
-    const raw = await AsyncStorage.getItem(storageKey(mint));
+    const raw = await AsyncStorage.getItem(storageKey(owner, mint));
     if (!raw) return null;
 
     const key = await entitlementKey();
@@ -168,20 +187,22 @@ export async function liveEntitlement(mint: string): Promise<Entitlement | null>
     const plain = xchacha20poly1305(key, unb64(n)).decrypt(unb64(c));
     const stored = JSON.parse(new TextDecoder().decode(plain)) as Stored;
 
-    // Belt and braces: the storage key already scopes by mint, but an entry that disagrees with its
-    // own key would open the wrong asset, and that is not a mistake worth being relaxed about.
-    if (stored.mint !== mint) {
-      await forgetEntitlement(mint);
+    // Belt and braces: the storage key already scopes by both, but an entry that disagrees with its
+    // own key would open the wrong asset, or open one for the wrong member. Neither is a mistake
+    // worth being relaxed about. `stored.owner` is absent on entries written before this scoping
+    // existed, so those fail here and are dropped — correct, and they were minutes from expiry.
+    if (stored.mint !== mint || stored.owner !== owner) {
+      await forgetEntitlement(owner, mint);
       return null;
     }
     // A little runway rather than the bare deadline: a grant with two seconds left will expire
     // mid-request and produce exactly the 404 this module exists to avoid.
     if (stored.expiresAt - SKEW_MS <= Date.now()) {
-      await forgetEntitlement(mint);
+      await forgetEntitlement(owner, mint);
       return null;
     }
 
-    if (!stored.reusable) await forgetEntitlement(mint);
+    if (!stored.reusable) await forgetEntitlement(owner, mint);
 
     return {
       url: stored.url,
@@ -195,9 +216,9 @@ export async function liveEntitlement(mint: string): Promise<Entitlement | null>
   }
 }
 
-export async function forgetEntitlement(mint: string): Promise<void> {
+export async function forgetEntitlement(owner: string, mint: string): Promise<void> {
   try {
-    await AsyncStorage.removeItem(storageKey(mint));
+    await AsyncStorage.removeItem(storageKey(owner, mint));
   } catch {
     /* best-effort */
   }

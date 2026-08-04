@@ -22,6 +22,7 @@ export const PLATFORM_API = process.env.EXPO_PUBLIC_PLATFORM_API ?? VAULT_API;
  */
 export const PLATFORM_DOMAIN = process.env.EXPO_PUBLIC_PLATFORM_DOMAIN ?? VAULT_DOMAIN;
 
+/** Both, for the reason spelled out on `vaultConfigured` — a domain-less challenge is unsignable. */
 export function platformConfigured(): boolean {
-  return !!PLATFORM_API;
+  return !!PLATFORM_API && !!PLATFORM_DOMAIN;
 }
