@@ -21,12 +21,27 @@
  *
  * ## The part that is easy to get wrong
  *
- * Every chunk binds its **index and the total count** into the AEAD's associated data. Without that,
- * each chunk decrypts perfectly well on its own, which means chunks can be reordered, spliced in
- * from another file, or the tail simply dropped — and the reader sees valid plaintext in the wrong
- * order, or a video that ends early and looks like a bad encode. Both failures pass an
- * encrypt-then-decrypt test. They are caught only by tests that reorder and truncate deliberately,
- * which is why those tests exist.
+ * Three attacks produce valid-looking plaintext under a naive implementation — chunks reordered,
+ * chunks spliced in from another file, and a file's tail dropped and passed off as complete. The
+ * reader then shows a book with its pages shuffled, or a video that ends early and looks like a bad
+ * encode. All three survive an encrypt-then-decrypt test.
+ *
+ * All three are refused, but **by three different mechanisms**, and it is worth being exact about
+ * which does what — an earlier version of this comment credited the associated data with all of it,
+ * which would let someone "simplify" the nonce or the key derivation while believing the AAD still
+ * had them covered:
+ *
+ *   • **Reorder** — the per-chunk NONCE. `nonceFor` puts the chunk index in the nonce, so a chunk
+ *     opened at the wrong position is decrypted with the wrong nonce and fails. The index is *also*
+ *     in the AAD; that is deliberate redundancy, not the primary defence.
+ *   • **Splice from another file** — the per-file KEY. `fileKey` derives from the file's own nonce
+ *     and its filename id, so a chunk from a different file is under a different key entirely.
+ *   • **Truncate, or any re-count** — the AAD, and ONLY the AAD. The total is bound there, so the
+ *     first chunks of a ten-chunk file cannot be presented as a complete five-chunk one.
+ *
+ * This is not a story about the code; it is measured. `crypto.test.ts` records what happens when
+ * each mechanism is removed in turn — deleting the AAD outright breaks exactly one test, the
+ * re-count one, while reorder and splice stay refused.
  *
  * The header is sealed too, and carries a self-describing copy of the entry, so a lost or corrupt
  * manifest can be rebuilt from the files rather than forcing a wipe.

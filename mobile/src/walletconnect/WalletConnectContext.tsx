@@ -19,6 +19,7 @@ import { connection } from "../solana/connection";
 import { colors, font, radius, shortAddress, spacing } from "../theme";
 import { requireReauth } from "../security/reauth";
 import { wcEnabled } from "./config";
+import { sameAccount, sessionAccount } from "./session";
 import { initWalletKit } from "./client";
 import { approvedNamespaces } from "./namespaces";
 import { describeRequest, handleEvmRequest, handleSolanaRequest } from "./handlers";
@@ -33,23 +34,6 @@ interface WCState {
 
 const Ctx = createContext<WCState | null>(null);
 
-/**
- * The address a session actually promised the dApp for one chain, or null if it named none.
- *
- * A session's `namespaces[ns].accounts` are CAIP-10 strings — `solana:<genesis>:<address>` — so the
- * address is whatever follows the chain id.
- */
-function sessionAccount(session: any, chainId: string): string | null {
-  const ns = String(chainId).split(":")[0];
-  const accounts: string[] = session?.namespaces?.[ns]?.accounts ?? [];
-  const hit = accounts.find((a) => a.startsWith(`${chainId}:`));
-  return hit ? hit.slice(String(chainId).length + 1) : null;
-}
-
-/** EVM addresses are case-insensitive hex; Solana addresses are case-sensitive base58. */
-function sameAccount(namespace: string, a: string, b: string): boolean {
-  return namespace === "eip155" ? a.toLowerCase() === b.toLowerCase() : a === b;
-}
 
 export function WalletConnectProvider({ children }: { children: ReactNode }) {
   const { evmAddress, solanaAddress, keypair } = useWallet();

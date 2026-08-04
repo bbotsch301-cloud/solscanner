@@ -1,10 +1,27 @@
 # Device test checklist
 
 Everything built in this session that can only be confirmed on a real device. `tsc`, eslint and the
-pure-function checks all pass — none of that proves a screen renders or a haptic fires.
+automated suite all pass — none of that proves a screen renders or a haptic fires.
 
 Each item says what to do, what right looks like, and **what would mean it's broken**, so a "looks
 fine" is a real result rather than a shrug.
+
+## Before the device: `npm test`
+
+There is an automated suite now (`vitest`), covering the pure logic where a quiet mistake is
+invisible and permanent:
+
+- **`property/keyCopy/crypto.test.ts`** — the format that seals members' purchased books and video.
+  Reordered chunks, chunks spliced in from another file, a truncated file passed off as complete, a
+  renamed file, a tampered header. Every one of those decrypts *cleanly* under a naive
+  implementation, which is why a round-trip test is not enough and these construct the broken states
+  deliberately. The file records which defence catches which attack — measured by removing each in
+  turn, not assumed.
+- **`walletconnect/walletconnect.test.ts`** — that a signature returned to a dApp belongs to this
+  wallet rather than whoever is at index 0, and that a request is refused when the session was
+  approved for a different account.
+
+Run it before touching a device. Nothing below is worth doing if this is red.
 
 ---
 

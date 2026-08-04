@@ -18,6 +18,7 @@ import { reserveNonce } from "../evm/nonce";
 import { recordApproval } from "../safety/approvals";
 import { summarizeEvmData, summarizeSolanaTx } from "./decode";
 import { SOLANA_CAIP2_BY_CLUSTER } from "./config";
+import { ourSignature } from "./signature";
 import { CLUSTER } from "../solana/connection";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
@@ -265,39 +266,6 @@ export async function handleEvmRequest(
     default:
       throw new Error(`Unsupported EVM method: ${method}`);
   }
-}
-
-/**
- * The signature THIS wallet just added — found by looking for it, not by assuming where it is.
- *
- * `VersionedTransaction.signatures` is `Uint8Array[]`, index-aligned to the required signers. Index 0
- * is the FEE PAYER, which is not always us. When it isn't, that slot is still 64 unfilled zero bytes,
- * and base58 encodes those as happily as a real signature — so returning `signatures[0]` handed the
- * dApp a valid-looking, entirely empty signature and said nothing.
- *
- * The case where this bites is not exotic, it is the flagship one: **issuing a Key** is 2–N
- * signatures over one session with a mint keypair co-signing, so the wallet routinely lands at index
- * 1 or later. A single-signer test passes with this bug fully intact, which is how it survived.
- *
- * See `scripts/check-walletconnect.cjs`, which builds a sponsored transaction and asserts that
- * `signatures[0]` fails ed25519 verification while the looked-up index passes.
- *
- * `staticAccountKeys` is the right list and needs no address-lookup-table resolution: lookup tables
- * cannot supply signers, so every required signer is always static.
- */
-function ourSignature(tx: VersionedTransaction, keypair: Keypair): Uint8Array {
-  const keys = tx.message.getAccountKeys().staticAccountKeys;
-  const idx = keys
-    .slice(0, tx.message.header.numRequiredSignatures)
-    .findIndex((k) => k.equals(keypair.publicKey));
-  if (idx < 0) throw new Error("This transaction doesn't ask for this wallet's signature.");
-
-  const sig = tx.signatures[idx];
-  // An unfilled slot is all zeroes. Refusing it is the whole point — a silently empty signature is
-  // worse than a failed request, because the dApp accepts it and fails somewhere else entirely.
-  if (!sig || sig.every((b) => b === 0))
-    throw new Error("The wallet's signature is missing from the signed transaction.");
-  return sig;
 }
 
 export async function handleSolanaRequest(
