@@ -12,6 +12,8 @@ import { useWallet, useWalletStatus } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { connection } from "../solana/connection";
 import { tierFor, multiplierFor } from "../config/staking";
+import { deriveStanding } from "../identity/membership";
+import { cachedCollectibles } from "../solana/collectibles";
 import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -35,6 +37,20 @@ export function GovernScreen() {
   const loyalty = multiplierFor(firstSeen);
   const power = held * loyalty.mult; // effective voting power
   const tier = tierFor(held);
+  /**
+   * Standing, read the same way the Association screen reads it: straight off the persisted
+   * snapshot, so it paints on the first frame and works offline. Deliberately the same
+   * `deriveStanding` rather than a second derivation — two answers to "is this person a member"
+   * is how the two ideas drifted apart in the first place.
+   */
+  // Sampled once on mount, matching `AssociationScreen` — `Date.now()` inside the memo is impure
+  // during render, and a screen where expiry could shift between renders is worse than one that
+  // answers as of when it opened.
+  const [now] = useState(() => Date.now());
+  const standing = useMemo(
+    () => deriveStanding(address ? (cachedCollectibles(address) ?? []) : [], now),
+    [address, now],
+  );
   const share = supply && supply > 0 ? power / supply : null;
 
   const loadSupply = useCallback(async () => {
@@ -86,7 +102,10 @@ export function GovernScreen() {
           <Text style={styles.cardLabel}>Your voting power</Text>
           {tier.current && (
             <View style={styles.tierChip}>
-              <Ionicons name="ribbon" size={12} color="#0A0A0C" />
+              {/* `trending-up`, not `ribbon`. A ribbon is the credential mark in `property/kinds.ts`
+                  and the Your-standing row in More; wearing it here dressed a purchased tier in the
+                  iconography of a conferred one. */}
+              <Ionicons name="trending-up" size={12} color="#0A0A0C" />
               <Text style={styles.tierText}>{tier.current.name}</Text>
             </View>
           )}
@@ -119,8 +138,27 @@ export function GovernScreen() {
         </Text>
       </View>
 
-      {/* Membership / staking (non-custodial) */}
-      <Text style={styles.sectionTitle}>Membership</Text>
+      {/* The distinction this screen used to blur.
+          `identity/membership.ts` defines membership as holding an unexpired Gateway Membership Key
+          — "hold the Office key, hold the office" — and the section below used the same word for a
+          number of tokens. One is conferred and one is bought, so the screen now says both, in that
+          order, rather than letting a tier stand in for standing. */}
+      <Text style={styles.sectionTitle}>Your standing</Text>
+      <Pressable onPress={() => nav.navigate("Association")} style={styles.rewardCard}>
+        <View style={styles.rewardRow}>
+          <Text style={styles.rewardLabel}>Gateway Membership</Text>
+          <Text style={[styles.rewardValue, !standing.isMember && { color: colors.textMuted }]}>
+            {standing.isMember ? "Held" : "Not held"}
+          </Text>
+        </View>
+        <Text style={styles.rewardNote}>
+          Standing comes from the Keys you hold, not from tokens. It is granted by the Association
+          and cannot be bought. Tap to see everything you hold.
+        </Text>
+      </Pressable>
+
+      {/* Holding tier — bought, not conferred. See the note above. */}
+      <Text style={styles.sectionTitle}>Holding tier</Text>
       <View style={styles.rewardCard}>
         <View style={styles.rewardRow}>
           <Text style={styles.rewardLabel}>Tier</Text>
@@ -148,6 +186,10 @@ export function GovernScreen() {
         <Text style={styles.rewardNote}>
           Your XGO stays in your wallet — no lock-up, no custody. Hold more and longer to rise
           in tier and multiply your voting weight.
+        </Text>
+        <Text style={styles.rewardNote}>
+          A tier is a measure of what you hold. It is not standing, confers no office, and gives no
+          claim on the treasury — it weights your vote and nothing else.
         </Text>
       </View>
 

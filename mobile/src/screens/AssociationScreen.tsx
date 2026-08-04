@@ -125,7 +125,7 @@ export function AssociationScreen() {
           <Row
             icon="people-outline"
             label="Governance"
-            detail="Voting weight and membership tier"
+            detail="Voting weight and holding tier"
             onPress={() => nav.navigate("Govern")}
           />
           <View style={styles.divider} />
