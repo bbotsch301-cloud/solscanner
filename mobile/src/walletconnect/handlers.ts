@@ -17,6 +17,8 @@ import { estimateGas, getFees, sendRawTransaction } from "../evm/rpc";
 import { reserveNonce } from "../evm/nonce";
 import { recordApproval } from "../safety/approvals";
 import { summarizeEvmData, summarizeSolanaTx } from "./decode";
+import { SOLANA_CAIP2_BY_CLUSTER } from "./config";
+import { CLUSTER } from "../solana/connection";
 
 const hexToBig = (h?: string): bigint => (h && h !== "0x" ? BigInt(h) : 0n);
 
@@ -50,6 +52,28 @@ function decodeText(s?: string): string {
     }
   }
   return s;
+}
+
+/**
+ * A Solana message as text, or the raw string when it isn't text.
+ *
+ * Same discipline as `decodeText` above: only show the decoded form when it is genuinely readable.
+ * A message full of control characters is more honestly shown as-is than as mojibake that hides
+ * what is being signed.
+ */
+function decodeSolanaMessage(message: unknown): string {
+  const raw = String(message ?? "");
+  if (!raw) return "(empty)";
+  try {
+    const txt = new TextDecoder().decode(bs58.decode(raw));
+    const hasControl = [...txt].some((c) => {
+      const code = c.charCodeAt(0);
+      return code < 32 && code !== 9 && code !== 10 && code !== 13;
+    });
+    return hasControl || !txt ? raw.slice(0, 120) : txt.slice(0, 400);
+  } catch {
+    return raw.slice(0, 120);
+  }
 }
 
 function fmtWei(hex?: string): string {
@@ -118,7 +142,16 @@ export function describeRequest(method: string, params: any, chainId?: string): 
       };
     }
     case "solana_signMessage":
-      return { title: "Solana message signature", lines: [{ label: "Message", value: String(params?.message ?? "").slice(0, 120) }], danger: null };
+      // Decoded, not raw. The WalletConnect Solana profile sends this base58-encoded — which the
+      // signer below decodes before signing — so showing the encoded form put an opaque blob in
+      // front of someone being asked to approve it. That matters most for signing IN: the whole
+      // defence against a hostile site harvesting a signature is that the member can read the
+      // domain in the text first, and they cannot read base58. The EVM path already does this.
+      return {
+        title: "Solana message signature",
+        lines: [{ label: "Message", value: decodeSolanaMessage(params?.message) }],
+        danger: null,
+      };
     case "solana_signTransaction":
     case "solana_signAndSendTransaction": {
       const s = summarizeSolanaTx(String(params?.transaction ?? ""));
@@ -205,12 +238,57 @@ export async function handleEvmRequest(
   }
 }
 
+/**
+ * The signature THIS wallet just added, not whichever one happens to be first.
+ *
+ * The two transaction types disagree about what `signatures` holds, and the old code read both as if
+ * they were the versioned kind:
+ *
+ *   • `VersionedTransaction.signatures` is `Uint8Array[]`, index-aligned to the required signers, so
+ *     index 0 really is the fee payer.
+ *   • `Transaction.signatures` is `{signature: Buffer | null, publicKey: PublicKey}[]` — objects, and
+ *     ordered by the message's account keys rather than by who we are.
+ *
+ * So base58-encoding `signatures[0]` on a legacy transaction encoded an object, and did it silently.
+ * Every transaction the Goshen web app produces is legacy (`new Transaction(...)` throughout), and it
+ * broadcasts them itself, so it asks for exactly this method — meaning this path was wrong for every
+ * flow it will ever be used for.
+ *
+ * Matching on the public key rather than the index matters even within legacy: a transaction with a
+ * co-signer (issuing a Key partial-signs with the mint keypair first) can put us anywhere in the list.
+ */
+function ourSignature(
+  tx: VersionedTransaction | Transaction,
+  versioned: boolean,
+  keypair: Keypair,
+): Uint8Array {
+  if (versioned) return (tx as VersionedTransaction).signatures[0] ?? new Uint8Array();
+  const mine = (tx as Transaction).signatures.find((s) => s.publicKey.equals(keypair.publicKey));
+  if (!mine?.signature) throw new Error("The wallet's signature is missing from the signed transaction.");
+  return new Uint8Array(mine.signature);
+}
+
 export async function handleSolanaRequest(
   method: string,
   params: any,
   keypair: Keypair,
-  connection: Connection
+  connection: Connection,
+  /** The CAIP-2 chain the dApp asked for. Only broadcasting cares; see below. */
+  chainId?: string
 ): Promise<any> {
+  // The wallet advertises all three clusters, because a signature is valid wherever it lands and
+  // refusing to pair over a network mismatch would refuse something harmless. **Broadcasting is a
+  // different question**: `connection` points at whichever network the wallet is set to, so a dApp
+  // asking to sign-and-send on devnet while the wallet sits on mainnet would put the transaction on
+  // the wrong chain — silently, and irreversibly. Refuse that one, and say which is which.
+  if (method === "solana_signAndSendTransaction" && chainId) {
+    const active = SOLANA_CAIP2_BY_CLUSTER[CLUSTER];
+    if (active && chainId !== active)
+      throw new Error(
+        `This request is for a different Solana network than the wallet is on. Switch the wallet to match, or ask the site to sign without sending.`
+      );
+  }
+
   switch (method) {
     case "solana_signMessage": {
       const sig = signMessageBytes(keypair, bs58.decode(params.message));
@@ -220,19 +298,35 @@ export async function handleSolanaRequest(
     case "solana_signAndSendTransaction": {
       const bytes = Uint8Array.from(Buffer.from(params.transaction, "base64"));
       let tx: VersionedTransaction | Transaction;
+      let versioned = true;
       try {
         tx = VersionedTransaction.deserialize(bytes);
         (tx as VersionedTransaction).sign([keypair]);
       } catch {
         tx = Transaction.from(bytes);
         (tx as Transaction).partialSign(keypair);
+        versioned = false;
       }
+
       if (method === "solana_signAndSendTransaction") {
+        // Strict serialize on purpose: a broadcast genuinely does need every signature, and a
+        // transaction the network would reject should fail here with a clear error rather than
+        // there with an opaque one.
         const sig = await connection.sendRawTransaction(tx.serialize());
         return { signature: sig };
       }
-      const sig = (tx as VersionedTransaction).signatures?.[0] ?? new Uint8Array();
-      return { signature: bs58.encode(sig as Uint8Array), transaction: Buffer.from(tx.serialize()).toString("base64") };
+
+      return {
+        signature: bs58.encode(ourSignature(tx, versioned, keypair)),
+        // `requireAllSignatures: false` because sign-only is exactly the case where a co-signer may
+        // legitimately still be missing — a dApp collecting signatures one at a time, which is what
+        // issuing a Key does. The default throws on that.
+        transaction: Buffer.from(
+          versioned
+            ? (tx as VersionedTransaction).serialize()
+            : (tx as Transaction).serialize({ requireAllSignatures: false }),
+        ).toString("base64"),
+      };
     }
     default:
       throw new Error(`Unsupported Solana method: ${method}`);

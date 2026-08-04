@@ -38,7 +38,16 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [proposal, setProposal] = useState<any | null>(null);
-  const [request, setRequest] = useState<any | null>(null);
+  /**
+   * Pending signature requests, oldest first — a queue, not a slot.
+   *
+   * This was a single value, so a second request arriving while one was open silently replaced it
+   * and the first was never answered: the dApp waits until relay expiry with no error and no clue.
+   * Issuing a Key is two to N signatures over one session, which makes that the flow most likely to
+   * hit it. The head of the queue is what the modal shows.
+   */
+  const [queue, setQueue] = useState<any[]>([]);
+  const request = queue[0] ?? null;
   const [busy, setBusy] = useState(false);
 
   const kitRef = useRef<any>(null);
@@ -52,6 +61,9 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     solAddrRef.current = solanaAddress;
   }, [keypair, evmAddress, solanaAddress]);
 
+  /** Answered — drop it and let the next one, if any, open. */
+  const shift = useCallback(() => setQueue((q) => q.slice(1)), []);
+
   const refreshSessions = useCallback(() => {
     const kit = kitRef.current;
     if (kit) setSessions(Object.values(kit.getActiveSessions() ?? {}));
@@ -60,6 +72,8 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!wcEnabled || !keypair) return;
     let mounted = true;
+    let onProposal: ((p: any) => void) | null = null;
+    let onRequest: ((r: any) => void) | null = null;
     (async () => {
       try {
         const kit = await initWalletKit();
@@ -67,8 +81,13 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
         kitRef.current = kit;
         evmAccountRef.current = await getEvmAccount();
 
-        kit.on("session_proposal", (p: any) => setProposal(p));
-        kit.on("session_request", (r: any) => setRequest(r));
+        // Named so the cleanup can remove exactly these. `initWalletKit` returns a cached
+        // instance, so without the `off` below every wallet switch stacked another set of listeners
+        // on the same object — and one proposal then opened as many modals as you had switched.
+        onProposal = (p: any) => setProposal(p);
+        onRequest = (r: any) => setQueue((q) => [...q, r]);
+        kit.on("session_proposal", onProposal);
+        kit.on("session_request", onRequest);
         kit.on("session_delete", refreshSessions);
         refreshSessions();
         setReady(true);
@@ -78,6 +97,11 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     })();
     return () => {
       mounted = false;
+      const kit = kitRef.current;
+      if (!kit) return;
+      if (onProposal) kit.off("session_proposal", onProposal);
+      if (onRequest) kit.off("session_request", onRequest);
+      kit.off("session_delete", refreshSessions);
     };
   }, [keypair, refreshSessions]);
 
@@ -137,7 +161,7 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
         .respondSessionRequest({ topic, response: { id, jsonrpc: "2.0", error: getSdkError("USER_REJECTED") } })
         .catch(() => {});
       setBusy(false);
-      setRequest(null);
+      shift();
       return;
     }
     try {
@@ -147,7 +171,7 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
         result = await handleEvmRequest(rpc.method, rpc.params, chainId, evmAccountRef.current);
       } else if (String(chainId).startsWith("solana:")) {
         if (!keypairRef.current) throw new Error("No Solana account.");
-        result = await handleSolanaRequest(rpc.method, rpc.params, keypairRef.current, connection);
+        result = await handleSolanaRequest(rpc.method, rpc.params, keypairRef.current, connection, chainId);
       } else {
         throw new Error("Unsupported chain.");
       }
@@ -167,9 +191,9 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
         .catch(() => {});
     } finally {
       setBusy(false);
-      setRequest(null);
+      shift();
     }
-  }, [request]);
+  }, [request, shift]);
 
   const rejectRequest = useCallback(async () => {
     const kit = kitRef.current;
@@ -180,8 +204,8 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
           response: { id: request.id, jsonrpc: "2.0", error: getSdkError("USER_REJECTED") },
         })
         .catch(() => {});
-    setRequest(null);
-  }, [request]);
+    shift();
+  }, [request, shift]);
 
   const value = useMemo<WCState>(
     () => ({ enabled: wcEnabled, ready, sessions, pair, disconnect }),

@@ -4,7 +4,7 @@
  */
 import { buildApprovedNamespaces } from "@walletconnect/utils";
 import { CHAINS } from "../chains/registry";
-import { SOLANA_CAIP2 } from "./config";
+import { SOLANA_CAIP2_ALL } from "./config";
 
 const EVM_METHODS = [
   "personal_sign",
@@ -36,11 +36,13 @@ export function approvedNamespaces(proposal: any, evmAddress: string | null, sol
     };
   }
   if (solanaAddress) {
+    // Every cluster, not just the active one — see the note in config.ts. The same address is valid
+    // on all three, so the accounts list is the product of the two.
     supportedNamespaces.solana = {
-      chains: [SOLANA_CAIP2],
+      chains: [...SOLANA_CAIP2_ALL],
       methods: SOLANA_METHODS,
       events: [],
-      accounts: [`${SOLANA_CAIP2}:${solanaAddress}`],
+      accounts: SOLANA_CAIP2_ALL.map((c) => `${c}:${solanaAddress}`),
     };
   }
 

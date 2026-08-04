@@ -151,9 +151,18 @@ export function HomeScreen() {
       <Text style={styles.greeting}>{greeting}</Text>
       <View style={styles.headerRow}>
         <WalletSwitcher />
-        <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
-          <Ionicons name="time-outline" size={22} color={colors.textMuted} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          {/* Scanning a desktop screen to sign on the phone is a deliberate, repeated action, and it
+              was three taps inside Settings — far enough in that it read as a feature that didn't
+              exist. This is where a phone wallet puts "scan". The Settings row stays for anyone who
+              already knows it. */}
+          <Pressable onPress={() => nav.navigate("WalletConnect")} hitSlop={10}>
+            <Ionicons name="qr-code-outline" size={22} color={colors.textMuted} />
+          </Pressable>
+          <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>
+            <Ionicons name="time-outline" size={22} color={colors.textMuted} />
+          </Pressable>
+        </View>
       </View>
 
       {/* No chain switcher here any more. This tab is the whole wallet — every chain at once —
@@ -252,6 +261,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   greeting: { color: colors.accent, fontSize: font.small, fontWeight: weight.bold, textTransform: "uppercase", letterSpacing: tracking.wide, marginBottom: spacing(1) },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing(4) },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing(4) },
   actions: {
     flexDirection: "row",
     justifyContent: "space-between",

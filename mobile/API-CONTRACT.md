@@ -120,32 +120,37 @@ can claim anything.
 Baking a role into the token at issue time is the failure mode to avoid: it makes standing
 survivable past the loss of the key that granted it.
 
-### 2.1 Signing in on a desktop, from the phone
+### 2.2 Signing in on a desktop — WalletConnect, not a bespoke flow
 
-A desktop browser has no wallet. Rather than a second auth scheme, the phone signs and the desktop
-collects the result:
+A desktop browser has no wallet, so the phone signs and the desktop collects the result. **Use
+WalletConnect for that**, not a hand-rolled QR handshake.
 
-```
-POST /v1/auth/link            -> { linkId, expiresAt }      the desktop creates it, renders a QR
-POST /v1/auth/link/:id/complete                             the phone posts the /verify body here
-GET  /v1/auth/link/:id        -> { token, expiresAt, wallet }  the desktop claims it, ONCE
-```
+An earlier draft of this section specified three bespoke endpoints — create a link, complete it from
+the phone, claim it once from the desktop. They are withdrawn. The wallet already implements
+WalletConnect with Solana as a first-class namespace (`solana_signMessage`, `solana_signTransaction`,
+`solana_signAndSendTransaction`), a scanner, an approval sheet that decodes what is being signed, and
+a biometric gate — so the bespoke flow would have been a second transport carrying strictly less,
+for the same member-facing gesture of pointing a phone at a screen.
 
-Rules, all of which fall out of things already true elsewhere in this document:
+**The trade, stated rather than buried:** WalletConnect puts Reown's relay in the path and needs a
+project id. That is a third party, which this system otherwise avoids. It is accepted here because
+the alternative is building and securing a remote-signing channel — and the key-issuance flow needs
+2–N sequential signatures over one session, which is the case a hand-rolled relay is most likely to
+get wrong.
 
-- `complete` takes **exactly** the `/v1/auth/verify` body and runs **exactly** the §2 verification in
-  the same order — re-derive the message from stored fields, compare byte-for-byte, burn the nonce on
-  attempt. Do not fork the verifier; two copies of that sequence is how one of them ends up missing a
-  step.
-- The claim is single-use and atomic, with the `usedAt IS NULL` guard in the UPDATE's WHERE clause
-  rather than a read-then-write. `consumeLoginToken` is the existing shape.
-- **The QR carries the domain**, because the wallet refuses to sign a message that does not name its
-  configured one (§1). That check is the whole reason a QR is not a phishing primitive, and it only
-  works if the domain is in the payload for the phone to compare.
-- The phone never receives or transmits the desktop's token. It signs; the server hands the session
-  to whoever created the link.
-- A link that is never claimed expires. `linkId` is unguessable, the TTL matches the 120s challenge,
-  and both creation and claiming are rate-limited.
+What the server still owes, unchanged: `/v1/auth/challenge` and `/v1/auth/verify` as specified in §1
+and §2. Signing in over WalletConnect is a `solana_signMessage` carrying the challenge text those
+endpoints already compose. Nothing new is needed server-side.
+
+Two requirements fall out of the transport, both of which have caused a failure already:
+
+- **Request the cluster you are actually on.** The wallet advertises mainnet, devnet and testnet, so
+  a devnet dApp can pair. A dApp that asks for mainnet while running on devnet fails at namespace
+  approval, which surfaces as a generic "couldn't connect" with nothing to diagnose.
+- **`signTransaction` returns a signature, not a confirmation.** The wallet signs and hands the bytes
+  back; whoever asked broadcasts. Only `signAndSendTransaction` broadcasts, and the wallet refuses
+  that one when the requested cluster is not the one it is set to — signing is network-agnostic,
+  putting a transaction on the wrong chain is not.
 
 ---
 
