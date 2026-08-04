@@ -31,6 +31,8 @@ export type RootStackParamList = {
   Contacts: undefined;
   Legal: { doc: LegalDocKey };
   Agreements: undefined;
+  /** Development only — a worked deed example, so the panel can be reviewed without minting. */
+  DeedPreview: undefined;
   Association: undefined;
   Vault: undefined;
   Browser: undefined;

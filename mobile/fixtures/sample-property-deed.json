@@ -1,0 +1,40 @@
+{
+  "_comment": "A worked example of the metadata a Property Key carries. This is what an issuer uploads; the wallet reads the deed straight out of `attributes` (see src/property/deed.ts). Trait names are matched tolerantly — case, spaces and underscores are ignored, and each field accepts several spellings — but these are the canonical ones, so prefer them. Values are read as three states: yes, no, and absent. ABSENT IS NOT NO: leave a trait out and the wallet says nothing about it, which is the honest answer when the deed is silent.",
+  "_comment_omission": "'Updates Included' is deliberately left out. A deed that says nothing about updates has not refused them, and the wallet must not draw a cross next to a term the creator never wrote — so that row is absent from the panel rather than shown as denied. Removing a trait here is the way to check that behaviour still holds.",
+  "name": "The Pilgrim's Progress",
+  "symbol": "GOSHEN",
+  "description": "A Property Key. The deed below states what it grants, who holds it in trust, and under what law.",
+  "image": "https://example.invalid/pilgrims-progress.png",
+  "external_url": "https://example.invalid/library/pilgrims-progress",
+  "attributes": [
+    { "trait_type": "Type", "value": "book" },
+
+    { "trait_type": "Creator", "value": "John Bunyan Publishing" },
+    { "trait_type": "Issued", "value": "2026-05-20" },
+    { "trait_type": "Rights", "value": "Personal Use" },
+
+    { "trait_type": "Personal Use", "value": "Yes" },
+    { "trait_type": "Download", "value": "Yes" },
+    { "trait_type": "Retained Copy", "value": "No" },
+    { "trait_type": "Vault Storage", "value": "Yes" },
+    { "trait_type": "Resale Allowed", "value": "Yes" },
+    { "trait_type": "Commercial Rights", "value": "No" },
+    { "trait_type": "Printing Rights", "value": "No" },
+
+    { "trait_type": "Creator Royalty", "value": "10%" },
+    { "trait_type": "Treasury Assessment", "value": "2%" },
+    { "trait_type": "Expiration", "value": "Never" },
+    { "trait_type": "Agreement Version", "value": "1.0" },
+
+    { "trait_type": "Holding Trust", "value": "Goshens Trust" },
+    { "trait_type": "Trustee", "value": "Goshens Trust, by its trustee" },
+    { "trait_type": "Governing Law", "value": "Arizona, United States" },
+    { "trait_type": "Venue", "value": "Maricopa County, Arizona" },
+    { "trait_type": "Trust Version", "value": "1.0" },
+    { "trait_type": "Beneficial Interest Follows Key", "value": "Yes" }
+  ],
+  "properties": {
+    "files": [{ "uri": "https://example.invalid/pilgrims-progress.epub", "type": "application/epub+zip" }],
+    "category": "book"
+  }
+}

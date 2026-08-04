@@ -83,6 +83,16 @@ export function MoreScreen() {
         <View style={styles.divider} />
         <Row icon="document-text" label="Terms of Service" onPress={() => nav.navigate("Legal", { doc: "terms" })} />
       </View>
+
+      {__DEV__ && (
+        <>
+          <Text style={styles.sectionTitle}>Development</Text>
+          <View style={styles.group}>
+            {/* Gone entirely from a release build — see the route registration in App.tsx. */}
+            <Row icon="ribbon" label="Deed preview" onPress={() => nav.navigate("DeedPreview")} />
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }

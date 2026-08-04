@@ -48,6 +48,7 @@ import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
 import { AgreementsScreen } from "./src/screens/AgreementsScreen";
+import { DeedPreviewScreen } from "./src/screens/DeedPreviewScreen";
 import { AssociationScreen } from "./src/screens/AssociationScreen";
 import { VaultScreen } from "./src/screens/VaultScreen";
 import { BrowserScreen } from "./src/browser/BrowserScreen";
@@ -293,6 +294,9 @@ function Root() {
           <Stack.Screen name="Contacts" component={ContactsScreen} />
           <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />
           <Stack.Screen name="Agreements" component={AgreementsScreen} />
+          {/* Dev only. Registered behind __DEV__ so a release build has no route to it at all,
+              rather than a hidden one — a sample deed must never be reachable in a real wallet. */}
+          {__DEV__ && <Stack.Screen name="DeedPreview" component={DeedPreviewScreen} />}
           <Stack.Screen name="Association" component={AssociationScreen} />
           <Stack.Screen name="Vault" component={VaultScreen} />
           <Stack.Screen name="Legal" component={LegalScreen} />
