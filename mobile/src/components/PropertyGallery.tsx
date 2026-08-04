@@ -40,6 +40,7 @@ import { deriveStanding } from "../identity/membership";
 import { reconcileHoldings } from "../property/keyCopy/sweep";
 import { StandingHero } from "./StandingHero";
 import { isPublicRpc } from "../solana/connection";
+import { marketUrl, openWebapp } from "../browser/openWebapp";
 import { haptics } from "../ui/haptics";
 import { kindBadge } from "../property/kinds";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
@@ -137,10 +138,30 @@ export function PropertyGallery({
   showStanding?: boolean;
 }) {
   const nav = useNavigation<RootNav>();
+  // Null when no web app is configured, which is what removes the CTA rather than a separate flag.
+  const market = marketUrl();
   // Seeded synchronously from the persisted snapshot (parent remounts us per owner via `key`), so
   // the gallery paints instantly; the effect below only revalidates in the background.
   const [items, setItems] = useState<Collectible[]>(() => cachedCollectibles(owner) ?? []);
   const [loading, setLoading] = useState(() => !cachedCollectibles(owner));
+  /**
+   * Whether the chain actually answered — not whether the list came back short.
+   *
+   * `fetchHoldings` has always reported this and this component threw it away, passing it only to
+   * `reconcileHoldings`. So a failed fetch rendered as **"No keys yet"**: a flat statement that the
+   * member owns nothing — no membership, no standing, no property — when the truth was that we
+   * couldn't ask. On the rate-limited public RPC that is the default until an operator sets one,
+   * that is a normal Tuesday rather than an edge case.
+   *
+   * The app names this mistake in two other places and avoids it in both: the Govern hero refuses to
+   * open "claiming 0 votes, which is a statement, not a loading state", and Activity refuses to say
+   * "No transactions yet" before it has asked. This is the same mistake in the worst place for it.
+   *
+   * Starts true so the very first paint — before any fetch resolves — isn't an error state.
+   */
+  const [answered, setAnswered] = useState(true);
+  /** Bumped by the retry button, so a failed load can be retried without leaving the tab. */
+  const [attempt, setAttempt] = useState(0);
   // Which (owner, refreshKey) we've finished fetching. Derived rather than a flag we flip on the
   // way in, so nothing is set synchronously inside the effect: anything not yet settled is, by
   // definition, still in flight. `loading` covers "nothing to show at all"; this covers the more
@@ -172,6 +193,7 @@ export function PropertyGallery({
       const holdings = await fetchHoldings(owner);
       if (!cancelled) {
         setItems(holdings.items);
+        setAnswered(holdings.ok);
         setLoading(false);
         setSettled(`${owner}:${refreshKey}`);
       }
@@ -183,7 +205,7 @@ export function PropertyGallery({
     return () => {
       cancelled = true;
     };
-  }, [owner, refreshKey]);
+  }, [owner, refreshKey, attempt]);
 
   // Hide/archive changes (from the detail screen) and local removals re-render us.
   useEffect(() => {
@@ -247,16 +269,42 @@ export function PropertyGallery({
   }
 
   if (items.length === 0) {
+    // "You hold nothing" and "we couldn't ask" look identical from here unless the difference is
+    // kept — see `answered` above. Only one of them is a fact about the member.
+    if (!answered) {
+      return (
+        <View>
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Couldn't load your keys"
+            subtitle={
+              isPublicRpc()
+                ? "The network didn't answer. This is common on the shared public endpoint — setting a dedicated RPC in Settings makes it rare."
+                : "The network didn't answer. Your keys are safe on-chain; this is only about reaching it."
+            }
+            cta={{
+              label: "Try again",
+              icon: "refresh-outline",
+              onPress: () => {
+                setLoading(true);
+                setAttempt((a) => a + 1);
+              },
+            }}
+          />
+        </View>
+      );
+    }
     return (
       <View>
         {standing && <StandingHero standing={standing} />}
         <EmptyState
           icon="key-outline"
           title="No keys yet"
-          subtitle={
-            isPublicRpc()
-              ? "Memberships, books, courses, music and passes you hold will appear here. Set a dedicated RPC in Settings to load full artwork."
-              : "Memberships, books, courses, music and passes you hold will appear here."
+          subtitle="Memberships, books, courses, music and passes you hold will appear here."
+          cta={
+            market
+              ? { label: "Browse the Marketplace", icon: "storefront-outline", onPress: () => openWebapp(nav, market) }
+              : undefined
           }
         />
       </View>

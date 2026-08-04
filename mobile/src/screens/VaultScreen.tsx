@@ -28,6 +28,7 @@ import { PressableScale } from "../components/PressableScale";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { vaultCount, vaultExperiences, type ExperienceId } from "../vault/experiences";
 import { cachedCollectibles, type Collectible } from "../solana/collectibles";
+import { marketUrl, openWebapp } from "../browser/openWebapp";
 import { accessVerb } from "../access/resolve";
 import { inProgress, type Position } from "../vault/position";
 import { useWallet } from "../wallet/WalletContext";
@@ -95,6 +96,8 @@ function ItemRow({
 export function VaultScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
+  // An empty shelf with no way forward is a dead end; null here simply removes the button.
+  const market = marketUrl();
   const { solanaAddress, activeAddress } = useWallet();
   const owner = solanaAddress ?? activeAddress;
   const [query, setQuery] = useState("");
@@ -161,6 +164,11 @@ export function VaultScreen() {
             icon="lock-closed-outline"
             title="Nothing in your vault yet"
             subtitle="Books, courses, music, software and passes you own appear here once they carry content to open."
+            cta={
+              market
+                ? { label: "Browse the Marketplace", icon: "storefront-outline", onPress: () => openWebapp(nav, market) }
+                : undefined
+            }
           />
         ) : (
           <>

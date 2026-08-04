@@ -6,8 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { IconChip } from "../components/IconChip";
 import { ENV, summarize, unreadKeys } from "../config/env";
 import { webappUrl } from "../config/webapp";
-import { requestBrowserUrl } from "../browser/openRequest";
-import { haptics } from "../ui/haptics";
+import { openWebapp } from "../browser/openWebapp";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -91,12 +90,8 @@ export function MoreScreen() {
   const market = webappUrl("market");
   const issue = webappUrl("issue");
 
-  /** Hand a web-app URL to the bridged browser. Same handoff a portal Key already uses. */
-  const open = (url: string) => {
-    haptics.tap();
-    requestBrowserUrl(url);
-    nav.navigate("Browser");
-  };
+  /** Hand a web-app URL to the bridged browser. Shared with the empty Keys and Vault states. */
+  const open = (url: string) => openWebapp(nav, url);
 
   return (
     <ScrollView
