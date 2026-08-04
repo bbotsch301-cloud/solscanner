@@ -135,7 +135,18 @@ rather than a notice.
 - [ ] Switch back; signing works again.
 - [ ] An unsendable credential shows Send **off**, with the token program's reason and a `(?)`.
 
-## A6. Splash, More, and the deed panel
+## A6. Confirming a send
+
+- [ ] Tap Send with a valid amount → a **themed sheet slides up**, not an iOS system alert.
+- [ ] The **full address is shown, unbroken**, in a monospaced face. *An ellipsis in the middle is
+      exactly where a poisoned lookalike hides — if it's truncated, tell me.*
+- [ ] **Hold to send** fills with gold and ticks as it goes; **releasing early sends nothing**.
+- [ ] Send to an address that resembles one you've used → the poisoning warning is a **red box**,
+      not a line of grey text among the fee. *This is the whole reason the sheet exists.*
+- [ ] Send your entire balance of something → the amber caution appears.
+- [ ] Cancel closes it and nothing is sent. During the send itself, Cancel is inert.
+
+## A7. Splash, More, and the deed panel
 
 - [ ] Launch cold: the **crown** turns up from inverted and settles. Not the key, and not restarting
       partway.
@@ -147,7 +158,7 @@ rather than a notice.
 - [ ] A collectible's header shows its full noun — a membership says **Membership**, art says
       **Collectible**.
 
-## A7. Deep links — only in a real build
+## A8. Deep links — only in a real build
 
 `xgowallet://` is registered but **Expo Go cannot honour a custom scheme**, so this is untestable
 until there is a development or production build. Not a failure; skip it and note it as unverified.

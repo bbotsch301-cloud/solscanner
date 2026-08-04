@@ -3,7 +3,6 @@ import { useNavigation, useRoute, type RouteProp } from "@react-navigation/nativ
 import { useEffect, useMemo, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 import {
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -22,6 +21,7 @@ import { RiskCard } from "../components/RiskCard";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Button } from "../components/Button";
 import { SuccessCheck } from "../components/SuccessCheck";
+import { SendConfirmSheet } from "../components/SendConfirmSheet";
 import { haptics } from "../ui/haptics";
 import { nativeLogo } from "../config/logos";
 import { useWallet, type UnifiedAsset } from "../wallet/WalletContext";
@@ -119,6 +119,17 @@ export function SendScreen() {
   // A Solana Pay code can state an amount; a bare address never does, so this is usually empty.
   const [amt, setAmt] = useState(route.params?.amount ?? "");
   const [sending, setSending] = useState(false);
+  /** Non-null while the confirmation sheet is up; holds exactly what that sheet displays. */
+  const [confirm, setConfirm] = useState<null | {
+    amount: string;
+    symbol: string;
+    network: string;
+    to: string;
+    contactName: string | null;
+    fee: string | null;
+    lookalike: string | null;
+    caution: string | null;
+  }>(null);
   const [signature, setSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [risk, setRisk] = useState<RiskReport | null>(null);
@@ -243,6 +254,7 @@ export function SendScreen() {
   const maxAmount = selected.kind === "native" ? Math.max(0, selected.balance - buffer) : selected.balance;
 
   const reallySend = async () => {
+    setConfirm(null);
     if (!effectiveTo) return;
     setSending(true);
     setError(null);
@@ -265,33 +277,34 @@ export function SendScreen() {
     if (!effectiveTo) return;
     setPreviewing(true);
     setError(null);
-    let feeLine = "";
+    let feeLine: string | null = null;
     try {
       const p = await previewSend(selected, effectiveTo, amtNum);
       const perUnit = native.usd != null && native.balance ? native.usd / native.balance : null;
       const usd = perUnit != null ? ` (~$${(p.feeNative * perUnit).toFixed(2)})` : "";
       const feeStr = p.feeNative < 0.000001 ? "<0.000001" : p.feeNative.toLocaleString("en-US", { maximumFractionDigits: 6 });
-      feeLine = `\n\nEstimated network fee: ${feeStr} ${p.symbol}${usd}`;
+      feeLine = `${feeStr} ${p.symbol}${usd}`;
     } catch (e) {
       setPreviewing(false);
       setError(e instanceof Error ? e.message : humanizeError(e, { action: "send", symbol: selected.symbol, native: native.symbol }));
       return;
     }
     setPreviewing(false);
-    const poisonLine = lookalike
-      ? `\n\n⚠ This closely resembles a different address you've used before (${shortAddress(lookalike, 6, 6)}). Address-poisoning scams rely on lookalikes — be certain this is the one you mean.`
-      : "";
-    const cautionLine = amountCaution ? `\n\n${amountCaution}` : "";
-    const toLine = matchedContact ? `${matchedContact.name}\n${effectiveTo}` : effectiveTo;
-    Alert.alert(
-      "Confirm send",
-      `Send ${fmtAmount(amtNum)} ${selected.symbol} on ${activeChain.name} to:\n\n${toLine}${feeLine}${poisonLine}${cautionLine}\n\nDouble-check every character — sends can’t be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Send", style: "default", onPress: reallySend },
-      ]
-    );
+    // Structured, not a string. The alert this replaces joined amount, recipient, fee and BOTH
+    // warnings into one blob, which a system dialog renders as uniform grey text — so the
+    // address-poisoning warning read exactly like the network fee. Same checks, visible answer.
+    setConfirm({
+      amount: fmtAmount(amtNum),
+      symbol: selected.symbol,
+      network: activeChain.name,
+      to: effectiveTo,
+      contactName: matchedContact?.name ?? null,
+      fee: feeLine,
+      lookalike: lookalike ? shortAddress(lookalike, 6, 6) : null,
+      caution: amountCaution ?? null,
+    });
   };
+
 
   if (signature) {
     const toDisplay = nameKind ? trimmedTo : shortAddress(effectiveTo ?? trimmedTo, 6, 6);
@@ -487,6 +500,20 @@ export function SendScreen() {
         <Button label="Send" onPress={doSend} disabled={!valid} loading={sending || previewing} />
       </View>
 
+      <SendConfirmSheet
+        visible={!!confirm}
+        amount={confirm?.amount ?? ""}
+        symbol={confirm?.symbol ?? ""}
+        network={confirm?.network ?? ""}
+        to={confirm?.to ?? ""}
+        contactName={confirm?.contactName}
+        fee={confirm?.fee}
+        lookalike={confirm?.lookalike}
+        caution={confirm?.caution}
+        busy={sending}
+        onConfirm={reallySend}
+        onClose={() => setConfirm(null)}
+      />
       <ContactPicker
         visible={pickerOpen}
         kind={isSolana ? "solana" : "evm"}
