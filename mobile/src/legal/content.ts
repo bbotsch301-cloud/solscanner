@@ -7,15 +7,23 @@
  *   • Bumping LEGAL_VERSION re-triggers the one-time acceptance gate (getAcceptedLegalVersion()
  *     in security/prefs.ts is compared against it), so users re-acknowledge the new terms.
  *
- * These are solid drafts, NOT a substitute for review by a qualified lawyer. Fill the bracketed
- * placeholders ([LEGAL ENTITY], [GOVERNING JURISDICTION]) before publishing to the app stores,
- * which additionally require a PUBLICLY HOSTED privacy-policy URL (this same text can be hosted).
+ * These are solid drafts, NOT a substitute for review by a qualified lawyer. The app stores also
+ * require a PUBLICLY HOSTED privacy-policy URL — this same text can be hosted.
  *
- * THOSE PLACEHOLDERS NOW BLOCK THE RELEASE, not just the store listing. As of v2 this policy makes
- * a specific promise about what a first-party server does with a member's data, and a promise made
- * by "[LEGAL ENTITY]" is made by nobody. `[GOVERNING JURISDICTION]` in the Terms is the app's own
- * governing law — a separate question from the per-deed governing law a Property Deed states, which
- * each creator sets for their own contract.
+ * The publishing entity is **Goshens Trust**, and it is named as such in both documents. Two things
+ * follow that are worth a lawyer's eye before this ships:
+ *   • A trust that publishes a consumer app takes on that app's operational liability. Trust assets
+ *     and operating liability normally sit in different entities for exactly this reason, and the
+ *     canonical architecture (§13) already treats the master trust as the thing that HOLDS assets
+ *     for beneficiaries rather than the thing that ships software.
+ *   • Governing law (§11 of the Terms) splits internal Association matters from everything else.
+ *     "Ecclesiastical law" is not a body of law a court applies to a commercial agreement — what
+ *     courts actually do is *abstain* from deciding internal religious questions — so the clause is
+ *     written to claim only that, with Arizona law governing the rest. Drafted this way so it says
+ *     something a court can act on rather than something it would strike.
+ *
+ * This is the app's own governing law, and a separate question from the per-deed governing law a
+ * Property Deed states — each creator sets that for their own contract (canonical §13).
  */
 
 // v2 — the Association platform. Earlier versions promised no servers stored member data; the
@@ -35,7 +43,7 @@ const PRIVACY = `# Privacy Policy
 
 _Last updated: ${LAST_UPDATED}_
 
-${APP_NAME} is a self-custodial (non-custodial) crypto wallet published by [LEGAL ENTITY] ("we",
+${APP_NAME} is a self-custodial (non-custodial) crypto wallet published by Goshens Trust ("we",
 "us"). This policy explains what happens to your information when you use the app. The short
 version: **we don't run accounts, we never receive your keys or funds, and the one service we do
 run only ever learns what you deliberately choose to prove to it.**
@@ -126,7 +134,7 @@ const TERMS = `# Terms of Service
 
 _Last updated: ${LAST_UPDATED}_
 
-These Terms govern your use of the ${APP_NAME} wallet app, published by [LEGAL ENTITY] ("we", "us").
+These Terms govern your use of the ${APP_NAME} wallet app, published by Goshens Trust ("we", "us").
 By using ${APP_NAME}, you agree to these Terms. If you do not agree, do not use the app.
 
 ## 1. Eligibility
@@ -191,8 +199,14 @@ You agree to indemnify and hold us harmless from any claims or losses arising ou
 app or your violation of these Terms or any law.
 
 ## 11. Governing law
-These Terms are governed by the laws of [GOVERNING JURISDICTION], without regard to conflict-of-laws
-rules.
+Matters of membership, standing, offices, and the internal governance of the Association are governed
+by the Association's own ecclesiastical rules and constitution.
+
+Everything else — including your use of the app, and any dispute arising from it — is governed by the
+laws of the State of Arizona, United States, without regard to conflict-of-laws rules.
+
+Nothing in this section takes away a right you have under the law where you live that cannot be
+given up by agreement.
 
 ## 12. Changes to these Terms
 We may update these Terms. When we make a material change, we update the "Last updated" date and ask
