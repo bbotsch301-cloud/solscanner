@@ -39,7 +39,8 @@ import { withOnChainDeed, type Amendability } from "../property/onchainDeed";
 import { loadSeenDeed, recordSeenDeed } from "../property/deedHistory";
 import { deedChanges, type DeedDelta } from "../property/deedDiff";
 import { openContentUrl } from "../access/openContent";
-import { attemptGatedUrl } from "../access/vault";
+import { attemptGatedGrant } from "../access/vault";
+import { keepCopyIfPermitted } from "../property/keyCopy";
 import { vaultConfigured } from "../config/vault";
 import { navigationRef } from "../navigationRef";
 import { useWallet } from "../wallet/WalletContext";
@@ -291,7 +292,12 @@ export function CollectibleDetailScreen() {
     if (keypair && owner) {
       setUnlocking(true);
       try {
-        url = (await attemptGatedUrl(item, owner, keypair)) ?? url;
+        const grant = await attemptGatedGrant(item, owner, keypair);
+        url = grant?.viewerUrl ?? grant?.url ?? url;
+        // Keep a copy where the deed permits one. Fire-and-forget: the member is opening something
+        // now and should not wait on a download to do it, and a copy that fails to save costs
+        // nothing but the next open being online again.
+        if (grant?.url) void keepCopyIfPermitted(item, owner, grant.url, deed, grant.mime);
       } catch (e) {
         // A refusal is real information — don't quietly open the public link instead.
         Alert.alert("Locked", e instanceof Error ? e.message : "This pass didn't unlock the content.");

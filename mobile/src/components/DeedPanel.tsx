@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Card } from "./Card";
 import { ACTED_ON_RIGHTS, RIGHT_LABEL, RIGHT_ORDER, type Deed, type RightKey } from "../property/deed";
 import type { Amendability } from "../property/onchainDeed";
+import { copyPolicy, describeCopy } from "../property/keyCopy/policy";
 import { colors, font, leading, radius, spacing, tracking, weight } from "../theme";
 
 /** Two decimals, trailing zeros dropped — so 0.11% stays 0.11% and 10% doesn't read as "10.00%". */
@@ -71,6 +72,9 @@ export function DeedPanel({
 }) {
   // Only rights the deed actually states — see the note at the top of this file.
   const stated = RIGHT_ORDER.filter((r) => deed.rights[r] !== undefined);
+  // The offline tier this deed selects. Null for stream-only, which the panel stays quiet about.
+  const policy = copyPolicy(deed);
+  const copy = policy.kind === "stream-only" ? null : policy;
   const actedOn = stated.filter((r) => ACTED_ON_RIGHTS.has(r));
   const agreedOnly = stated.filter((r) => !ACTED_ON_RIGHTS.has(r));
 
@@ -182,6 +186,21 @@ export function DeedPanel({
             The issuer can still amend these terms. If they do, this wallet will show you what
             changed.
           </Text>
+        </View>
+      )}
+
+      {/* What the deed permits this device to keep, in the words a member can act on. "Kept while
+          you hold this key" is true of the ephemeral tier; "yours forever" would be a promise the
+          deed never made. Nothing is shown for stream-only unless the member asked to download —
+          the panel is not the place to explain an absence. */}
+      {copy && (
+        <View style={styles.permanence}>
+          <Ionicons
+            name={copy.kind === "retained" ? "download" : "cloud-download-outline"}
+            size={14}
+            color={copy.kind === "retained" ? colors.positive : colors.textMuted}
+          />
+          <Text style={styles.permanenceText}>{describeCopy(copy)}</Text>
         </View>
       )}
 

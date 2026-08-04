@@ -67,6 +67,7 @@ import {
 } from "./vault";
 import { getPubAddress, putPubAddress } from "./pubAddresses";
 import { clearEntitlements } from "../access/entitlement";
+import { panicRotate, purgeOwner } from "../property/keyCopy/sweep";
 import { clearReauthGrace } from "../security/reauth";
 import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled, isFastBalancesEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
@@ -837,7 +838,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const removeWallet = useCallback(
     async (seedId: string) => {
+      // Addresses read BEFORE the seed goes, or there is nothing left to derive them from and the
+      // content stays on disk with no entry pointing at it.
+      const indices = vault?.seeds.find((sd) => sd.id === seedId)?.accounts ?? [];
+      const going = indices
+        .map((i) => getPubAddress(seedId, i)?.sol)
+        .filter((a): a is string => !!a);
       const v = await removeSeed(seedId);
+      for (const addr of going) void purgeOwner(addr);
       setVault(v);
       if (!v) {
         setKeypair(null);
@@ -858,7 +866,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         await applyActive(v.active);
       }
     },
-    [applyActive, syncBackupFlag]
+    [applyActive, syncBackupFlag, vault?.seeds]
   );
 
   const renameWallet = useCallback(async (seedId: string, label: string) => {
@@ -875,6 +883,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     await clearVault();
     await clearEntitlements();
     clearReauthGrace();
+    // Rotating the key is the only deletion guaranteed to have taken effect even if every unlink
+    // failed, which is what a reset has to be able to promise.
+    await panicRotate();
     await clearPinPrompted();
     setPinPromptedState(false);
     setPinEnabled(false);

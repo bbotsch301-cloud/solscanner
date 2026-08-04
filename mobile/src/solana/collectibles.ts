@@ -242,6 +242,19 @@ export async function loadCollectibleSnapshots(): Promise<void> {
 
 const scopeFor = (owner: string) => `sol:${CLUSTER}:${owner}`;
 
+/**
+ * Every address this device has a snapshot for on the current cluster.
+ *
+ * Startup housekeeping needs to know which owners exist without asking the wallet to unlock — the
+ * copies of one account must not be cleaned up as orphans just because a different account happens
+ * to be active. Derived from the snapshot keys rather than from the vault, which is locked at the
+ * point this runs.
+ */
+export function knownOwners(): string[] {
+  const prefix = `sol:${CLUSTER}:`;
+  return [...warmSnap.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+}
+
 /** Synchronously read the last-good list for instant seeding, or undefined. */
 export function cachedCollectibles(owner: string): Collectible[] | undefined {
   const s = warmSnap.get(scopeFor(owner));
@@ -272,7 +285,24 @@ export function onCollectiblesChange(fn: () => void): () => void {
 export function removeCollectible(owner: string, mint: string): void {
   const s = warmSnap.get(scopeFor(owner));
   if (s) saveSnapshot(owner, s.items.filter((c) => c.mint !== mint));
+  // Anything the app stored because this key justified it goes with the key. Hooked HERE rather
+  // than at the call sites: there are already two of those and a third will be added, and the one
+  // that forgets is the one that leaks a file forever.
+  holdingLost?.(owner, mint);
   itemsListeners.forEach((fn) => fn());
+}
+
+/**
+ * Told when a key leaves this wallet.
+ *
+ * A registration hook rather than a direct import, because the thing that cares
+ * (`property/keyCopy/sweep.ts`) already reads deeds, which read Collectibles — importing it here
+ * would close that loop. Registered once at startup.
+ */
+let holdingLost: ((owner: string, mint: string) => void) | null = null;
+
+export function onHoldingLost(fn: (owner: string, mint: string) => void): void {
+  holdingLost = fn;
 }
 
 // ---- Fetching ----
@@ -466,13 +496,30 @@ async function fetchViaTokenAccounts(owner: string): Promise<Collectible[]> {
  * Never throws; returns the last-good list on failure so the gallery doesn't blank.
  */
 export async function fetchCollectibles(owner: string): Promise<Collectible[]> {
+  return (await fetchHoldings(owner)).items;
+}
+
+/**
+ * The same fetch, but saying whether the chain actually answered.
+ *
+ * `fetchCollectibles` returns the cached list when the network fails, which is right for a gallery —
+ * a blank screen is worse than a stale one. It is catastrophic for anything that *acts* on absence:
+ * "the chain says you no longer hold this" and "we couldn't reach the chain" become the same value,
+ * so one bad minute of connectivity looks exactly like a wallet that was emptied.
+ *
+ * Anything deciding to delete on the strength of an item being missing must use this and check `ok`.
+ * See `property/keyCopy/sweep.ts`, which is the reason it exists.
+ */
+export type Holdings = { ok: true; items: Collectible[] } | { ok: false; items: Collectible[] };
+
+export async function fetchHoldings(owner: string): Promise<Holdings> {
   try {
     const das = isPublicRpc() ? null : await fetchViaDas(owner);
     const items = das ?? (await fetchViaTokenAccounts(owner));
     saveSnapshot(owner, items);
-    return items;
+    return { ok: true, items };
   } catch {
-    return cachedCollectibles(owner) ?? [];
+    return { ok: false, items: cachedCollectibles(owner) ?? [] };
   }
 }
 

@@ -26,7 +26,7 @@ import { Skeleton } from "./Skeleton";
 import { Updating } from "./Updating";
 import {
   cachedCollectibles,
-  fetchCollectibles,
+  fetchHoldings,
   isHiddenItem,
   onCollectiblesChange,
   isArchived,
@@ -37,6 +37,7 @@ import {
 } from "../solana/collectibles";
 import { parseDeed, propertyStatus } from "../property/deed";
 import { deriveStanding } from "../identity/membership";
+import { reconcileHoldings } from "../property/keyCopy/sweep";
 import { StandingHero } from "./StandingHero";
 import { isPublicRpc } from "../solana/connection";
 import { haptics } from "../ui/haptics";
@@ -183,12 +184,16 @@ export function PropertyGallery({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const fresh = await fetchCollectibles(owner);
+      const holdings = await fetchHoldings(owner);
       if (!cancelled) {
-        setItems(fresh);
+        setItems(holdings.items);
         setLoading(false);
         setSettled(`${owner}:${refreshKey}`);
       }
+      // The one place with a fresh, trustworthy list of what this wallet holds — so it is where
+      // stored copies are reconciled against it. `reconcileHoldings` does nothing at all unless the
+      // chain actually answered; see the guard in keyCopy/sweep.ts.
+      void reconcileHoldings(owner, holdings);
     })();
     return () => {
       cancelled = true;

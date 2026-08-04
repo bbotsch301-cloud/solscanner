@@ -72,7 +72,16 @@ export const RIGHT_LABEL: Record<RightKey, string> = {
  * withholds Send. It cannot stop a transfer: a plain SPL NFT moves with any other wallet or a CLI.
  * The copy in the UI must say what the app does, never that it prevents anything.
  */
-export const ACTED_ON_RIGHTS: ReadonlySet<RightKey> = new Set<RightKey>(["resell"]);
+export const ACTED_ON_RIGHTS: ReadonlySet<RightKey> = new Set<RightKey>([
+  "resell",
+  // Both became mechanical when local copies shipped. `download` decides whether a file is ever
+  // written to this device at all, and `retainedCopy` decides whether it survives the key leaving
+  // the wallet — see `property/keyCopy/policy.ts`. Until then this set held only `resell`, and the
+  // "nothing here enforces them" line under the other group was accurate about these two. It isn't
+  // any more, so they moved.
+  "download",
+  "retainedCopy",
+]);
 
 export interface Deed {
   creator?: string;

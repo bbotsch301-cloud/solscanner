@@ -69,7 +69,13 @@ import { preloadTokenMetaCache } from "./src/solana/tokens";
 import { loadWalletSnapshots } from "./src/wallet/snapshotCache";
 import { preloadPriceCache } from "./src/solana/prices";
 import { preloadScreenCaches } from "./src/cache/screens";
-import { loadCollectiblePrefs, loadCollectibleSnapshots } from "./src/solana/collectibles";
+import {
+  loadCollectiblePrefs,
+  loadCollectibleSnapshots,
+  knownOwners,
+  onHoldingLost,
+} from "./src/solana/collectibles";
+import { onKeyLost, preloadKeyCopies } from "./src/property/keyCopy/sweep";
 import { loadLastFeeAttempt } from "./src/solana/feeDiagnostics";
 import { loadParsedTxCache } from "./src/solana/txParse";
 import { haptics } from "./src/ui/haptics";
@@ -339,6 +345,9 @@ export default function App() {
     // The blocklist refresh is best-effort and must never delay startup on a slow network,
     // so it's fired alongside but the app doesn't block on its result (it fails open).
     loadBlocklist();
+    // A key leaving the wallet takes whatever it justified storing with it. Registered rather than
+    // imported by collectibles.ts, which the sweep already depends on through the deed parser.
+    onHoldingLost((owner, mint) => void onKeyLost(owner, mint));
     configureNotifications();
     Promise.all([
       loadNetworkPref(),
@@ -366,7 +375,14 @@ export default function App() {
       // real numbers instead of counting up from $0.00 while the network answers.
       preloadPriceCache(),
       preloadScreenCaches(),
-    ]).finally(() => setReady(true));
+    ])
+      // Housekeeping for stored copies runs after the snapshots have loaded, because it needs to
+      // know which owners exist. Deliberately NOT a sweep against holdings: a week-old snapshot is
+      // not evidence a key is gone, so deleting on it would be deleting on stale data. The real
+      // sweep waits for the first successful fetch (see keyCopy/sweep.ts).
+      .then(() => preloadKeyCopies(knownOwners()))
+      .catch(() => undefined)
+      .finally(() => setReady(true));
   }, []);
 
   // Tapping a "Received" notification jumps to Activity.
