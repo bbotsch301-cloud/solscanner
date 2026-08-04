@@ -41,7 +41,7 @@ import { PrivacyCover } from "./src/components/PrivacyCover";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
 import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext";
-import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
+import { ScanScreen } from "./src/screens/ScanScreen";
 import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
 import { CollectibleDetailScreen } from "./src/screens/CollectibleDetailScreen";
 import { PlayerScreen } from "./src/screens/PlayerScreen";
@@ -297,7 +297,7 @@ function Root() {
           <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
           <Stack.Screen name="Govern" component={GovernScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
+          <Stack.Screen name="Scan" component={ScanScreen} />
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
           <Stack.Screen name="Contacts" component={ContactsScreen} />
           <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />

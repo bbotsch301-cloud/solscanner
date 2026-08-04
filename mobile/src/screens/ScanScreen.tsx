@@ -5,37 +5,80 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useWalletConnect } from "../walletconnect/WalletConnectContext";
+import { useWallet } from "../wallet/WalletContext";
+import { describeUnknown, parseScan } from "../scan/parse";
 import { humanizeWcError } from "../walletconnect/errors";
 import { configNotice } from "../config/notice";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
-export function WalletConnectScreen() {
+export function ScanScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
-  const { enabled, ready, sessions, pair, disconnect } = useWalletConnect();
+  // No `ready` here on purpose. The Continue button used to wait for WalletKit to initialise, which
+  // also blocked the address path that has nothing to do with WalletConnect. It no longer needs to
+  // for pairing either: `pair` holds a URI that arrives early and flushes it once the kit is up —
+  // the same buffer that makes a cold-start deep link work.
+  const { enabled, sessions, pair, disconnect } = useWalletConnect();
+  const { activeChain } = useWallet();
   const [uri, setUri] = useState("");
   const [scanning, setScanning] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
 
-  const connect = async (value: string) => {
-    const v = value.trim();
-    if (!v.startsWith("wc:")) {
-      Alert.alert("Not a WalletConnect link", "Paste or scan a link that starts with “wc:”.");
+  /**
+   * Act on whatever was scanned or pasted.
+   *
+   * This screen used to accept a pairing URI and answer everything else with "Paste or scan a link
+   * that starts with wc:" — which says what the app wanted without saying what the scanner is FOR.
+   * The natural mistake in a wallet is to point the camera at another wallet, and that message did
+   * nothing to correct it. `parseScan` decides; this only routes.
+   */
+  const handle = async (value: string) => {
+    const parsed = parseScan(value);
+
+    if (parsed.kind === "unknown") {
+      setScanning(false);
+      Alert.alert("Can't use that code", describeUnknown(parsed.saw));
       return;
     }
+
+    if (parsed.kind === "address") {
+      // Refuse rather than switch. Changing the active chain because of something a camera saw,
+      // moments before a send, is not a decision to make on someone's behalf.
+      if (parsed.chain !== activeChain.kind) {
+        setScanning(false);
+        Alert.alert(
+          "Wrong network for that address",
+          parsed.chain === "evm"
+            ? "That's an Ethereum-style address. Switch the wallet to Ethereum or BSC first."
+            : "That's a Solana address. Switch the wallet to Solana first.",
+        );
+        return;
+      }
+      setScanning(false);
+      // `replace`, not `navigate`: backing out of Send should return where the member came from,
+      // not to a live camera pointed at the same code.
+      nav.replace("Send", {
+        to: parsed.address,
+        ...(parsed.amount ? { amount: parsed.amount } : {}),
+        ...(parsed.token ? { asset: parsed.token } : {}),
+      });
+      return;
+    }
+
     setBusy(true);
     setScanning(false);
     try {
-      await pair(v);
+      await pair(parsed.uri);
       setUri("");
     } catch (e) {
-      Alert.alert("Couldn’t connect", humanizeWcError(e));
+      Alert.alert("Couldn't connect", humanizeWcError(e));
     } finally {
       setBusy(false);
     }
   };
+
 
   const startScan = async () => {
     if (!permission?.granted) {
@@ -54,7 +97,7 @@ export function WalletConnectScreen() {
       contentContainerStyle={{ padding: spacing(4), paddingTop: insets.top + spacing(2), paddingBottom: spacing(10) }}
     >
       <View style={styles.topBar}>
-        <Text style={styles.header}>Connect to a dApp</Text>
+        <Text style={styles.header}>Scan</Text>
         <Pressable onPress={() => nav.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.textMuted} />
         </Pressable>
@@ -81,7 +124,7 @@ export function WalletConnectScreen() {
               <CameraView
                 style={{ flex: 1 }}
                 barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={({ data }) => data && connect(data)}
+                onBarcodeScanned={({ data }) => data && handle(data)}
               />
               <Pressable onPress={() => setScanning(false)} style={styles.cancelScan}>
                 <Text style={styles.cancelScanText}>Cancel</Text>
@@ -90,26 +133,26 @@ export function WalletConnectScreen() {
           ) : (
             <Pressable onPress={startScan} style={styles.scanBtn}>
               <Ionicons name="qr-code-outline" size={20} color={colors.bg} />
-              <Text style={styles.scanBtnText}>Scan WalletConnect QR</Text>
+              <Text style={styles.scanBtnText}>Scan a QR code</Text>
             </Pressable>
           )}
 
-          <Text style={styles.or}>or paste the link</Text>
+          <Text style={styles.or}>or paste a link or address</Text>
           <TextInput
             value={uri}
             onChangeText={setUri}
-            placeholder="wc:…"
+            placeholder="wc:… or a wallet address"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
             style={styles.input}
           />
           <Pressable
-            onPress={() => connect(uri)}
-            disabled={busy || !uri || !ready}
-            style={[styles.connectBtn, (busy || !uri || !ready) && { opacity: 0.5 }]}
+            onPress={() => handle(uri)}
+            disabled={busy || !uri}
+            style={[styles.connectBtn, (busy || !uri) && { opacity: 0.5 }]}
           >
-            <Text style={styles.connectText}>{busy ? "Connecting…" : "Connect"}</Text>
+            <Text style={styles.connectText}>{busy ? "Working…" : "Continue"}</Text>
           </Pressable>
 
           <Text style={styles.sectionTitle}>Connected apps</Text>

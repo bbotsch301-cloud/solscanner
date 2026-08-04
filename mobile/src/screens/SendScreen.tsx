@@ -109,11 +109,15 @@ export function SendScreen() {
   const [assetKey, setAssetKey] = useState(route.params?.asset ?? "native");
   const selected = assetList.find((a) => a.key === assetKey) ?? assetList[0];
 
-  const [recipient, setRecipient] = useState("");
+  // Seeded from a scan when the scanner sent us here. The address still goes through the lookalike
+  // and poisoning checks below — arriving by camera makes an address no more trustworthy than one
+  // that was pasted, and skipping those because of how the bytes got here would be backwards.
+  const [recipient, setRecipient] = useState(route.params?.to ?? "");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saveAddr, setSaveAddr] = useState<string | null>(null); // address pending "save to contacts"
   const [contactsRev, setContactsRev] = useState(0); // bump to re-read the contact match after saving
-  const [amt, setAmt] = useState("");
+  // A Solana Pay code can state an amount; a bare address never does, so this is usually empty.
+  const [amt, setAmt] = useState(route.params?.amount ?? "");
   const [sending, setSending] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

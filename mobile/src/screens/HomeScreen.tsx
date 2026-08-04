@@ -156,7 +156,7 @@ export function HomeScreen() {
               was three taps inside Settings — far enough in that it read as a feature that didn't
               exist. This is where a phone wallet puts "scan". The Settings row stays for anyone who
               already knows it. */}
-          <Pressable onPress={() => nav.navigate("WalletConnect")} hitSlop={10}>
+          <Pressable onPress={() => nav.navigate("Scan")} hitSlop={10}>
             <Ionicons name="qr-code-outline" size={22} color={colors.textMuted} />
           </Pressable>
           <Pressable onPress={() => nav.navigate("Activity")} hitSlop={10}>

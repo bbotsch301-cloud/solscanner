@@ -114,8 +114,17 @@ need your judgement on** — I cannot tell from here whether any of it lands.
 Needs a dApp to pair with. The project id ships in the build, so the scanner should open a camera
 rather than a notice.
 
-- [ ] **Wallet tab → QR icon** opens the scanner. *A notice about a project id means the compiled-in
-      id didn't take.*
+- [ ] **Wallet tab → QR icon** opens the scanner, titled **Scan**. *A notice about a project id means
+      the compiled-in id didn't take.*
+- [ ] **Scan another wallet's receive QR** (Phantom's, say) → **Send opens with the address filled**.
+      *"Not a WalletConnect link" means the dispatcher didn't run — that error is the thing this
+      replaced.*
+- [ ] Scan an **Ethereum** address while the wallet is on Solana → refused, naming the network.
+      *Silently switching chains here would be wrong: a send is about to happen.*
+- [ ] Scan something arbitrary — a poster's URL — → a message that **says what it saw**, not one flat
+      sentence about `wc:`.
+- [ ] A scanned address still gets the **lookalike warning** if it imitates one you've used. Arriving
+      by camera makes an address no more trustworthy than a pasted one.
 - [ ] Pair with any Solana dApp on the network the wallet is set to. The approval sheet names the site.
 - [ ] Sign a **message**: a **biometric prompt appears**. *No prompt is the gap that was closed — tell
       me.* The text is readable, not base58.

@@ -6,7 +6,7 @@ export type RootStackParamList = {
   Tabs: undefined;
   Wallets: undefined;
   /** asset is "native" or a token id (SPL mint / ERC-20 contract). */
-  Send: { asset?: string } | undefined;
+  Send: { asset?: string; to?: string; amount?: string } | undefined;
   /** asset is "native" or a token id (SPL mint / ERC-20 contract). */
   TokenDetail: { asset: string };
   Receive: undefined;
@@ -26,7 +26,7 @@ export type RootStackParamList = {
   TransactionDetail: { item: HistoryItem };
   Govern: undefined;
   Settings: undefined;
-  WalletConnect: undefined;
+  Scan: undefined;
   TokenApprovals: undefined;
   Contacts: undefined;
   Legal: { doc: LegalDocKey };

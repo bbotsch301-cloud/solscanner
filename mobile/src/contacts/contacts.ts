@@ -5,16 +5,17 @@
  * synchronous name lookup for display on the Send screen.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { PublicKey } from "@solana/web3.js";
-import { isEvmAddress } from "../wallet/evm";
+import { detectKind, type AddressKind } from "../chains/addressKind";
 
-export type ContactKind = "solana" | "evm";
+/** Re-exported: this module was every caller's source for both, and the split is an internal detail. */
+export type { AddressKind as ContactKind };
+export { detectKind };
 
 export interface Contact {
   id: string;
   name: string;
   address: string;
-  kind: ContactKind;
+  kind: AddressKind;
   note?: string;
 }
 
@@ -22,19 +23,9 @@ const KEY = "solwallet.contacts.v1";
 let contacts: Contact[] = [];
 let loaded = false;
 
-/** base58 (Solana) vs 0x (EVM), or null if the string isn't a valid address on either. */
-export function detectKind(address: string): ContactKind | null {
-  const a = address.trim();
-  if (isEvmAddress(a)) return "evm";
-  try {
-    return new PublicKey(a) ? "solana" : null;
-  } catch {
-    return null;
-  }
-}
 
 // EVM addresses compare case-insensitively; base58 is case-sensitive.
-const normFor = (address: string, kind: ContactKind) =>
+const normFor = (address: string, kind: AddressKind) =>
   kind === "evm" ? address.trim().toLowerCase() : address.trim();
 
 function persist(): void {
@@ -58,7 +49,7 @@ export async function loadContacts(): Promise<void> {
 }
 
 /** All contacts, sorted by name; optionally filtered to one chain kind. */
-export function listContacts(kind?: ContactKind): Contact[] {
+export function listContacts(kind?: AddressKind): Contact[] {
   return contacts
     .filter((c) => !kind || c.kind === kind)
     .slice()
