@@ -105,24 +105,37 @@ export function MoreScreen() {
     >
       <Text style={styles.header}>More</Text>
 
+      {/* Nine unlabelled rows used to sit here, above the first heading — your wallet, the
+          association, app tools and settings all in one list. Every group below was labelled, so
+          the layout was implicitly saying those nine had nothing in common, which is exactly what
+          it felt like. Sections now, short enough to scan.
+
+          NO ACTIVITY ROW. The Wallet tab header already has a clock icon to the same screen
+          (`HomeScreen.tsx`), and transaction history is wallet content rather than a menu item. */}
+      <Text style={[styles.sectionTitle, styles.sectionTitleFirst]}>Your wallet</Text>
       <View style={styles.group}>
-        <Row icon="ribbon" label="Association" onPress={() => nav.navigate("Association")} />
-        <View style={styles.divider} />
-        <Row icon="business" label="Treasury" onPress={() => nav.navigate("Treasury")} />
-        <View style={styles.divider} />
         <Row icon="wallet" label="Wallets & accounts" onPress={() => nav.navigate("Wallets")} />
         <View style={styles.divider} />
-        <Row icon="compass" label="Browser" onPress={() => nav.navigate("Browser")} />
+        {/* "Multisig treasury" until now, which read as a sibling of the Association treasury below
+            and is nothing of the kind: this is a Squads multisig YOU operate. `.env.example` says it
+            outright — the multisig "does NOT change the Global Goshens treasury view". Different
+            section and a different noun, so the two can't be confused for each other again. */}
+        <Row icon="people-circle" label="Multisig wallet" onPress={() => nav.navigate("Multisig")} />
         <View style={styles.divider} />
         <Row icon="book" label="Address book" onPress={() => nav.navigate("Contacts")} />
+      </View>
+
+      <Text style={styles.sectionTitle}>The Association</Text>
+      <View style={styles.group}>
+        {/* "Association" inside a section called The Association was noise. "Standing" is the word
+            the rest of the app already uses for what this screen shows. */}
+        <Row icon="ribbon" label="Your standing" onPress={() => nav.navigate("Association")} />
         <View style={styles.divider} />
-        <Row icon="people-circle" label="Multisig treasury" onPress={() => nav.navigate("Multisig")} />
+        {/* The communal treasury — a view of the association's money, whose whole purpose is to be
+            publicly verifiable (see `config/treasury.ts`). Named for whose money it is. */}
+        <Row icon="business" label="Association treasury" onPress={() => nav.navigate("Treasury")} />
         <View style={styles.divider} />
         <Row icon="people" label="Governance" onPress={() => nav.navigate("Govern")} />
-        <View style={styles.divider} />
-        <Row icon="time" label="Activity" onPress={() => nav.navigate("Activity")} />
-        <View style={styles.divider} />
-        <Row icon="settings" label="Settings" onPress={() => nav.navigate("Settings")} />
       </View>
 
       {/* The half of the system that isn't this app. The wallet holds keys and proves what you own;
@@ -139,6 +152,13 @@ export function MoreScreen() {
         {/* The wallet has no issuing surface by design — it never holds a key it didn't earn the
             right to hold. A creator goes to the web app, signs there, and the key arrives here. */}
         <Row icon="add-circle" label="Issue a Key" soon={!issue} onPress={() => issue && open(issue)} />
+      </View>
+
+      <Text style={styles.sectionTitle}>App</Text>
+      <View style={styles.group}>
+        <Row icon="compass" label="Browser" onPress={() => nav.navigate("Browser")} />
+        <View style={styles.divider} />
+        <Row icon="settings" label="Settings" onPress={() => nav.navigate("Settings")} />
       </View>
 
       <Text style={styles.sectionTitle}>Legal</Text>
@@ -159,8 +179,10 @@ export function MoreScreen() {
         <>
           <Text style={styles.sectionTitle}>Development</Text>
           <View style={styles.group}>
-            {/* Gone entirely from a release build — see the route registration in App.tsx. */}
-            <Row icon="ribbon" label="Deed preview" onPress={() => nav.navigate("DeedPreview")} />
+            {/* Gone entirely from a release build — see the route registration in App.tsx.
+                `eye` rather than `ribbon`, which now belongs to Your standing; two rows wearing the
+                same icon is the sort of small thing that makes a list feel arbitrary. */}
+            <Row icon="eye" label="Deed preview" onPress={() => nav.navigate("DeedPreview")} />
             <View style={styles.divider} />
             {/* What this build was actually given. Every feature that reaches the network is gated
                 on one of these, and until now the only way to find out one was unset was to use the
@@ -191,6 +213,9 @@ const styles = StyleSheet.create({
     marginTop: spacing(6),
     marginBottom: spacing(2),
   },
+  /** The first heading follows the page title, which already carries its own gap below it. Without
+   *  this it inherits the between-sections margin as well and opens a hole under "More". */
+  sectionTitleFirst: { marginTop: 0 },
   group: {
     backgroundColor: colors.card,
     borderWidth: 1,
