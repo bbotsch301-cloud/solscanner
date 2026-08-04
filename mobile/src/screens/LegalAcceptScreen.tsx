@@ -12,17 +12,13 @@ import { colors, font, radius, spacing } from "../theme";
  * Acceptance gate. Renders OUTSIDE the NavigationContainer (from App's Root), so the full documents
  * are shown in a local Modal rather than via navigation.
  *
- * It also re-appears whenever `LEGAL_VERSION` is bumped, which is a different situation from a first
- * run and used to look identical to one — same "Welcome", no hint that anything had changed. Being
- * asked to agree again without being told why is exactly the moment a member should be told why.
+ * It re-appears whenever `LEGAL_VERSION` is bumped. There is nobody yet for whom that is a *second*
+ * time, so this says what the terms are rather than what changed about them — a "we've updated our
+ * terms" notice to a first-time reader is noise at best and a claim about a history they weren't
+ * part of at worst. When there are members who accepted an earlier version, that screen becomes
+ * worth writing; it is not this one.
  */
-export function LegalAcceptScreen({
-  onAccept,
-  returning = false,
-}: {
-  onAccept: () => void;
-  returning?: boolean;
-}) {
+export function LegalAcceptScreen({ onAccept }: { onAccept: () => void }) {
   const insets = useSafeAreaInsets();
   const [agreed, setAgreed] = useState(false);
   const [openDoc, setOpenDoc] = useState<LegalDocKey | null>(null);
@@ -33,23 +29,18 @@ export function LegalAcceptScreen({
         <View style={styles.crownWrap}>
           <Crown size={72} />
         </View>
-        <Text style={styles.title}>{returning ? "Our terms have changed" : "Welcome to XGO"}</Text>
-        <Text style={styles.sub}>{returning ? "Please review and accept" : "Building the Kingdom Economy"}</Text>
-
-        {returning && (
-          // Name the change rather than making them diff two documents to find it. The whole reason
-          // this screen came back is worth one sentence.
-          <View style={styles.card}>
-            <Point
-              icon="server"
-              text="Signing in to the Association and opening Vault content now use a server, which records your public wallet address. It never receives your keys, phrase, or funds."
-            />
-          </View>
-        )}
+        <Text style={styles.title}>Welcome to XGO</Text>
+        <Text style={styles.sub}>Building the Kingdom Economy</Text>
 
         <View style={styles.card}>
           <Point icon="key" text="XGO is non-custodial — you alone hold your keys and funds. We can't access or recover them." />
-          <Point icon="cloud-offline" text="No account and no tracking. Your recovery phrase never leaves your device." />
+          <Point icon="cloud-offline" text="No account and no sign-up. Your recovery phrase never leaves your device." />
+          {/* Stated up front rather than left for the policy. It is the one thing here a member
+              might reasonably assume is otherwise, given everything else on this screen. */}
+          <Point
+            icon="server"
+            text="Signing in to the Association and opening Vault content use a server, which sees your public wallet address. Never your keys, phrase, or funds."
+          />
           <Point icon="warning" text="Crypto is risky and transactions are irreversible. You're responsible for your own decisions." />
         </View>
 

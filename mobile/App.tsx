@@ -209,9 +209,6 @@ function Root() {
         <StatusBar style="light" />
         <Fade>
           <LegalAcceptScreen
-            // A member who accepted an earlier version is not seeing this for the first time, and
-            // "Welcome to XGO" would be both wrong and evasive about why they're being asked again.
-            returning={getAcceptedLegalVersion() > 0}
             onAccept={() => {
               void setAcceptedLegalVersion(LEGAL_VERSION);
               // A record of WHAT was agreed and WHEN, alongside the gate's version flag. This runs

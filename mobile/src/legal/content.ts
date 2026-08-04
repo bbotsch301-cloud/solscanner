@@ -26,11 +26,13 @@
  * Property Deed states — each creator sets that for their own contract (canonical §13).
  */
 
-// v2 — the Association platform. Earlier versions promised no servers stored member data; the
-// sign-in and Vault services make that false, so the policy, the app-store data-safety disclosures
-// and this bump ship together. Shipping the service and the policy in different releases is the one
-// mistake here that cannot be repaired afterwards: members would have transmitted data under a
-// promise it wouldn't be.
+// Bumped alongside the Association platform, so any device that accepted the earlier draft is asked
+// again rather than silently carrying an acceptance of text that no longer exists.
+//
+// The rule this is here to enforce, for whoever changes these documents next: **a service that
+// transmits member data and the policy describing it ship in the same release.** Every other mistake
+// in this file can be corrected afterwards. That one cannot, because by then people will have
+// transmitted data under a promise that they wouldn't.
 export const LEGAL_VERSION = 2;
 export const LAST_UPDATED = "August 4, 2026";
 
@@ -47,11 +49,6 @@ ${APP_NAME} is a self-custodial (non-custodial) crypto wallet published by Goshe
 "us"). This policy explains what happens to your information when you use the app. The short
 version: **we don't run accounts, we never receive your keys or funds, and the one service we do
 run only ever learns what you deliberately choose to prove to it.**
-
-**What changed in this version.** Earlier versions said we had no servers storing your data. That
-is no longer true, and we would rather say so plainly than leave it buried. The Association platform
-described below records your public wallet address when you sign in or unlock content you own. It
-still never receives a key, a recovery phrase, or funds, and there is still no account to create.
 
 ## We are non-custodial
 Your recovery phrase, private keys, and PIN are created and stored **only on your device**. We never
