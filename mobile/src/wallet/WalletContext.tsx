@@ -67,6 +67,7 @@ import {
 } from "./vault";
 import { getPubAddress, putPubAddress } from "./pubAddresses";
 import { clearEntitlements } from "../access/entitlement";
+import { clearSessions } from "../access/siws";
 import { panicRotate, purgeOwner } from "../property/keyCopy/sweep";
 import { clearReauthGrace } from "../security/reauth";
 import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled, isFastBalancesEnabled } from "../security/prefs";
@@ -314,10 +315,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // background lock and the inactivity timer.
   const lockNow = useCallback(() => {
     if (!pinIsEnabled()) return;
-    // Locking means the member stepped away. A grant they could still open, or a confirmation they
-    // gave five minutes ago, must not survive that decision.
+    // Locking means the member stepped away. A grant they could still open, a confirmation they gave
+    // five minutes ago, or a platform session token they could still spend, must not survive that
+    // decision.
     void clearEntitlements();
     clearReauthGrace();
+    clearSessions();
     lockSeeds();
     setLocked(true);
     setKeypair(null);
@@ -607,10 +610,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const applyActive = useCallback(
     async (ref: AccountRef) => {
       // Whatever the previous account was allowed to open, this one is not — until it proves so
-      // itself. A cached vault grant is a bearer link, and a recent biometric confirmation was given
-      // by someone acting as a different member.
+      // itself. A cached vault grant is a bearer link, a recent biometric confirmation was given by
+      // someone acting as a different member, and a platform token names a wallet that is no longer
+      // the one in use.
       void clearEntitlements();
       clearReauthGrace();
+      clearSessions();
       // Clear the previous account's signing keys + balances right away.
       setKeypair(null);
       keypairRef.current = null;
@@ -883,6 +888,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     await clearVault();
     await clearEntitlements();
     clearReauthGrace();
+    // A reset promises everything is gone. A live bearer token for the wallet just erased would
+    // otherwise outlive it, in memory, until the process happened to die.
+    clearSessions();
     // Rotating the key is the only deletion guaranteed to have taken effect even if every unlink
     // failed, which is what a reset has to be able to promise.
     await panicRotate();

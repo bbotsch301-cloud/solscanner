@@ -154,9 +154,20 @@ export function WalletConnectProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     const { topic, params, id } = request;
     const { request: rpc, chainId } = params;
-    // Fund-moving / approval requests require a fresh possession proof (biometric or device
-    // passcode) even though the app is unlocked — the session lock isn't enough for signing.
-    if (/sendTransaction|signTransaction|signTypedData/i.test(rpc.method) && !(await requireReauth())) {
+    // EVERY request here is a signing operation — these handlers implement no read-only method — so
+    // every one needs a fresh possession proof (biometric or device passcode). The app being
+    // unlocked is not assent to a specific signature.
+    //
+    // This used to test `/sendTransaction|signTransaction|signTypedData/`, which quietly excused the
+    // two methods that sign a *message*: `personal_sign` and `solana_signMessage`. Neither moves
+    // funds, which is exactly why they read as harmless and are not — `personal_sign` is the standard
+    // EVM phishing vector, and dropping the bespoke QR flow made platform sign-in a
+    // `solana_signMessage`, so the signature that mints a session token had the weakest gate in the
+    // app.
+    //
+    // `browser/BrowserScreen.tsx` already gates every non-connect request with no method matching.
+    // This makes the two dApp surfaces agree, and agreeing on the stricter one.
+    if (!(await requireReauth())) {
       await kit
         .respondSessionRequest({ topic, response: { id, jsonrpc: "2.0", error: getSdkError("USER_REJECTED") } })
         .catch(() => {});

@@ -7,7 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bs58 from "bs58";
 import { signMessageBytes } from "../solana/signMessage";
-import { Keypair, VersionedTransaction, Transaction, type Connection } from "@solana/web3.js";
+import { Keypair, VersionedTransaction, type Connection } from "@solana/web3.js";
 import { CHAINS } from "../chains/registry";
 import type { EvmAccount } from "../wallet/evm";
 import { personalSign } from "../evm/message";
@@ -239,33 +239,36 @@ export async function handleEvmRequest(
 }
 
 /**
- * The signature THIS wallet just added, not whichever one happens to be first.
+ * The signature THIS wallet just added — found by looking for it, not by assuming where it is.
  *
- * The two transaction types disagree about what `signatures` holds, and the old code read both as if
- * they were the versioned kind:
+ * `VersionedTransaction.signatures` is `Uint8Array[]`, index-aligned to the required signers. Index 0
+ * is the FEE PAYER, which is not always us. When it isn't, that slot is still 64 unfilled zero bytes,
+ * and base58 encodes those as happily as a real signature — so returning `signatures[0]` handed the
+ * dApp a valid-looking, entirely empty signature and said nothing.
  *
- *   • `VersionedTransaction.signatures` is `Uint8Array[]`, index-aligned to the required signers, so
- *     index 0 really is the fee payer.
- *   • `Transaction.signatures` is `{signature: Buffer | null, publicKey: PublicKey}[]` — objects, and
- *     ordered by the message's account keys rather than by who we are.
+ * The case where this bites is not exotic, it is the flagship one: **issuing a Key** is 2–N
+ * signatures over one session with a mint keypair co-signing, so the wallet routinely lands at index
+ * 1 or later. A single-signer test passes with this bug fully intact, which is how it survived.
  *
- * So base58-encoding `signatures[0]` on a legacy transaction encoded an object, and did it silently.
- * Every transaction the Goshen web app produces is legacy (`new Transaction(...)` throughout), and it
- * broadcasts them itself, so it asks for exactly this method — meaning this path was wrong for every
- * flow it will ever be used for.
+ * See `scripts/check-wc-signature.cjs`, which builds a sponsored transaction and asserts that
+ * `signatures[0]` fails ed25519 verification while the looked-up index passes.
  *
- * Matching on the public key rather than the index matters even within legacy: a transaction with a
- * co-signer (issuing a Key partial-signs with the mint keypair first) can put us anywhere in the list.
+ * `staticAccountKeys` is the right list and needs no address-lookup-table resolution: lookup tables
+ * cannot supply signers, so every required signer is always static.
  */
-function ourSignature(
-  tx: VersionedTransaction | Transaction,
-  versioned: boolean,
-  keypair: Keypair,
-): Uint8Array {
-  if (versioned) return (tx as VersionedTransaction).signatures[0] ?? new Uint8Array();
-  const mine = (tx as Transaction).signatures.find((s) => s.publicKey.equals(keypair.publicKey));
-  if (!mine?.signature) throw new Error("The wallet's signature is missing from the signed transaction.");
-  return new Uint8Array(mine.signature);
+function ourSignature(tx: VersionedTransaction, keypair: Keypair): Uint8Array {
+  const keys = tx.message.getAccountKeys().staticAccountKeys;
+  const idx = keys
+    .slice(0, tx.message.header.numRequiredSignatures)
+    .findIndex((k) => k.equals(keypair.publicKey));
+  if (idx < 0) throw new Error("This transaction doesn't ask for this wallet's signature.");
+
+  const sig = tx.signatures[idx];
+  // An unfilled slot is all zeroes. Refusing it is the whole point — a silently empty signature is
+  // worse than a failed request, because the dApp accepts it and fails somewhere else entirely.
+  if (!sig || sig.every((b) => b === 0))
+    throw new Error("The wallet's signature is missing from the signed transaction.");
+  return sig;
 }
 
 export async function handleSolanaRequest(
@@ -297,35 +300,30 @@ export async function handleSolanaRequest(
     case "solana_signTransaction":
     case "solana_signAndSendTransaction": {
       const bytes = Uint8Array.from(Buffer.from(params.transaction, "base64"));
-      let tx: VersionedTransaction | Transaction;
-      let versioned = true;
-      try {
-        tx = VersionedTransaction.deserialize(bytes);
-        (tx as VersionedTransaction).sign([keypair]);
-      } catch {
-        tx = Transaction.from(bytes);
-        (tx as Transaction).partialSign(keypair);
-        versioned = false;
-      }
+
+      // One path, deliberately. `VersionedTransaction.deserialize` accepts legacy wire format too —
+      // it just reports `version === "legacy"` — so the `try VersionedTransaction / catch
+      // Transaction.from` shape this replaces had a branch that could never be reached, and a
+      // legacy-specific fix living inside it that could never run. Every transaction the Goshen web
+      // app produces is legacy, so that dead branch was the one that mattered.
+      const tx = VersionedTransaction.deserialize(bytes);
+      // Throws if this wallet isn't among the required signers, which is the right answer to a dApp
+      // asking us to sign something that doesn't want our signature.
+      tx.sign([keypair]);
 
       if (method === "solana_signAndSendTransaction") {
-        // Strict serialize on purpose: a broadcast genuinely does need every signature, and a
-        // transaction the network would reject should fail here with a clear error rather than
-        // there with an opaque one.
+        // A broadcast genuinely does need every signature; one the network would reject should fail
+        // here with a clear error rather than there with an opaque one.
         const sig = await connection.sendRawTransaction(tx.serialize());
         return { signature: sig };
       }
 
       return {
-        signature: bs58.encode(ourSignature(tx, versioned, keypair)),
-        // `requireAllSignatures: false` because sign-only is exactly the case where a co-signer may
-        // legitimately still be missing — a dApp collecting signatures one at a time, which is what
-        // issuing a Key does. The default throws on that.
-        transaction: Buffer.from(
-          versioned
-            ? (tx as VersionedTransaction).serialize()
-            : (tx as Transaction).serialize({ requireAllSignatures: false }),
-        ).toString("base64"),
+        signature: bs58.encode(ourSignature(tx, keypair)),
+        // Sign-only is exactly the case where a co-signer may legitimately still be missing — a dApp
+        // collecting signatures one at a time, which is what issuing a Key does. `VersionedTransaction`
+        // serializes an incomplete transaction without complaint, so no flag is needed here.
+        transaction: Buffer.from(tx.serialize()).toString("base64"),
       };
     }
     default:
