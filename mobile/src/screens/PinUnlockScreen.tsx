@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWallet } from "../wallet/WalletContext";
 import { XGOLogo } from "../components/XGOLogo";
-import { KeySplash } from "../components/KeySplash";
+import { CrownSplash } from "../components/CrownSplash";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 
@@ -30,13 +30,13 @@ function formatWait(ms: number): string {
 const UNLOCK_MIN_MS = 1000;
 
 /** Full-screen "decrypting" splash shown while the PIN-derived key runs (scrypt takes a moment
- *  on-device). The same Kingdom Key entrance as the startup splash, so unlocking reads as the same
+ *  on-device). The same crown entrance as the startup splash, so unlocking reads as the same
  *  ritual as launching. */
 function DecryptingSplash() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.splash, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <KeySplash />
+      <CrownSplash />
     </View>
   );
 }

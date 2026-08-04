@@ -59,7 +59,7 @@ function Arc({
 }
 
 export function BrandSpinner({ size = 28 }: { size?: number }) {
-  // useState, not useRef — matches Skeleton/Updating/KeySplash, and the compiler treats reading
+  // useState, not useRef — matches Skeleton/Updating/CrownSplash, and the compiler treats reading
   // a ref during render as a mistake.
   const [outer] = useState(() => new Animated.Value(0));
   const [inner] = useState(() => new Animated.Value(0));

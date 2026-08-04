@@ -36,7 +36,7 @@ import { PinUnlockScreen } from "./src/screens/PinUnlockScreen";
 import { SetupPinPrompt } from "./src/screens/SetupPinPrompt";
 import { LockScreen } from "./src/screens/LockScreen";
 import { Fade } from "./src/components/Fade";
-import { KeySplash } from "./src/components/KeySplash";
+import { CrownSplash } from "./src/components/CrownSplash";
 import { PrivacyCover } from "./src/components/PrivacyCover";
 import { AuthProvider, useAuth } from "./src/auth";
 import { WalletProvider, useWallet } from "./src/wallet/WalletContext";
@@ -175,15 +175,15 @@ const navTheme = {
   },
 };
 
-/** The key's entrance runs ~940ms, but a warm start finishes loading in a fraction of that. Hold
- *  the boot splash long enough for the turn to land — the whole animation lives on ONE instance so
- *  it can't be interrupted and restarted partway. */
+/** The crown's half-turn runs 1100ms, but a warm start finishes loading in a fraction of that.
+ *  Hold the boot splash long enough for the turn to land — the whole animation lives on ONE instance
+ *  so it can't be interrupted and restarted partway. */
 const SPLASH_MIN_MS = 1250;
 
 function Splash({ animate = true }: { animate?: boolean }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-      <KeySplash animate={animate} />
+      <CrownSplash animate={animate} />
     </View>
   );
 }
