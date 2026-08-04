@@ -8,7 +8,7 @@
  * there is no way to tell "never collected" from "collected but not displayed".
  *
  * This records the outcome of the last attempt so the swap screen can say what happened, and so
- * the Ecosystem screen can explain an empty deposits feed instead of implying zero volume.
+ * the Treasury screen can explain an empty deposits feed instead of implying zero volume.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 

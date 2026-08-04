@@ -1,7 +1,7 @@
 /**
  * The Global Goshens communal treasury address — the single source of truth.
  *
- * This lived as TWO independent literals: one in solana/treasury.ts for the address the Ecosystem
+ * This lived as TWO independent literals: one in solana/treasury.ts for the address the Treasury
  * screen DISPLAYS, scans for holdings and reads deposits from, and one in config/swapFee.ts for
  * where swap fees actually LAND. Nothing made them agree. Editing one and missing the other — or
  * setting one env var without the other — left the app advertising a "publicly verifiable"

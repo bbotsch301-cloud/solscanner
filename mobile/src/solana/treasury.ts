@@ -11,7 +11,7 @@ import { connection } from "./connection";
 import { TREASURY_ADDRESS } from "../config/treasury";
 
 /**
- * The treasury address the app displays on the Ecosystem tab: always the main Global Goshens
+ * The treasury address the app displays on the Treasury screen: always the main Global Goshens
  * treasury, and the same address swap fees are paid to (see config/treasury.ts — they used to be
  * separate literals that could silently diverge). Deliberately independent of any Squads multisig
  * — a connected multisig is its own feature, with its vault balance shown inside the multisig hub,

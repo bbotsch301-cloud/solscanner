@@ -1,11 +1,16 @@
 /**
- * A 2-column gallery of the wallet's digital Property, artwork-first.
+ * A 2-column gallery of the wallet's Keys, artwork-first.
  *
- * Two of the sections are about what a thing IS, not what the user did with it. Property is what you
- * own — books, courses, software, music, art. Credentials are what you ARE — memberships, offices,
- * certifications. They're the same kind of token underneath, but a member's ordination and their
- * audiobook don't belong in one undifferentiated grid, so they don't share one here. (Credentials
- * move to Association once that surface exists; this is the simple start.)
+ * Two of the sections are about what a thing IS, not what the user did with it. **Credentials** are
+ * what you ARE — memberships, offices, certifications, belonging to a community. **Property** is
+ * what you own — books, courses, software, music, art. They're the same kind of token underneath,
+ * but a member's ordination and their audiobook don't belong in one undifferentiated grid.
+ *
+ * Credentials lead, and the standing hero above them leads the screen. An older version of this
+ * comment said credentials would "move to Association once that surface exists" — Association
+ * exists, and moving them there turned out to be the wrong instinct: it put who a member is behind
+ * two taps in a menu while their airdropped art had a tab. Association is the civic detail page
+ * now; standing lives here, where it is seen.
  *
  * The other two sections are about intent: a collapsed "Archived" for things the user has put away,
  * and a collapsed "Hidden" for spam-looking junk. Paints instantly from the persisted snapshot.
@@ -31,6 +36,8 @@ import {
   type CollectibleKind,
 } from "../solana/collectibles";
 import { parseDeed, propertyStatus } from "../property/deed";
+import { deriveStanding } from "../identity/membership";
+import { StandingHero } from "./StandingHero";
 import { isPublicRpc } from "../solana/connection";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
@@ -134,11 +141,14 @@ export function PropertyGallery({
   owner,
   refreshKey,
   title = "Property",
+  showStanding = false,
 }: {
   owner: string;
   refreshKey: number;
   /** Section label above the grid. Pass null when the screen already has its own title. */
   title?: string | null;
+  /** Lead with the standing hero. On by default nowhere — only the Keys tab asks for it. */
+  showStanding?: boolean;
 }) {
   const nav = useNavigation<RootNav>();
   // Seeded synchronously from the persisted snapshot (parent remounts us per owner via `key`), so
@@ -161,6 +171,14 @@ export function PropertyGallery({
   const [now] = useState(() => Date.now());
   // Bumped when the hide/archive prefs change or an item is sent away, so sections re-split.
   const [localRev, setLocalRev] = useState(0);
+
+  // Standing off the same items the grid is built from, rather than off a second read of the
+  // snapshot — so the hero and the Credentials section below it can never describe different keys.
+  // `deriveStanding` drops hidden and archived items itself, which is why it takes the raw list.
+  const standing = useMemo(() => {
+    void localRev;
+    return showStanding ? deriveStanding(items, now) : null;
+  }, [showStanding, items, now, localRev]);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,20 +258,28 @@ export function PropertyGallery({
 
   if (items.length === 0) {
     return (
-      <EmptyState
-        icon="library-outline"
-        title="No property yet"
-        subtitle={
-          isPublicRpc()
-            ? "Books, courses, music, passes and credentials you own will appear here. Set a dedicated RPC in Settings to load full artwork."
-            : "Books, courses, music, passes and credentials you own will appear here."
-        }
-      />
+      <View>
+        {standing && <StandingHero standing={standing} />}
+        <EmptyState
+          icon="key-outline"
+          title="No keys yet"
+          subtitle={
+            isPublicRpc()
+              ? "Memberships, books, courses, music and passes you hold will appear here. Set a dedicated RPC in Settings to load full artwork."
+              : "Memberships, books, courses, music and passes you hold will appear here."
+          }
+        />
+      </View>
     );
   }
 
   return (
     <View>
+      {/* Who the member is, before any of what they hold. Derived from the same snapshot the grid
+          below is built from, via the same `deriveStanding` the Association screen uses — so the two
+          screens cannot say different things about the same keys. */}
+      {standing && <StandingHero standing={standing} />}
+
       <View style={[styles.headerRow, !title && { justifyContent: "flex-end" }]}>
         {title && <Text style={styles.header}>{title}</Text>}
         {/* Cached grid on screen with a refresh in flight — say so instead of letting the count
@@ -274,7 +300,7 @@ export function PropertyGallery({
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search your property"
+            placeholder="Search your keys"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -288,6 +314,22 @@ export function PropertyGallery({
         </View>
       )}
 
+      {/* Credentials come FIRST, and neither section is collapsed. Who a member is precedes what
+          they own — §3 makes standing the foundation of identity, and this used to render it as a
+          footnote under the grid. A member with one membership key and forty airdrops had to scroll
+          past the airdrops to find the thing that says who they are. */}
+      {credentials.length > 0 && (
+        <>
+          <Text style={styles.sectionHeader}>Credentials</Text>
+          <View style={styles.grid}>
+            {credentials.map((c) => (
+              <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
+            ))}
+          </View>
+        </>
+      )}
+
+      {credentials.length > 0 && property.length > 0 && <Text style={styles.sectionHeader}>Property</Text>}
       {/* One category is no choice at all, so the row only appears once there's something to pick
           between. */}
       {filters.length > 1 && (
@@ -328,24 +370,11 @@ export function PropertyGallery({
             : query.trim()
             ? `Nothing matches “${query.trim()}”.`
             : credentials.length > 0
-              ? "No property yet — your credentials are below."
+              ? "No property yet — your credentials are above."
               : archived.length > 0
                 ? "Everything here is archived — open Archived below."
                 : "Everything here is hidden — check the Hidden section below."}
         </Text>
-      )}
-
-      {/* Not collapsed like Archived and Hidden: a member's standing is something they should see,
-          not something to go looking for. */}
-      {credentials.length > 0 && (
-        <>
-          <Text style={styles.sectionHeader}>Credentials</Text>
-          <View style={styles.grid}>
-            {credentials.map((c) => (
-              <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
-            ))}
-          </View>
-        </>
       )}
 
       {archived.length > 0 && (

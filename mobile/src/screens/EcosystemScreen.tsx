@@ -186,8 +186,12 @@ export function EcosystemScreen() {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
-      {/* No greeting: this stopped being the front door when Wallet took the first tab. You arrive
-          here deliberately, to check something. */}
+      {/* You arrive here deliberately, to check something. It was a tab called "Ecosystem" while
+          the screen has always been titled Treasury; it is a pushed route under its real name now,
+          so it needs a way back — a tab root never did. */}
+      <Pressable onPress={() => nav.goBack()} hitSlop={12} style={styles.back}>
+        <Ionicons name="chevron-back" size={22} color={colors.textMuted} />
+      </Pressable>
       <Text style={styles.greet}>Treasury</Text>
       <Text style={styles.greetSub}>Building the Kingdom Economy</Text>
 
@@ -490,6 +494,7 @@ export function EcosystemScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  back: { alignSelf: "flex-start", marginBottom: spacing(1), marginLeft: -spacing(1) },
   greet: { color: colors.text, fontSize: font.h2, fontWeight: "800" },
   scanNote: {
     color: colors.textFaint,

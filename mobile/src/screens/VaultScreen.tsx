@@ -91,7 +91,8 @@ export function VaultScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Vault" onBack={() => nav.goBack()} />
+      {/* A tab root now — no back affordance, because there is nothing to pop to. */}
+      <ScreenHeader title="Vault" subtitle="What your keys open" />
       <ScrollView
         contentContainerStyle={{ padding: spacing(4), paddingBottom: insets.bottom + spacing(8) }}
         showsVerticalScrollIndicator={false}

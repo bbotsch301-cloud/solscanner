@@ -34,7 +34,8 @@ export type RootStackParamList = {
   /** Development only — a worked deed example, so the panel can be reviewed without minting. */
   DeedPreview: undefined;
   Association: undefined;
-  Vault: undefined;
+  /** The XGO treasury dashboard. Was the "Ecosystem" tab, which is not what the screen is. */
+  Treasury: undefined;
   Browser: undefined;
   /** A single Key (non-fungible asset), by mint. */
   Collectible: { mint: string };

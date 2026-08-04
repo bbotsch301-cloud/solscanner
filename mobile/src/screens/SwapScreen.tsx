@@ -85,7 +85,7 @@ const DETENT = 5;
 /** The stops the chips below the slider name; these get a firmer bump than a plain detent. */
 const STOPS = [25, 50, 75, 100];
 
-export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
+export function SwapScreen() {
   const nav = useNavigation<RootNav>();
   const insets = useSafeAreaInsets();
 
@@ -335,24 +335,17 @@ export function SwapScreen({ asTab = false }: { asTab?: boolean }) {
     const succeeded = phase === "success";
     setSheetOpen(false);
     if (!succeeded) return;
-    // As the tab root there's nothing to pop — just clear the form.
-    if (asTab) {
-      setAmt("");
-      setQuote(null);
-    } else {
-      nav.goBack();
-    }
+    nav.goBack();
   };
 
   const canSwap = !isSolana || IS_MAINNET; // EVM is always mainnet
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
-      <ScreenHeader
-        title="Swap"
-        size="modal"
-        onClose={asTab ? undefined : () => nav.goBack()}
-      />
+      {/* Always closable. Swap used to also be a tab root, where there was nothing to pop to and
+          the close button was hidden; it is only ever a pushed screen now — reached from Wallet or
+          from a token — so the way out is unconditional. */}
+      <ScreenHeader title="Swap" size="modal" onClose={() => nav.goBack()} />
 
       <RefreshScroll
         refreshing={refreshing}

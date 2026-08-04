@@ -16,13 +16,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Card } from "../components/Card";
-import { HeroCard } from "../components/HeroCard";
 import { IconChip } from "../components/IconChip";
 import { ScreenHeader } from "../components/ScreenHeader";
-import { deriveStanding, standingCount, type StandingKey } from "../identity/membership";
+import { StandingHero } from "../components/StandingHero";
+import { deriveStanding, type StandingKey } from "../identity/membership";
 import { cachedCollectibles } from "../solana/collectibles";
 import { useWallet } from "../wallet/WalletContext";
-import { colors, font, radius, semantic, shortAddress, spacing, tracking, weight } from "../theme";
+import { colors, font, radius, shortAddress, spacing, tracking, weight } from "../theme";
 import type { RootNav } from "../navigation";
 
 const monthYear = (ms: number): string =>
@@ -105,42 +105,12 @@ export function AssociationScreen() {
         contentContainerStyle={{ padding: spacing(4), paddingBottom: insets.bottom + spacing(8) }}
         showsVerticalScrollIndicator={false}
       >
-        {standing.gateway ? (
-          <HeroCard>
-            <View style={styles.heroTop}>
-              <Text style={styles.heroTitle}>{standing.gateway.item.name}</Text>
-              {standing.gateway.item.collectionVerified && (
-                <View style={styles.verified}>
-                  <Ionicons name="checkmark-circle" size={13} color={semantic.heroText} />
-                  <Text style={styles.verifiedText}>Verified</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.heroSub}>
-              {standing.gateway.issuedAt != null
-                ? `Member since ${monthYear(standing.gateway.issuedAt)}`
-                : "Membership held"}
-            </Text>
-            <Text style={styles.heroCount}>
-              {standingCount(standing)} standing key{standingCount(standing) === 1 ? "" : "s"}
-            </Text>
-          </HeroCard>
-        ) : (
-          // Not an error state. Plenty of members will hold property before they hold membership,
-          // and an empty screen would read as something being broken.
-          <Card style={styles.noMember}>
-            <Text style={styles.noMemberTitle}>No Gateway Membership held</Text>
-            <Text style={styles.noMemberBody}>
-              Membership, offices, communities and credentials all appear here once the keys granting
-              them are in this wallet. Nothing is stored in an account — your standing is whatever
-              your keys say it is.
-            </Text>
-          </Card>
-        )}
+        <StandingHero standing={standing} />
 
-        <KeyList title="Offices" keys={standing.offices} onOpen={open} />
-        <KeyList title="Credentials" keys={standing.credentials} onOpen={open} />
-        <KeyList title="Communities" keys={standing.communities} onOpen={open} />
+        {/* Only the lapsed ones. Offices, credentials and communities are all on the Keys tab now,
+            with their artwork and one tap to the deed — listing them here as names and dates was the
+            same keys told twice, worse. Lapsed keys are not on that tab's live sections, and a term
+            that has run out is exactly the thing a member needs to be able to find. */}
         <KeyList title="Lapsed" keys={standing.lapsed} onOpen={open} />
 
         <Text style={styles.sectionTitle}>Governing</Text>
@@ -185,15 +155,6 @@ export function AssociationScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing(2) },
-  heroTitle: { color: semantic.heroText, fontSize: font.h2, fontWeight: weight.black, flexShrink: 1 },
-  verified: { flexDirection: "row", alignItems: "center", gap: 4 },
-  verifiedText: { color: semantic.heroText, fontSize: font.tiny, fontWeight: weight.bold },
-  heroSub: { color: semantic.heroTextDim, fontSize: font.small, fontWeight: weight.medium },
-  heroCount: { color: semantic.heroTextDim, fontSize: font.tiny },
-  noMember: { borderRadius: radius.md, gap: spacing(2) },
-  noMemberTitle: { color: colors.text, fontSize: font.h3, fontWeight: weight.semibold },
-  noMemberBody: { color: colors.textMuted, fontSize: font.small, lineHeight: 20 },
   sectionTitle: {
     color: colors.textMuted,
     fontSize: font.tiny,

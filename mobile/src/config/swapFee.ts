@@ -70,7 +70,7 @@ export function feeSideFor(inputMint: string, outputMint: string): "input" | "ou
  * mint. Jupiter (since Jan 2025) needs no referral program — any token account works — but it
  * won't create the account, so the swap flow creates it idempotently on first use.
  *
- * Defaults to the DISPLAYED treasury rather than repeating its address, so the Ecosystem screen
+ * Defaults to the DISPLAYED treasury rather than repeating its address, so the Treasury screen
  * can't advertise one account while fees land in another. EXPO_PUBLIC_SOLANA_FEE_OWNER still
  * overrides it if the two are ever meant to differ — but that now has to be deliberate.
  *

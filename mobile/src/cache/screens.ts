@@ -20,7 +20,7 @@ import type { Candle } from "../prices/candles";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Everything the Ecosystem (treasury) screen needs to paint a full page with no network at all.
+/** Everything the Treasury screen needs to paint a full page with no network at all.
  *  Token names/logos are deliberately absent — solana/tokens.ts already persists those per mint,
  *  and duplicating them here would just let the two copies disagree. */
 export interface EcoSnapshot {

@@ -10,7 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Font from "expo-font";
 import { EcosystemScreen } from "./src/screens/EcosystemScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
-import { PropertyScreen } from "./src/screens/PropertyScreen";
+import { KeysScreen } from "./src/screens/KeysScreen";
 import { MoreScreen } from "./src/screens/MoreScreen";
 import { GovernScreen } from "./src/screens/GovernScreen";
 import { ActivityScreen } from "./src/screens/ActivityScreen";
@@ -91,16 +91,14 @@ const Tab = createBottomTabNavigator();
 // Filled icon when the tab is focused, outline when it isn't — the active tab reads at a glance.
 const TAB_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Wallet: "wallet",
-  Swap: "swap-horizontal",
-  Property: "library",
-  Ecosystem: "planet",
+  Keys: "key",
+  Vault: "lock-closed",
   More: "ellipsis-horizontal",
 };
 const TAB_ICON_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Wallet: "wallet-outline",
-  Swap: "swap-horizontal-outline",
-  Property: "library-outline",
-  Ecosystem: "planet-outline",
+  Keys: "key-outline",
+  Vault: "lock-closed-outline",
   More: "ellipsis-horizontal-outline",
 };
 
@@ -136,17 +134,23 @@ function Tabs() {
       })}
       screenListeners={{ tabPress: () => haptics.select() }}
     >
-      {/* Wallet leads: it's the only tab that answers "what do I have and what can I do with it",
-          and it's where every session actually starts. Property earns a tab because the digital
-          property is the product, not a submenu. Ecosystem keeps its place — the treasury being
-          visible is the point of it — but no longer claims to be "Home". The Browser moved to
-          More; it's a power-user surface and was the weakest of the five. */}
+      {/* Four tabs, in the order a member's questions actually arrive: what do I have, who am I and
+          what do I own, what can I open, and everything else.
+
+          Swap lost its tab. It is a way to exchange one token for another, and this app's stated
+          principle is property over speculation — giving a DEX a fifth of the tab bar said the
+          opposite. Nothing was lost: it was already an action on Wallet and on any token, and the
+          modal route below is the same screen the tab was rendering.
+
+          Ecosystem lost its tab too, for a plainer reason: the screen behind it is titled
+          "Treasury" and is a treasury dashboard. It is a row in More now, under its own name.
+
+          Vault gained one. It is where content is actually delivered — the thing a Key is FOR — and
+          it was two taps down inside More, which is where things go when nobody has decided they
+          matter. */}
       <Tab.Screen name="Wallet" component={HomeScreen} />
-      <Tab.Screen name="Swap">
-        {() => <SwapScreen asTab />}
-      </Tab.Screen>
-      <Tab.Screen name="Property" component={PropertyScreen} />
-      <Tab.Screen name="Ecosystem" component={EcosystemScreen} />
+      <Tab.Screen name="Keys" component={KeysScreen} />
+      <Tab.Screen name="Vault" component={VaultScreen} />
       <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
@@ -295,7 +299,11 @@ function Root() {
               rather than a hidden one — a sample deed must never be reachable in a real wallet. */}
           {__DEV__ && <Stack.Screen name="DeedPreview" component={DeedPreviewScreen} />}
           <Stack.Screen name="Association" component={AssociationScreen} />
-          <Stack.Screen name="Vault" component={VaultScreen} />
+          {/* The treasury dashboard. It used to be the "Ecosystem" tab, which is not what it is —
+              the screen has always been titled Treasury. Deliberately NOT also a tab: the app has
+              one Swap registered twice (tab and modal), and one route name resolving to two places
+              is a thing to stop repeating, not to copy. */}
+          <Stack.Screen name="Treasury" component={EcosystemScreen} />
           <Stack.Screen name="Legal" component={LegalScreen} />
         </Stack.Group>
       </Stack.Navigator>

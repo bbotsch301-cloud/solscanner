@@ -3,6 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { IconChip } from "../components/IconChip";
+import { webappUrl } from "../config/webapp";
+import { requestBrowserUrl } from "../browser/openRequest";
+import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing } from "../theme";
 import type { RootNav } from "../navigation";
 
@@ -36,6 +39,19 @@ function Row({
 export function MoreScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<RootNav>();
+
+  // Null when no web app is configured, which is what disables the rows below rather than a
+  // separate flag — the link and the reason it works are the same value.
+  const market = webappUrl("market");
+  const issue = webappUrl("issue");
+
+  /** Hand a web-app URL to the bridged browser. Same handoff a portal Key already uses. */
+  const open = (url: string) => {
+    haptics.tap();
+    requestBrowserUrl(url);
+    nav.navigate("Browser");
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -46,7 +62,7 @@ export function MoreScreen() {
       <View style={styles.group}>
         <Row icon="ribbon" label="Association" onPress={() => nav.navigate("Association")} />
         <View style={styles.divider} />
-        <Row icon="lock-closed" label="Vault" onPress={() => nav.navigate("Vault")} />
+        <Row icon="business" label="Treasury" onPress={() => nav.navigate("Treasury")} />
         <View style={styles.divider} />
         <Row icon="wallet" label="Wallets & accounts" onPress={() => nav.navigate("Wallets")} />
         <View style={styles.divider} />
@@ -63,11 +79,20 @@ export function MoreScreen() {
         <Row icon="settings" label="Settings" onPress={() => nav.navigate("Settings")} />
       </View>
 
-      <Text style={styles.sectionTitle}>Ecosystem</Text>
+      {/* The half of the system that isn't this app. The wallet holds keys and proves what you own;
+          buying, browsing communities and issuing all happen on the web app, and land back here as
+          Keys. So these open it in the bridged browser rather than being rebuilt inside a wallet.
+
+          Both stay disabled until a web-app URL is configured. A row that goes nowhere is the thing
+          this replaced — "Impact" and "Marketplace" sat here hard-coded as "Coming soon" pointing at
+          nothing — so a row that can't work says so rather than failing on tap. */}
+      <Text style={styles.sectionTitle}>Goshen</Text>
       <View style={styles.group}>
-        <Row icon="heart" label="Impact" soon />
+        <Row icon="storefront" label="Marketplace" soon={!market} onPress={() => market && open(market)} />
         <View style={styles.divider} />
-        <Row icon="storefront" label="Marketplace" soon />
+        {/* The wallet has no issuing surface by design — it never holds a key it didn't earn the
+            right to hold. A creator goes to the web app, signs there, and the key arrives here. */}
+        <Row icon="add-circle" label="Issue a Key" soon={!issue} onPress={() => issue && open(issue)} />
       </View>
 
       <Text style={styles.sectionTitle}>Legal</Text>
