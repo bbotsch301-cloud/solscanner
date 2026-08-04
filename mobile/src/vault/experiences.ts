@@ -18,9 +18,11 @@
  */
 import { resolveAccess } from "../access/resolve";
 import { parseDeed } from "../property/deed";
+import { BY_MIME, KINDS, type ExperienceId } from "../property/kinds";
 import { isArchived, isHiddenItem, type Collectible } from "../solana/collectibles";
 
-export type ExperienceId = "library" | "learning" | "media" | "documents" | "software" | "ai" | "passes";
+/** Re-exported so screens keep importing the shelf type from the module that groups by it. */
+export type { ExperienceId };
 
 export interface Experience {
   id: ExperienceId;
@@ -33,38 +35,27 @@ const ORDER: ExperienceId[] = ["library", "learning", "media", "documents", "sof
 /**
  * Which experience an item belongs to.
  *
- * Kind first, because the issuer stating "this is a Course" is better evidence than the extension
- * of whatever file happens to be attached. Mime only decides the cases kind leaves genuinely open:
- * a bare `file` could be a PDF to read or a video to watch, and those aren't the same experience.
+ * Kind first, because the issuer stating "this is a Course" is better evidence than the extension of
+ * whatever file happens to be attached. Mime only decides the cases kind leaves genuinely open: a
+ * bare `file` could be a PDF to read or a video to watch, and those aren't the same experience.
+ *
+ * The kind half is no longer a switch here. It was a third table keyed by kind — alongside the badge
+ * table and the verb table — and its `default: return null` meant a newly added kind silently became
+ * "not vault content" and never reached a shelf. The answer now lives in `property/kinds.ts` where
+ * `Record<CollectibleKind, …>` forces it to be stated. That serves the intent of the old comment
+ * here better than the old comment's own mechanism did: a new kind is triaged where it is declared,
+ * rather than failing to compile whichever screen was reached first.
+ *
+ * What stays is the part that genuinely isn't about kind — reading the file.
  */
 function experienceOf(item: Collectible, mime?: string): ExperienceId | null {
-  switch (item.kind) {
-    case "book":
-      return "library";
-    case "course":
-      return "learning";
-    case "music":
-      return "media";
-    case "software":
-      return "software";
-    case "ai":
-      return "ai";
-    case "ticket":
-    case "subscription":
-    case "portal":
-      return "passes";
-    case "file":
-    case "art":
-      if (mime?.startsWith("video/") || mime?.startsWith("audio/")) return "media";
-      if (mime === "application/pdf" || mime === "application/epub+zip") return "documents";
-      // An art piece with an animation_url is something to watch; otherwise it isn't vault content.
-      return item.kind === "art" ? (item.animationUrl ? "media" : null) : "documents";
-    default:
-      // Standing (see STANDING_VALUES in solana/collectibles.ts) isn't vault content —
-      // it belongs on the Association screen. Deliberately not an assertNever: a new HOLDING kind
-      // should land here and be triaged, not fail to compile a screen that merely groups things.
-      return null;
-  }
+  const declared = KINDS[item.kind].experience;
+  if (declared !== BY_MIME) return declared;
+
+  if (mime?.startsWith("video/") || mime?.startsWith("audio/")) return "media";
+  if (mime === "application/pdf" || mime === "application/epub+zip") return "documents";
+  // An art piece with an animation_url is something to watch; otherwise it isn't vault content.
+  return item.kind === "art" ? (item.animationUrl ? "media" : null) : "documents";
 }
 
 /**

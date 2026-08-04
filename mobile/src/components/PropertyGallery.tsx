@@ -41,25 +41,10 @@ import { reconcileHoldings } from "../property/keyCopy/sweep";
 import { StandingHero } from "./StandingHero";
 import { isPublicRpc } from "../solana/connection";
 import { haptics } from "../ui/haptics";
+import { kindBadge } from "../property/kinds";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
 import type { RootNav } from "../navigation";
 
-/** Access passes get a labelled badge so they read as what they unlock; plain art stays unbadged. */
-const KIND_BADGE: Partial<Record<CollectibleKind, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }>> = {
-  ticket: { label: "Ticket", icon: "ticket-outline", color: colors.primary },
-  membership: { label: "Member", icon: "card-outline", color: colors.accent },
-  credential: { label: "Credential", icon: "ribbon-outline", color: colors.primary },
-  office: { label: "Office", icon: "shield-outline", color: colors.primary },
-  community: { label: "Community", icon: "people-circle-outline", color: colors.accent },
-  subscription: { label: "Subscription", icon: "refresh-outline", color: colors.warning },
-  book: { label: "Book", icon: "book-outline", color: colors.positive },
-  course: { label: "Course", icon: "school-outline", color: colors.positive },
-  software: { label: "Software", icon: "code-slash-outline", color: colors.textMuted },
-  music: { label: "Music", icon: "musical-notes-outline", color: colors.accent },
-  ai: { label: "AI", icon: "sparkles-outline", color: colors.primary },
-  portal: { label: "Portal", icon: "planet-outline", color: colors.accent },
-  file: { label: "File", icon: "document-outline", color: colors.textMuted },
-};
 
 /** Show the search field only once the collection is big enough to need it. */
 const SEARCH_THRESHOLD = 12;
@@ -97,7 +82,7 @@ function ItemCard({
   dimmed?: boolean;
   onPress: () => void;
 }) {
-  const badge = KIND_BADGE[item.kind];
+  const badge = kindBadge(item.kind);
   // A lapsed term is worth saying in the grid, because it changes what the item is good for. An
   // active one isn't — badging everything would just make the wall of artwork noisier.
   const status = propertyStatus(parseDeed(item), now);

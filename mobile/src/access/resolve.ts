@@ -12,6 +12,7 @@
 import type { Collectible, CollectibleKind } from "../solana/collectibles";
 import { assertNever } from "../chains/registry";
 import { isSafeContentUrl } from "../solana/uri";
+import { KINDS } from "../property/kinds";
 
 export interface Access {
   url: string;
@@ -70,38 +71,13 @@ export function resolveAccess(item: Collectible): Access | null {
   return { url, mime, route: item.kind === "portal" ? "browser" : "tab" };
 }
 
-/** Verb for the primary action, so a book reads "Read" rather than a generic "Open". */
+/**
+ * Verb for the primary action, so a book reads "Read" rather than a generic "Open".
+ *
+ * Was a fourteen-case switch here; the answer now lives beside every other per-kind fact in
+ * `property/kinds.ts`. Kept as a function so call sites read the same and the table stays one
+ * import away rather than spread across screens.
+ */
 export function accessVerb(kind: CollectibleKind): string {
-  switch (kind) {
-    case "book":
-      return "Read";
-    case "ticket":
-      return "Open ticket";
-    case "membership":
-      return "Enter";
-    case "portal":
-      return "Enter portal";
-    case "file":
-      return "View file";
-    case "course":
-      return "Start course";
-    case "music":
-      return "Listen";
-    case "software":
-      return "Open software";
-    case "ai":
-      return "Open assistant";
-    case "credential":
-      return "View credential";
-    case "office":
-      return "View office";
-    case "community":
-      return "Enter community";
-    case "subscription":
-      return "Open";
-    case "art":
-      return "Open";
-    default:
-      return assertNever(kind, "collectible kind in accessVerb");
-  }
+  return KINDS[kind].verb;
 }

@@ -34,6 +34,7 @@ import { burnCollectible, burnPreflight, type BurnPlan } from "../solana/burn";
 import { sendPreflight, type SendPlan } from "../solana/sendable";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
+import { KINDS } from "../property/kinds";
 import { parseDeed, propertyStatus, deedAllowsTransfer } from "../property/deed";
 import { withOnChainDeed, type Amendability } from "../property/onchainDeed";
 import { loadSeenDeed, recordSeenDeed } from "../property/deedHistory";
@@ -62,22 +63,6 @@ function isPlayable(item: Collectible, mime: string | undefined): boolean {
   return !!mime && (mime.startsWith("video/") || mime.startsWith("audio/"));
 }
 
-const KIND_LABEL: Record<Collectible["kind"], string> = {
-  ticket: "Ticket",
-  membership: "Membership",
-  office: "Office",
-  credential: "Credential",
-  community: "Community",
-  subscription: "Subscription",
-  book: "Book",
-  course: "Course",
-  software: "Software",
-  music: "Music",
-  ai: "AI",
-  portal: "Portal",
-  file: "File",
-  art: "Collectible",
-};
 
 export function CollectibleDetailScreen() {
   const nav = useNavigation<RootNav>();
@@ -367,7 +352,7 @@ export function CollectibleDetailScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title={KIND_LABEL[item.kind]} size="modal" onClose={() => nav.goBack()} />
+      <ScreenHeader title={KINDS[item.kind].title} size="modal" onClose={() => nav.goBack()} />
       <ScrollView contentContainerStyle={{ padding: spacing(4), paddingBottom: insets.bottom + spacing(8) }} showsVerticalScrollIndicator={false}>
         <Artwork uri={item.image} name={item.name} radius={radius.lg} />
 
