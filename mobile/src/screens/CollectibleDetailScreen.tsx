@@ -29,6 +29,7 @@ import { burnCollectible, burnPreflight, type BurnPlan } from "../solana/burn";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
 import { parseDeed, propertyStatus, deedAllowsTransfer } from "../property/deed";
+import { withOnChainDeed } from "../property/onchainDeed";
 import { openContentUrl } from "../access/openContent";
 import { attemptGatedUrl } from "../access/vault";
 import { navigationRef } from "../navigationRef";
@@ -87,7 +88,28 @@ export function CollectibleDetailScreen() {
     };
   }, [cached, mint]);
 
-  const item = cached ?? fetched ?? undefined;
+  const indexed = cached ?? fetched ?? undefined;
+
+  // The deed, read from the mint account rather than from the indexer's summary of it. One RPC call
+  // for the one asset on screen (which is why this isn't done in the gallery), and it resolves after
+  // first paint — so the screen renders immediately from the snapshot and the terms firm up a moment
+  // later, rather than the whole item waiting on the chain.
+  const [onChain, setOnChain] = useState<Collectible | null>(null);
+  useEffect(() => {
+    if (!indexed) return;
+    let cancelled = false;
+    void (async () => {
+      const enriched = await withOnChainDeed(indexed);
+      // Only re-render when the chain actually added something; withOnChainDeed hands back the same
+      // object when it didn't, which is every asset that carries no deed.
+      if (!cancelled && enriched !== indexed) setOnChain(enriched);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [indexed]);
+
+  const item = onChain ?? indexed;
   // Derived from the item (so a freshly-fetched one is right too), with the user's tap taking over.
   const [override, setOverride] = useState<boolean | null>(null);
   const hiddenNow = override ?? (item ? isHiddenItem(item) : false);

@@ -6,9 +6,18 @@
  * rendered those rights as an anonymous row of trait chips: the deed was sitting in the metadata we
  * already fetch and we showed it as unlabelled key/value pairs. This parses it.
  *
- * Deliberately on-chain-only. The terms come from `Collectible.attributes`, which BOTH fetch paths
- * in solana/collectibles.ts populate, so a deed reads offline from the cached snapshot and is
- * verifiable against the chain by anyone. No server, and nothing to trust but the asset itself.
+ * Deliberately on-chain-only: no server, and nothing to trust but the asset itself.
+ *
+ * The terms come from `Collectible.attributes`, and where those come from is worth being exact
+ * about, because this comment used to claim both fetch paths in solana/collectibles.ts populate
+ * them and only one does. The DAS path populates attributes from the indexer. The public-RPC
+ * fallback populates NONE — an asset resolved that way parses to a null deed, not a partial one.
+ * And whether an indexer maps Token-2022 `additionalMetadata` into its attributes at all is the
+ * indexer's choice.
+ *
+ * So `property/onchainDeed.ts` reads the deed from the mint account directly and merges it in ahead
+ * of anything the indexer said. That is the authoritative path; this parser is the same either way,
+ * because both hand it the same shape.
  *
  * Issuers write these by hand, so every rule below is deliberately tolerant about spelling and
  * shape — but never about certainty. See `bool()` for the part that matters most.

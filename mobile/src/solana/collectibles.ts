@@ -285,7 +285,7 @@ export function removeCollectible(owner: string, mint: string): void {
  * be an exact-equality check, while the deed parser next door — whose comment says it follows "the
  * same tolerant spirit as parseKind" — was doing the tolerant thing all along.
  */
-function parseKind(attrs: { trait: string; value: string }[] | undefined): CollectibleKind {
+export function parseKind(attrs: { trait: string; value: string }[] | undefined): CollectibleKind {
   const raw = attrs?.find((a) => ["type", "kind", "assettype", "keytype"].includes(norm(a.trait)))?.value;
   if (!raw) return "art";
   const v = norm(raw);
