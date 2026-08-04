@@ -28,14 +28,37 @@ export interface Trait {
 }
 
 /**
+ * Whether this deed can still be rewritten by the issuer.
+ *
+ * The system deliberately keeps the metadata update authority after minting, because the publish
+ * path authorises on it — so a deed is *recorded*, not frozen, unless the issuer has given that
+ * authority up. Canonical §18 says so in as many words, and it is the single most important thing a
+ * buyer can know about terms they are about to rely on.
+ *
+ * Read from the mint account rather than from a trait claiming it. A trait saying "Terms Final" is
+ * written by the same authority that could take it back; only the absence of that authority is
+ * evidence. "The chain is the authority" applied to the deed's own permanence.
+ *
+ * `unknown` is not a soft `amendable`. It means this asset has no Token-2022 metadata at all — an
+ * ordinary Metaplex NFT — so we have learned nothing and must say nothing.
+ */
+export type Amendability = "final" | "amendable" | "unknown";
+
+export interface OnChainDeed {
+  traits: Trait[];
+  /** Never `unknown` here — a null result is how "unknown" is expressed. */
+  amendability: "final" | "amendable";
+}
+
+/**
  * What the chain says, per mint, for this session.
  *
- * Three states, and the third is why this is a Map of `Trait[] | null` rather than a Map that gets
- * deleted on failure: `undefined` means not looked up, `null` means looked up and there was nothing
- * there (a legacy Metaplex NFT, ordinary art, a token with no metadata extension). Without that
- * distinction every re-render of a deedless asset re-asks the RPC the same settled question.
+ * Three states, and the third is why this is a Map of `OnChainDeed | null` rather than a Map that
+ * gets deleted on failure: `undefined` means not looked up, `null` means looked up and there was
+ * nothing there (a legacy Metaplex NFT, ordinary art, a token with no metadata extension). Without
+ * that distinction every re-render of a deedless asset re-asks the RPC the same settled question.
  */
-const cache = new Map<string, Trait[] | null>();
+const cache = new Map<string, OnChainDeed | null>();
 
 /**
  * Keyed by cluster as well as mint. The same address is a different account on devnet and mainnet,
@@ -52,7 +75,7 @@ const keyFor = (mint: string) => `${CLUSTER}:${mint}`;
  * caller's side both mean "the chain told us nothing" — but it is NOT cached, so the next visit
  * asks again rather than remembering an outage as a fact about the asset.
  */
-export async function fetchOnChainTraits(mint: string): Promise<Trait[] | null> {
+export async function fetchOnChainDeed(mint: string): Promise<OnChainDeed | null> {
   const cacheKey = keyFor(mint);
   const hit = cache.get(cacheKey);
   if (hit !== undefined) return hit;
@@ -70,7 +93,10 @@ export async function fetchOnChainTraits(mint: string): Promise<Trait[] | null> 
     const traits = pairs
       .filter(([k, v]) => k != null && v != null && String(k).trim() !== "")
       .map(([k, v]) => ({ trait: String(k), value: String(v) }));
-    const result = traits.length ? traits : null;
+    // No terms means nothing to say about whether they can change.
+    const result: OnChainDeed | null = traits.length
+      ? { traits, amendability: meta?.updateAuthority ? "amendable" : "final" }
+      : null;
     cache.set(cacheKey, result);
     return result;
   } catch {
@@ -97,17 +123,26 @@ export function mergeTraits(indexed: Trait[] | undefined, onchain: Trait[] | nul
 }
 
 /**
- * The same asset, with its deed read from the chain where the chain has one.
+ * The same asset, with its deed read from the chain where the chain has one, and whether those
+ * terms can still be rewritten.
  *
- * Returns the item unchanged when there is nothing on-chain, so a caller can use the result
- * unconditionally — including for the great majority of assets that carry no deed at all.
+ * Returns the item unchanged (and `unknown`) when there is nothing on-chain, so a caller can use
+ * the result unconditionally — including for the great majority of assets that carry no deed. The
+ * identity of the returned object is meaningful: `item === result.item` means the chain added
+ * nothing, which is how the caller avoids a pointless re-render.
  */
-export async function withOnChainDeed(item: Collectible): Promise<Collectible> {
-  const onchain = await fetchOnChainTraits(item.mint);
-  if (!onchain?.length) return item;
+export async function withOnChainDeed(
+  item: Collectible,
+): Promise<{ item: Collectible; amendability: Amendability }> {
+  const found = await fetchOnChainDeed(item.mint);
+  if (!found) return { item, amendability: "unknown" };
+  const onchain = found.traits;
   const attributes = mergeTraits(item.attributes, onchain);
   // The kind is read out of these same traits, and was decided at fetch time from what the indexer
   // had. If the chain is where `Type` was written, an asset that arrived as generic "art" is in fact
   // a book — so it is re-derived here rather than left disagreeing with its own deed.
-  return { ...item, attributes, kind: parseKind(attributes) };
+  return {
+    item: { ...item, attributes, kind: parseKind(attributes) },
+    amendability: found.amendability,
+  };
 }

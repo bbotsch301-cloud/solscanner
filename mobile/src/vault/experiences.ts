@@ -17,6 +17,7 @@
  * vault that lists things you can't open isn't a vault.
  */
 import { resolveAccess } from "../access/resolve";
+import { parseDeed } from "../property/deed";
 import { isArchived, isHiddenItem, type Collectible } from "../solana/collectibles";
 
 export type ExperienceId = "library" | "learning" | "media" | "documents" | "software" | "ai" | "passes";
@@ -79,8 +80,16 @@ export function vaultExperiences(items: Collectible[]): Experience[] {
   for (const item of items) {
     if (isHiddenItem(item) || isArchived(item.mint)) continue;
     const access = resolveAccess(item);
-    if (!access) continue; // nothing to open — not vault content
-    const id = experienceOf(item, access.mime);
+    // No on-chain URL doesn't mean nothing to open. A key issued by the platform carries no URI at
+    // all — the deed is in the mint account and the content is server-held, fetched at the moment
+    // the member reaches for it (access/vault.ts). So a deed is itself the evidence that this is
+    // property with something behind it, and the shelf lists it.
+    //
+    // This narrows the rule at the top of the file rather than abandoning it. "A vault that lists
+    // things you can't open isn't a vault" is still true of a random airdrop with no payload and no
+    // deed; it was never true of a book whose file lives on a server, and that is now most of them.
+    if (!access && !parseDeed(item)) continue;
+    const id = experienceOf(item, access?.mime);
     if (!id) continue;
     const bucket = buckets.get(id);
     if (bucket) bucket.push(item);

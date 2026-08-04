@@ -19,7 +19,8 @@ import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Card } from "./Card";
 import { ACTED_ON_RIGHTS, RIGHT_LABEL, RIGHT_ORDER, type Deed, type RightKey } from "../property/deed";
-import { colors, font, radius, spacing, tracking, weight } from "../theme";
+import type { Amendability } from "../property/onchainDeed";
+import { colors, font, leading, radius, spacing, tracking, weight } from "../theme";
 
 /** Two decimals, trailing zeros dropped — so 0.11% stays 0.11% and 10% doesn't read as "10.00%". */
 const pct = (bps: number): string => `${Number((bps / 100).toFixed(2))}%`;
@@ -58,7 +59,16 @@ function Rights({ deed, keys }: { deed: Deed; keys: RightKey[] }) {
   );
 }
 
-export function DeedPanel({ deed, owner }: { deed: Deed; owner?: string }) {
+export function DeedPanel({
+  deed,
+  owner,
+  amendability = "unknown",
+}: {
+  deed: Deed;
+  owner?: string;
+  /** Whether the issuer can still rewrite this deed. Defaults to saying nothing. */
+  amendability?: Amendability;
+}) {
   // Only rights the deed actually states — see the note at the top of this file.
   const stated = RIGHT_ORDER.filter((r) => deed.rights[r] !== undefined);
   const actedOn = stated.filter((r) => ACTED_ON_RIGHTS.has(r));
@@ -152,6 +162,29 @@ export function DeedPanel({ deed, owner }: { deed: Deed; owner?: string }) {
         </View>
       )}
 
+      {/* Whether these terms can still be rewritten. Read from the mint account — specifically from
+          whether a metadata update authority still exists — rather than from any trait claiming it,
+          because a trait saying "Terms Final" is written by the same authority that could take it
+          back. `unknown` renders nothing: an ordinary Metaplex NFT has told us neither thing. */}
+      {amendability === "final" && (
+        <View style={styles.permanence}>
+          <Ionicons name="lock-closed" size={14} color={colors.positive} />
+          <Text style={styles.permanenceText}>
+            These terms are final. The issuer gave up the ability to change them, so this deed reads
+            the same forever.
+          </Text>
+        </View>
+      )}
+      {amendability === "amendable" && (
+        <View style={styles.permanence}>
+          <Ionicons name="create-outline" size={14} color={colors.textMuted} />
+          <Text style={styles.permanenceText}>
+            The issuer can still amend these terms. If they do, this wallet will show you what
+            changed.
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.provenance}>Read from this asset&apos;s on-chain metadata.</Text>
     </Card>
   );
@@ -176,6 +209,18 @@ const styles = StyleSheet.create({
     marginTop: spacing(3),
   },
   groupNote: { color: colors.textFaint, fontSize: font.tiny, marginTop: spacing(2) },
+  permanence: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing(2),
+    marginTop: spacing(3),
+  },
+  permanenceText: {
+    color: colors.textMuted,
+    fontSize: font.tiny,
+    flex: 1,
+    lineHeight: font.tiny * leading.relaxed,
+  },
   rights: { marginTop: spacing(2), gap: spacing(2) },
   rightRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rightLabel: { color: colors.text, fontSize: font.body },

@@ -243,8 +243,11 @@ function when(raw: string): number | null | undefined {
  *
  * Returns null when nothing deed-shaped is present, so ordinary art doesn't render an empty deed
  * card claiming an agreement that was never written.
+ *
+ * Takes only the attributes rather than a whole Collectible, because that is genuinely all it reads
+ * — and because `deedHistory.ts` parses a stored trait list that was never an asset in memory.
  */
-export function parseDeed(item: Collectible): Deed | null {
+export function parseDeed(item: Pick<Collectible, "attributes">): Deed | null {
   const attrs = item.attributes ?? [];
   if (attrs.length === 0) return null;
 

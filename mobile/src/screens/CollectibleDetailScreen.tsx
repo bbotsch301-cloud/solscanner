@@ -1,7 +1,11 @@
 /**
- * One piece of Property: full artwork, what it is, and its actions — Open its content, Send
- * (standard NFTs only), View on Solscan, Archive (done with it, still yours) and Mark as spam
- * (junk). The item is read from the collectibles snapshot, so this screen needs no loading state.
+ * One piece of Property: full artwork, what it is, and its actions — Open its content, Send, View on
+ * Solscan, Archive (done with it, still yours) and Mark as spam (junk). The item is read from the
+ * collectibles snapshot, so the screen paints immediately and needs no loading state.
+ *
+ * Three things are then asked of the chain, after that first paint, because the snapshot cannot
+ * answer them: the deed as the mint account actually holds it, whether the token program will accept
+ * a transfer at all, and whether the terms have been rewritten since the member last read them.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
@@ -12,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Artwork } from "../components/Artwork";
 import { DeedPanel } from "../components/DeedPanel";
+import { DeedChangeBanner } from "../components/DeedChangeBanner";
 import { Button } from "../components/Button";
 import { ContactPicker } from "../components/ContactPicker";
 import {
@@ -26,12 +31,16 @@ import {
 } from "../solana/collectibles";
 import { HoldToConfirm } from "../components/HoldToConfirm";
 import { burnCollectible, burnPreflight, type BurnPlan } from "../solana/burn";
+import { sendPreflight, type SendPlan } from "../solana/sendable";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
 import { parseDeed, propertyStatus, deedAllowsTransfer } from "../property/deed";
-import { withOnChainDeed } from "../property/onchainDeed";
+import { withOnChainDeed, type Amendability } from "../property/onchainDeed";
+import { loadSeenDeed, recordSeenDeed } from "../property/deedHistory";
+import { deedChanges, type DeedDelta } from "../property/deedDiff";
 import { openContentUrl } from "../access/openContent";
 import { attemptGatedUrl } from "../access/vault";
+import { vaultConfigured } from "../config/vault";
 import { navigationRef } from "../navigationRef";
 import { useWallet } from "../wallet/WalletContext";
 import { solscanAccount } from "../solana/connection";
@@ -95,14 +104,39 @@ export function CollectibleDetailScreen() {
   // first paint — so the screen renders immediately from the snapshot and the terms firm up a moment
   // later, rather than the whole item waiting on the chain.
   const [onChain, setOnChain] = useState<Collectible | null>(null);
+  const [amendability, setAmendability] = useState<Amendability>("unknown");
+  // Has this deed been rewritten since the member last read it? The issuer keeps the authority to
+  // do that, so §18's safeguard is that the change is visible rather than impossible — which needs
+  // the wallet to remember. Resolved in the same effect below, once the terms have settled.
+  const [delta, setDelta] = useState<DeedDelta | null>(null);
   useEffect(() => {
     if (!indexed) return;
     let cancelled = false;
     void (async () => {
       const enriched = await withOnChainDeed(indexed);
-      // Only re-render when the chain actually added something; withOnChainDeed hands back the same
-      // object when it didn't, which is every asset that carries no deed.
-      if (!cancelled && enriched !== indexed) setOnChain(enriched);
+      if (cancelled) return;
+      setAmendability(enriched.amendability);
+      // Only re-render the item when the chain actually added something; withOnChainDeed hands back
+      // the same object when it didn't, which is every asset that carries no deed.
+      if (enriched.item !== indexed) setOnChain(enriched.item);
+
+      // Only now — with the terms settled — compare them against what the member last read. This
+      // sequencing is load-bearing: comparing the indexer's traits first and the merged ones a
+      // moment later would diff the deed against itself and report every first view as an
+      // amendment, which is the exact failure this is meant to prevent.
+      const traits = enriched.item.attributes;
+      if (!traits?.length) return;
+      const previous = await loadSeenDeed(indexed.mint);
+      if (cancelled) return;
+      // First sight is a baseline, not a change. A diff against nothing is not an amendment, and
+      // greeting someone with "these terms changed" the first time they open something is false.
+      if (!previous) {
+        void recordSeenDeed(indexed.mint, traits, Date.now());
+        return;
+      }
+      const d = deedChanges(previous, traits);
+      if (d.changes.length > 0) setDelta(d);
+      else void recordSeenDeed(indexed.mint, traits, Date.now());
     })();
     return () => {
       cancelled = true;
@@ -110,6 +144,31 @@ export function CollectibleDetailScreen() {
   }, [indexed]);
 
   const item = onChain ?? indexed;
+
+  // Can this actually be sent? `item.transferable` is the indexer's word for "not compressed, not
+  // programmable" — it says nothing about a Token-2022 NonTransferable mint, which the token program
+  // itself refuses. Asked of the chain, once, rather than discovered by a failed transaction.
+  const [sendPlan, setSendPlan] = useState<SendPlan | null>(null);
+  useEffect(() => {
+    if (!indexed || !owner) return;
+    let cancelled = false;
+    void (async () => {
+      const plan = await sendPreflight(indexed, owner);
+      if (!cancelled) setSendPlan(plan);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [indexed, owner]);
+
+  /** Acknowledge an amendment: the terms on screen become the ones compared against next time. */
+  const acceptDelta = () => {
+    const traits = (onChain ?? indexed)?.attributes;
+    if (indexed && traits) void recordSeenDeed(indexed.mint, traits, Date.now());
+    setDelta(null);
+    haptics.tap();
+  };
+
   // Derived from the item (so a freshly-fetched one is right too), with the user's tap taking over.
   const [override, setOverride] = useState<boolean | null>(null);
   const hiddenNow = override ?? (item ? isHiddenItem(item) : false);
@@ -145,11 +204,24 @@ export function CollectibleDetailScreen() {
   const deed = parseDeed(item);
   const status = propertyStatus(deed, now);
   // Two different questions, and the app used to only ask the first:
-  //   `item.transferable` — does the TOKEN PROGRAM allow a transfer (not compressed, not pNFT)
+  //   `sendPlan`           — will the TOKEN PROGRAM accept a transfer, asked of the chain
   //   `deedAllowsTransfer` — does the AGREEMENT allow one
   // Send needs both. A silent deed states no restriction, so it doesn't withhold anything.
   const deedTransfer = deedAllowsTransfer(deed);
-  const canSend = item.transferable && deedTransfer !== false;
+  // The chain's refusal outranks the deed's, because they are different kinds of statement: a
+  // NonTransferable mint CANNOT move, and telling someone "its deed doesn't permit transfer" would
+  // imply it otherwise could. "unreadable" is the exception — not being able to check is not a fact
+  // about the token, so a deed that does say no is the better thing to report.
+  const chainRefusal = sendPlan?.blocked && sendPlan.blocked !== "unreadable" ? sendPlan : null;
+  const canSend = sendPlan?.blocked === null && deedTransfer !== false;
+
+  // A key issued by the platform carries no on-chain URL — the deed is in the mint account and the
+  // content is server-held. `resolveAccess` therefore returns null for it, and before this the
+  // screen simply had no Open button, which made the whole publish/access path unreachable for
+  // exactly the assets it was built for. A deed is the evidence that something is behind this; the
+  // vault answers definitively when the member reaches for it, at the cost of one HTTP call and no
+  // signature (access/vault.ts asks for the challenge before it asks for biometrics).
+  const vaultMayHave = !access && !!deed && vaultConfigured() && !!keypair;
 
   const openBurn = async () => {
     if (!owner) return;
@@ -183,23 +255,23 @@ export function CollectibleDetailScreen() {
   };
 
   const openContent = async () => {
-    if (!access) return;
+    if (!access && !vaultMayHave) return;
     haptics.tap();
     // A portal may need to talk to the wallet, so it keeps the bridged in-app browser. Everything
     // else goes to a custom tab, which is a real browser engine and can actually display files.
-    if (access.route === "browser") {
+    if (access?.route === "browser") {
       requestBrowserUrl(access.url);
       nav.goBack();
       if (navigationRef.isReady()) navigationRef.navigate("Browser" as never);
       return;
     }
     // If the vault is configured and publishes this asset, prove ownership and open the
-    // short-lived link it hands back. Unconfigured (today) → null → the public link below.
-    let url = access.url;
+    // short-lived link it hands back. Unconfigured → null → the public link below, if there is one.
+    let url: string | null = access?.url ?? null;
     if (keypair && owner) {
       setUnlocking(true);
       try {
-        url = (await attemptGatedUrl(item, owner, keypair)) ?? access.url;
+        url = (await attemptGatedUrl(item, owner, keypair)) ?? url;
       } catch (e) {
         // A refusal is real information — don't quietly open the public link instead.
         Alert.alert("Locked", e instanceof Error ? e.message : "This pass didn't unlock the content.");
@@ -207,6 +279,17 @@ export function CollectibleDetailScreen() {
       } finally {
         setUnlocking(false);
       }
+    }
+
+    // A key whose content is server-held and hasn't been published yet. That's a real answer and a
+    // recoverable one — the creator publishes and it appears — so it's said rather than left as a
+    // button that does nothing.
+    if (!url) {
+      Alert.alert(
+        "Nothing published yet",
+        `"${item.name}" is yours, but its content hasn't been published to the vault yet. It'll open here once the creator publishes it.`
+      );
+      return;
     }
 
     const r = await openContentUrl(url);
@@ -281,7 +364,14 @@ export function CollectibleDetailScreen() {
         )}
         {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
 
-        {deed && <DeedPanel deed={deed} owner={owner ? shortAddress(owner, 4, 4) : undefined} />}
+        {delta && <DeedChangeBanner delta={delta} onAcknowledge={acceptDelta} />}
+        {deed && (
+          <DeedPanel
+            deed={deed}
+            owner={owner ? shortAddress(owner, 4, 4) : undefined}
+            amendability={amendability}
+          />
+        )}
 
         {/* Whatever the deed didn't claim. Splitting them this way means a trait is shown exactly
             once — in the deed if it's a deed term, here if it isn't — and never dropped. */}
@@ -297,7 +387,7 @@ export function CollectibleDetailScreen() {
         )}
 
         <View style={styles.actions}>
-          {access && (
+          {(access || vaultMayHave) && (
             <Button
               label={unlocking ? "Unlocking…" : accessVerb(item.kind)}
               icon="open-outline"
@@ -305,17 +395,27 @@ export function CollectibleDetailScreen() {
               disabled={unlocking}
             />
           )}
-          {canSend ? (
-            <Button label="Send" variant="secondary" icon="arrow-up" onPress={() => setSendOpen(true)} />
+          {chainRefusal ? (
+            // A fact about the token, in the token program's words rather than the app's.
+            <Text style={styles.noSend}>{chainRefusal.reason}</Text>
           ) : deedTransfer === false ? (
             // Careful with this sentence. The wallet CANNOT stop a transfer — a plain SPL NFT moves
             // with any other wallet or a CLI. Withholding Send states the agreement; only a
             // Token-2022 NonTransferable mint (or a rule set) enforces it. So say what's true.
             <Text style={styles.noSend}>Its deed doesn’t permit transfer, so Send is off here.</Text>
+          ) : sendPlan?.blocked === "unreadable" ? (
+            <Text style={styles.noSend}>{sendPlan.reason}</Text>
           ) : (
-            <Text style={styles.noSend}>
-              This item can’t be sent from the app{item.compressed ? " (compressed asset)" : ""}.
-            </Text>
+            // Rendered but disabled until the chain has answered, rather than appearing a moment
+            // later — a Send button that materialises after the fact is one a member has already
+            // decided isn't there.
+            <Button
+              label={canSend ? "Send" : "Checking…"}
+              variant="secondary"
+              icon="arrow-up"
+              disabled={!canSend}
+              onPress={() => setSendOpen(true)}
+            />
           )}
           <Button
             label="View on Solscan"
