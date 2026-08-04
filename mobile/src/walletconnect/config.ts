@@ -19,6 +19,8 @@
  * The Goshen web app MUST use this same id. A mismatch pairs and then silently fails to relay,
  * which looks like the wallet ignoring the site.
  */
+import type { Network } from "../solana/connection";
+
 const DEFAULT_PROJECT_ID = "d45584cd10d4697e23184ab80044a739";
 
 export const WC_PROJECT_ID = process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID || DEFAULT_PROJECT_ID;
@@ -47,21 +49,32 @@ export const WC_METADATA = {
  *
  * The first 32 characters of each cluster's genesis hash, which is how CAIP-2 names a Solana network.
  *
- * All three are advertised, not just the one the wallet is currently pointed at. Signing is
- * network-agnostic — a signature over a message is valid wherever it lands — so refusing to *pair*
- * with a devnet dApp because the wallet happens to be on mainnet would be refusing something
- * harmless. Only broadcasting cares which network it is, and `handleSolanaRequest` guards that
- * separately.
+ * **Exactly the clusters the wallet can actually be on**, enforced by `Record<Network, string>`. Both
+ * are advertised rather than only the active one: signing is network-agnostic — a signature over a
+ * message is valid wherever it lands — so refusing to *pair* with a devnet dApp because the wallet
+ * happens to be on mainnet would refuse something harmless. Only broadcasting cares, and
+ * `handleSolanaRequest` guards that separately.
  *
- * This used to be a single mainnet constant, which meant the Goshen web app — devnet-first — could
- * not pair at all. The failure surfaced as a generic "couldn't connect", because namespace approval
- * throws before anything reaches a screen that could explain it.
+ * ## Why testnet is not here
+ *
+ * It used to be, and that was a dead end nobody could see. `Network` is `"devnet" | "mainnet-beta"` —
+ * the wallet has no testnet RPC and Settings offers no testnet button — so a dApp could pair on
+ * testnet and then have every broadcast refused with "switch the wallet to match", pointing at a
+ * setting that does not exist. Balances and keys would read as empty too, because the connection is
+ * looking somewhere else entirely.
+ *
+ * Typing it against `Network` is what stops that recurring: adding a cluster to the wallet is now a
+ * compile error here until its CAIP-2 is written down, and adding one here is an error until the
+ * wallet can actually reach it. The two cannot drift apart again.
+ *
+ * (This was a single mainnet constant once, which meant the Goshen web app — devnet-first — couldn't
+ * pair at all. That failure surfaced as a generic "couldn't connect", because namespace approval
+ * throws before anything reaches a screen that could explain it.)
  */
-export const SOLANA_CAIP2_BY_CLUSTER = {
+export const SOLANA_CAIP2_BY_CLUSTER: Record<Network, string> = {
   "mainnet-beta": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   devnet: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-  testnet: "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
-} as const;
+};
 
 export const SOLANA_CAIP2_ALL = Object.values(SOLANA_CAIP2_BY_CLUSTER);
 

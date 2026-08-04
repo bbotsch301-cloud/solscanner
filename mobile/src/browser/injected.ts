@@ -213,13 +213,17 @@ export function buildInjectedProvider(seed: InjectedSeed): string {
   var wsAccount = null;
   var wsListeners = {};
   function wsEmit(ev, data) { (wsListeners[ev] || []).slice().forEach(function (cb) { try { cb(data); } catch (e) {} }); }
+  // Mainnet and devnet only, matching the Network type in solana/connection.ts. Testnet was
+  // advertised here and in the WalletConnect namespaces, and the wallet has no testnet RPC and no
+  // way to switch to one, so a dApp took the wallet at its word and then found every balance empty
+  // and every broadcast refused. Advertising a chain you cannot reach is worse than not offering it.
   function makeAccount(addr) {
-    return { address: addr, publicKey: b58decode(addr), chains: ["solana:mainnet", "solana:devnet", "solana:testnet"], features: ["solana:signAndSendTransaction", "solana:signTransaction", "solana:signMessage"], label: "XGO" };
+    return { address: addr, publicKey: b58decode(addr), chains: ["solana:mainnet", "solana:devnet"], features: ["solana:signAndSendTransaction", "solana:signTransaction", "solana:signMessage"], label: "XGO" };
   }
   function eachInput(args, fn) { return Promise.all([].slice.call(args).map(fn)); }
   var wallet = {
     version: "1.0.0", name: "XGO", icon: ICON,
-    chains: ["solana:mainnet", "solana:devnet", "solana:testnet"],
+    chains: ["solana:mainnet", "solana:devnet"],
     get accounts() { return wsAccount ? [wsAccount] : []; },
     features: {
       "standard:connect": { version: "1.0.0", connect: function () {
