@@ -44,6 +44,7 @@ import { WalletConnectProvider } from "./src/walletconnect/WalletConnectContext"
 import { WalletConnectScreen } from "./src/screens/WalletConnectScreen";
 import { TokenApprovalsScreen } from "./src/screens/TokenApprovalsScreen";
 import { CollectibleDetailScreen } from "./src/screens/CollectibleDetailScreen";
+import { PlayerScreen } from "./src/screens/PlayerScreen";
 import { ContactsScreen } from "./src/screens/ContactsScreen";
 import { LegalScreen } from "./src/screens/LegalScreen";
 import { LegalAcceptScreen } from "./src/screens/LegalAcceptScreen";
@@ -294,6 +295,7 @@ function Root() {
           <Stack.Screen name="TokenApprovals" component={TokenApprovalsScreen} />
           <Stack.Screen name="Contacts" component={ContactsScreen} />
           <Stack.Screen name="Collectible" component={CollectibleDetailScreen} />
+          <Stack.Screen name="Player" component={PlayerScreen} />
           <Stack.Screen name="Agreements" component={AgreementsScreen} />
           {/* Dev only. Registered behind __DEV__ so a release build has no route to it at all,
               rather than a hidden one — a sample deed must never be reachable in a real wallet. */}

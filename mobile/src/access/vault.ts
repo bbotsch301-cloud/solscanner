@@ -50,8 +50,19 @@
  *     7. Mint the signed URL.
  *
  *   Signed URL: https on a vault-controlled host; the token an opaque server-keyed HMAC over
- *   {contentId, walletHash, exp, nonce}. ttlSeconds <= 300 to first byte. Single-use for
- *   pdf/epub/download; exp-only for video/audio (Range requests need repeat GETs).
+ *   {contentId, walletHash, exp, nonce}. ttlSeconds <= 300 to first byte.
+ *
+ *   **Expiry-only, not single-use — this clause was wrong and the server implemented it faithfully.**
+ *   It used to say "single-use for pdf/epub/download; exp-only for video/audio". A single-use
+ *   document link dies on the reader's first byte, so backgrounding the app and returning gives a
+ *   404 that is indistinguishable from a forged link — inside the 300s window, from the wallet that
+ *   just proved ownership. Anything being *read* must survive repeated GETs for as long as its
+ *   grant lives. Keep single-use only for a true attachment download, where one fetch is the
+ *   whole transaction.
+ *
+ *   Range requests must be honoured (206 + Content-Range) or `Accept-Ranges` must not be sent.
+ *   Advertising a capability that isn't implemented is worse than not having it: a player seeking a
+ *   video silently re-downloads from byte 0 and looks merely slow.
  *   MUST NOT set cookies — iOS custom tabs share Safari's cookie jar, so a cookie would both
  *   outlive the session and let a stale Safari login bypass the on-chain check entirely.
  *   Headers: Cache-Control: private, no-store · X-Content-Type-Options: nosniff ·
@@ -65,6 +76,7 @@ import { signMessageUtf8 } from "../solana/signMessage";
 import { requireReauth } from "../security/reauth";
 import { VAULT_API, VAULT_DOMAIN, vaultConfigured } from "../config/vault";
 import { bindsWalletAndDomain } from "./siws";
+import { liveEntitlement, rememberEntitlement, type Entitlement } from "./entitlement";
 import { CLUSTER } from "../solana/connection";
 import type { Collectible } from "../solana/collectibles";
 
@@ -73,6 +85,15 @@ interface Challenge {
   message: string;
   domain?: string;
   expiresAt?: string;
+}
+
+/** What `/v1/access/grant` answers with. Every field optional — the server may omit any of them. */
+interface GrantResponse {
+  url?: string;
+  viewerUrl?: string;
+  mime?: string;
+  expiresAt?: string;
+  ttlSeconds?: number;
 }
 
 /** Thrown when the vault actively refused — the caller must NOT fall back to the public link. */
@@ -113,14 +134,30 @@ function challengeIsSafe(message: string, wallet: string, mint: string): boolean
 }
 
 /**
- * Try to obtain a gated URL for `item`.
+ * Try to obtain a grant for `item`.
  *
  * Returns null to mean "no gating applies — open the public link". Throws AccessDeniedError when
  * the vault said no, which must surface rather than silently falling back; otherwise the gate is
  * theatre, because every refusal would just open the content anyway.
+ *
+ * Returns the whole grant rather than one pre-chosen URL. It used to hand back `viewerUrl ?? url`,
+ * which is right for opening a book in a tab and wrong for everything else: a player needs the file
+ * and a viewer page is HTML, and a download needs the file too. Collapsing them here meant no caller
+ * could ask for the one it needed.
+ *
+ * **A live grant is reused before a new one is asked for.** Re-opening within the grant's own window
+ * costs no network call, no signature and no prompt — the member proved ownership minutes ago and
+ * the server set that window itself. See `access/entitlement.ts`.
  */
-export async function attemptGatedUrl(item: Collectible, wallet: string, kp: Keypair): Promise<string | null> {
+export async function attemptGatedGrant(
+  item: Collectible,
+  wallet: string,
+  kp: Keypair,
+): Promise<Entitlement | null> {
   if (!vaultConfigured()) return null;
+
+  const cached = await liveEntitlement(item.mint);
+  if (cached) return cached;
 
   let ch: Challenge | null;
   try {
@@ -142,10 +179,12 @@ export async function attemptGatedUrl(item: Collectible, wallet: string, kp: Key
   if (!challengeIsSafe(ch.message, wallet, item.mint))
     throw new AccessDeniedError("The unlock request didn't match this item, so it wasn't signed.");
 
-  if (!(await requireReauth(`Unlock "${item.name}"`))) return null;
+  // `grace` here and nowhere else in this file's neighbourhood: opening something you own is not a
+  // fund-moving action, and a member who confirmed a moment ago has not stopped owning it since.
+  if (!(await requireReauth(`Unlock "${item.name}"`, { grace: true }))) return null;
 
   const signature = bs58.encode(signMessageUtf8(kp, ch.message));
-  const g = await postJson<{ url?: string; viewerUrl?: string }>("/v1/access/grant", {
+  const g = await postJson<GrantResponse>("/v1/access/grant", {
     challengeId: ch.challengeId,
     message: ch.message,
     signature,
@@ -157,7 +196,55 @@ export async function attemptGatedUrl(item: Collectible, wallet: string, kp: Key
   if (g.status === 401) throw new AccessDeniedError("The unlock signature was rejected.");
   if (g.status === 409 || g.status === 410)
     throw new AccessDeniedError("That unlock request expired. Please try again.");
-  if (!g.json) return null;
+  if (!g.json?.url && !g.json?.viewerUrl) return null;
 
-  return g.json.viewerUrl ?? g.json.url ?? null;
+  const grant: Entitlement = {
+    url: g.json.url ?? g.json.viewerUrl!,
+    viewerUrl: g.json.viewerUrl,
+    mime: g.json.mime,
+    expiresAt: grantExpiry(g.json),
+    // The vault burns a document link on first byte and leaves media alive to its expiry, because a
+    // player seeks by re-requesting. Only a link that survives re-reading is worth remembering as
+    // one; see the note on `Entitlement.reusable`.
+    reusable: isReusable(g.json.mime),
+  };
+  void rememberEntitlement(item.mint, grant);
+  return grant;
+}
+
+/**
+ * When this grant dies, in epoch ms.
+ *
+ * The server sends both an absolute `expiresAt` and a relative `ttlSeconds`; prefer the relative
+ * one, because it is immune to a device clock that disagrees with the server's. Falls back to the
+ * contract's stated ceiling rather than assuming a grant is good indefinitely — over-estimating here
+ * produces exactly the stale-link 404 this is meant to prevent.
+ */
+function grantExpiry(g: GrantResponse): number {
+  if (typeof g.ttlSeconds === "number" && g.ttlSeconds > 0) return Date.now() + g.ttlSeconds * 1000;
+  const parsed = g.expiresAt ? Date.parse(g.expiresAt) : NaN;
+  return Number.isFinite(parsed) ? parsed : Date.now() + MAX_GRANT_TTL_MS;
+}
+
+/** Per the contract above: single-use for documents, expiry-only for media. */
+function isReusable(mime: string | undefined): boolean {
+  return !!mime && (mime.startsWith("video/") || mime.startsWith("audio/"));
+}
+
+/** The contract's stated ceiling (`ttlSeconds <= 300`), used only when the server said neither. */
+const MAX_GRANT_TTL_MS = 300_000;
+
+/**
+ * Backwards-compatible shim: the one URL to open in a tab.
+ *
+ * Prefers the viewer page, as the old behaviour did, so nothing that just wants to display something
+ * has to think about the difference.
+ */
+export async function attemptGatedUrl(
+  item: Collectible,
+  wallet: string,
+  kp: Keypair,
+): Promise<string | null> {
+  const grant = await attemptGatedGrant(item, wallet, kp);
+  return grant ? (grant.viewerUrl ?? grant.url) : null;
 }

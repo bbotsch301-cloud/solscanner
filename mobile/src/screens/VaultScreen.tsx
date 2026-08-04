@@ -1,16 +1,22 @@
 /**
- * Vault — everything the member owns that opens, grouped by what it is for.
+ * The Vault — the reading room. Not a second list of what you own.
  *
- * The Vault proper is server-delivered encrypted content that the wallet never holds. This is the
- * shelf rather than the safe: it lists what can be reached, and `attemptGatedUrl` proves ownership
- * at the moment the member reaches for it (see access/vault.ts). Until a vault endpoint is
- * configured, items open their public link — which is why nothing here promises more than "opens".
+ * That distinction is the whole reason this screen still exists alongside the Keys tab. Keys is the
+ * register: what you hold, what its deed says, what it makes you. This is where you come to *use*
+ * those things — and **Continue** is what makes it a room rather than an index, because it is the
+ * one shelf that knows what you were doing rather than what you have.
+ *
+ * The Vault proper is server-delivered content the wallet never holds. This lists what can be
+ * reached; `attemptGatedGrant` proves ownership at the moment the member reaches for it, reusing a
+ * live grant so coming back costs nothing (see access/vault.ts and access/entitlement.ts). Until a
+ * vault endpoint is configured, items open their public link — which is why nothing here promises
+ * more than "opens".
  *
  * Sections collapse rather than navigating away, so finding something is one screen and one tap
  * rather than a drill-down and a back.
  */
-import { useMemo, useState } from "react";
-import { useNavigation } from "@react-navigation/native";
+import { useCallback, useMemo, useState } from "react";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { LayoutAnimation, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,6 +29,7 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { vaultCount, vaultExperiences, type ExperienceId } from "../vault/experiences";
 import { cachedCollectibles, type Collectible } from "../solana/collectibles";
 import { accessVerb } from "../access/resolve";
+import { inProgress, type Position } from "../vault/position";
 import { useWallet } from "../wallet/WalletContext";
 import { haptics } from "../ui/haptics";
 import { colors, font, radius, spacing, tracking, weight } from "../theme";
@@ -42,7 +49,26 @@ const LOOK: Record<ExperienceId, { label: string; icon: keyof typeof Ionicons.gl
   passes: { label: "Passes", icon: "ticket-outline" },
 };
 
-function ItemRow({ item, onPress }: { item: Collectible; onPress: () => void }) {
+/** "1h 04m in" — where a member actually is, rather than a percentage they have to interpret. */
+function elapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m in` : `${m}m in`;
+}
+
+function ItemRow({
+  item,
+  position,
+  onPress,
+}: {
+  item: Collectible;
+  /** Set only on the Continue shelf, where how far in you are is the point of the row. */
+  position?: Position;
+  onPress: () => void;
+}) {
+  const pct =
+    position?.duration && position.duration > 0
+      ? Math.min(1, position.seconds / position.duration)
+      : null;
   return (
     <PressableScale onPress={onPress} style={styles.itemRow}>
       <Artwork uri={item.image} name={item.name} radius={radius.sm} style={styles.thumb} />
@@ -50,7 +76,16 @@ function ItemRow({ item, onPress }: { item: Collectible; onPress: () => void }) 
         <Text style={styles.itemName} numberOfLines={1}>
           {item.name}
         </Text>
-        <Text style={styles.itemVerb}>{accessVerb(item.kind)}</Text>
+        <Text style={styles.itemVerb}>
+          {position ? elapsed(position.seconds) : accessVerb(item.kind)}
+        </Text>
+        {/* Only drawn when the duration is known. A bar of unknown length is a guess dressed as a
+            fact, and a member reading it as "nearly finished" would be reading our invention. */}
+        {pct !== null && (
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: `${Math.round(pct * 100)}%` }]} />
+          </View>
+        )}
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
     </PressableScale>
@@ -64,6 +99,7 @@ export function VaultScreen() {
   const owner = solanaAddress ?? activeAddress;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<ExperienceId | null>(null);
+  const [resume, setResume] = useState<{ item: Collectible; position: Position }[]>([]);
 
   // Straight off the persisted snapshot — paints on the first frame, works offline.
   const all = useMemo(() => (owner ? (cachedCollectibles(owner) ?? []) : []), [owner]);
@@ -81,6 +117,28 @@ export function VaultScreen() {
             .filter((e) => e.items.length > 0)
         : experiences,
     [experiences, q]
+  );
+
+  // What's in progress, refreshed every time the tab comes back into focus — a member arrives here
+  // straight from having watched something, and a stale "Continue" would be the one row they came
+  // to check. Items no longer in the wallet are dropped rather than shown as unopenable.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        const rows = await inProgress();
+        if (cancelled) return;
+        const byMint = new Map(all.map((c) => [c.mint, c]));
+        setResume(
+          rows
+            .map((r) => ({ item: byMint.get(r.mint), position: r.position }))
+            .filter((r): r is { item: Collectible; position: Position } => !!r.item)
+        );
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [all])
   );
 
   const toggle = (id: ExperienceId) => {
@@ -124,6 +182,32 @@ export function VaultScreen() {
                   </PressableScale>
                 )}
               </View>
+            )}
+
+            {/* Continue leads, and only when there is something to continue. It is the reason to
+                come here at all: everything below is an index of what you own, this is the one row
+                that knows what you were doing. Hidden while searching, because a search is a member
+                looking for a specific thing and this would be answering a question they didn't ask. */}
+            {!q && resume.length > 0 && (
+              <Card style={styles.group}>
+                <View style={styles.groupHead}>
+                  <IconChip icon="play-circle-outline" size={36} />
+                  <View style={styles.groupText}>
+                    <Text style={styles.groupLabel}>Continue</Text>
+                    <Text style={styles.groupCount}>Where you left off</Text>
+                  </View>
+                </View>
+                {resume.slice(0, 4).map(({ item, position }) => (
+                  <View key={item.mint}>
+                    <View style={styles.divider} />
+                    <ItemRow
+                      item={item}
+                      position={position}
+                      onPress={() => nav.navigate("Collectible", { mint: item.mint })}
+                    />
+                  </View>
+                ))}
+              </Card>
             )}
 
             {filtered.length === 0 ? (
@@ -203,6 +287,8 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, gap: 2 },
   itemName: { color: colors.text, fontSize: font.body },
   itemVerb: { color: colors.textMuted, fontSize: font.small },
+  track: { height: 3, borderRadius: 2, backgroundColor: colors.cardBorder, marginTop: spacing(1) },
+  fill: { height: 3, borderRadius: 2, backgroundColor: colors.primary },
   note: { color: colors.textMuted, fontSize: font.small, marginTop: spacing(2) },
   footer: { color: colors.textFaint, fontSize: font.tiny, marginTop: spacing(4), lineHeight: 17 },
 });

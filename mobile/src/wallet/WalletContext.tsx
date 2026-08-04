@@ -66,6 +66,8 @@ import {
   type AccountRef,
 } from "./vault";
 import { getPubAddress, putPubAddress } from "./pubAddresses";
+import { clearEntitlements } from "../access/entitlement";
+import { clearReauthGrace } from "../security/reauth";
 import { isPinPrompted, setPinPrompted, clearPinPrompted, isNotificationsEnabled, isFastBalancesEnabled } from "../security/prefs";
 import { recordApproval } from "../safety/approvals";
 import { notifyReceived, registerForBackendPush } from "../ui/notifications";
@@ -311,6 +313,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // background lock and the inactivity timer.
   const lockNow = useCallback(() => {
     if (!pinIsEnabled()) return;
+    // Locking means the member stepped away. A grant they could still open, or a confirmation they
+    // gave five minutes ago, must not survive that decision.
+    void clearEntitlements();
+    clearReauthGrace();
     lockSeeds();
     setLocked(true);
     setKeypair(null);
@@ -599,6 +605,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    *  never to display. First-ever use of an account derives the address, caches it, then loads. */
   const applyActive = useCallback(
     async (ref: AccountRef) => {
+      // Whatever the previous account was allowed to open, this one is not — until it proves so
+      // itself. A cached vault grant is a bearer link, and a recent biometric confirmation was given
+      // by someone acting as a different member.
+      void clearEntitlements();
+      clearReauthGrace();
       // Clear the previous account's signing keys + balances right away.
       setKeypair(null);
       keypairRef.current = null;
@@ -862,6 +873,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const reset = useCallback(async () => {
     await clearVault();
+    await clearEntitlements();
+    clearReauthGrace();
     await clearPinPrompted();
     setPinPromptedState(false);
     setPinEnabled(false);

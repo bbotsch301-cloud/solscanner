@@ -39,6 +39,8 @@ export type RootStackParamList = {
   Browser: undefined;
   /** A single Key (non-fungible asset), by mint. */
   Collectible: { mint: string };
+  /** In-app playback for video and audio, so a position can be remembered. */
+  Player: { mint: string };
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

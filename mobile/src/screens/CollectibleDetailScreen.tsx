@@ -49,6 +49,18 @@ import { haptics } from "../ui/haptics";
 import { colors, font, leading, radius, shortAddress, spacing, weight } from "../theme";
 import type { RootNav, RootStackParamList } from "../navigation";
 
+/**
+ * Whether this opens in the in-app player rather than a browser tab.
+ *
+ * Kind first, mime second, and both are needed: a course is a course whatever file it carries, and a
+ * `file` key with an mp4 in it is still something to watch. A vault-backed key has no mime until the
+ * grant arrives, which is why kind has to be able to answer on its own.
+ */
+function isPlayable(item: Collectible, mime: string | undefined): boolean {
+  if (item.kind === "music" || item.kind === "course") return true;
+  return !!mime && (mime.startsWith("video/") || mime.startsWith("audio/"));
+}
+
 const KIND_LABEL: Record<Collectible["kind"], string> = {
   ticket: "Ticket",
   membership: "Membership",
@@ -257,6 +269,14 @@ export function CollectibleDetailScreen() {
   const openContent = async () => {
     if (!access && !vaultMayHave) return;
     haptics.tap();
+    // Media plays inside the app, because the app is the only thing that can remember where you got
+    // to. A custom tab is an OS surface: it cannot report a position, cannot be resumed, and takes
+    // the whole grant with it when the system reclaims it. For a two-hour course that is the
+    // difference between a library and a list of links.
+    if (isPlayable(item, access?.mime)) {
+      nav.navigate("Player", { mint: item.mint });
+      return;
+    }
     // A portal may need to talk to the wallet, so it keeps the bridged in-app browser. Everything
     // else goes to a custom tab, which is a real browser engine and can actually display files.
     if (access?.route === "browser") {
