@@ -16,6 +16,7 @@
  * one has a mechanism, and a member deciding what they may safely do needs to know which is which.
  */
 import { View, Text, StyleSheet } from "react-native";
+import { HelpTip } from "./HelpTip";
 import { Ionicons } from "@expo/vector-icons";
 import { Card } from "./Card";
 import { ACTED_ON_RIGHTS, RIGHT_LABEL, RIGHT_ORDER, type Deed, type RightKey } from "../property/deed";
@@ -109,6 +110,9 @@ export function DeedPanel({
       <View style={styles.header}>
         <Ionicons name="ribbon-outline" size={16} color={colors.primary} />
         <Text style={styles.title}>Property Deed</Text>
+        {/* The tri-state and the describes-vs-enforces limit are both easy to misread from the panel
+            alone — a term that simply isn't stated looks the same as one nobody thought about. */}
+        <HelpTip topic="deed" size={18} />
       </View>
 
       {actedOn.length > 0 && (
@@ -213,6 +217,8 @@ const styles = StyleSheet.create({
   card: { marginTop: spacing(4), borderRadius: radius.md },
   header: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   title: {
+    // Flexes so the (?) sits at the right edge of the card rather than crowding the label.
+    flex: 1,
     color: colors.primary,
     fontSize: font.tiny,
     fontWeight: weight.bold,

@@ -39,6 +39,7 @@ import { parseDeed, propertyStatus } from "../property/deed";
 import { deriveStanding } from "../identity/membership";
 import { reconcileHoldings } from "../property/keyCopy/sweep";
 import { StandingHero } from "./StandingHero";
+import { HelpTip } from "./HelpTip";
 import { isPublicRpc } from "../solana/connection";
 import { marketUrl, openWebapp } from "../browser/openWebapp";
 import { haptics } from "../ui/haptics";
@@ -297,6 +298,10 @@ export function PropertyGallery({
     return (
       <View>
         {standing && <StandingHero standing={standing} />}
+        {/* The (?) matters most here: this is where someone with nothing yet meets the word. */}
+        <View style={styles.emptyHelp}>
+          <HelpTip topic="keys" size={20} />
+        </View>
         <EmptyState
           icon="key-outline"
           title="No keys yet"
@@ -358,7 +363,10 @@ export function PropertyGallery({
           past the airdrops to find the thing that says who they are. */}
       {credentials.length > 0 && (
         <>
-          <Text style={styles.sectionHeader}>Credentials</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeader}>Credentials</Text>
+            <HelpTip topic="standing" size={16} />
+          </View>
           <View style={styles.grid}>
             {credentials.map((c) => (
               <ItemCard key={c.mint} item={c} now={now} onPress={() => open(c.mint)} />
@@ -546,6 +554,8 @@ const styles = StyleSheet.create({
     marginTop: spacing(5),
     marginBottom: spacing(3),
   },
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
+  emptyHelp: { alignItems: "flex-end" },
   hiddenToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing(2), paddingVertical: spacing(3), marginTop: spacing(2) },
   hiddenText: { color: colors.textFaint, fontSize: font.small, fontWeight: weight.semibold },
   archivedText: { color: colors.textMuted, fontSize: font.small, fontWeight: weight.semibold },

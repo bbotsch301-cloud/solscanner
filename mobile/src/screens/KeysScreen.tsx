@@ -17,6 +17,7 @@ import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { PropertyGallery } from "../components/PropertyGallery";
 import { EmptyState } from "../components/EmptyState";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { HelpTip } from "../components/HelpTip";
 import { useWallet } from "../wallet/WalletContext";
 import { colors, spacing } from "../theme";
 
@@ -36,7 +37,11 @@ export function KeysScreen() {
   return (
     <View style={styles.screen}>
       {/* A tab root — no back affordance, nothing to pop to. */}
-      <ScreenHeader title="Keys" subtitle="Who you are, and what you own" />
+      <ScreenHeader
+        title="Keys"
+        subtitle="Who you are, and what you own"
+        right={<HelpTip topic="keys" size={22} />}
+      />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

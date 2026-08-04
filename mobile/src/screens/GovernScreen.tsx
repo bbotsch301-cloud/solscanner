@@ -12,6 +12,7 @@ import { useWallet, useWalletStatus } from "../wallet/WalletContext";
 import { XGO_MINT, getSupply } from "../solana/token2022";
 import { connection } from "../solana/connection";
 import { tierFor, multiplierFor } from "../config/staking";
+import { HelpTip } from "../components/HelpTip";
 import { deriveStanding } from "../identity/membership";
 import { cachedCollectibles } from "../solana/collectibles";
 import { compact as fmtCompact, colors, font, radius, spacing } from "../theme";
@@ -143,7 +144,10 @@ export function GovernScreen() {
           — "hold the Office key, hold the office" — and the section below used the same word for a
           number of tokens. One is conferred and one is bought, so the screen now says both, in that
           order, rather than letting a tier stand in for standing. */}
-      <Text style={styles.sectionTitle}>Your standing</Text>
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>Your standing</Text>
+        <HelpTip topic="standing" size={18} />
+      </View>
       <Pressable onPress={() => nav.navigate("Association")} style={styles.rewardCard}>
         <View style={styles.rewardRow}>
           <Text style={styles.rewardLabel}>Gateway Membership</Text>
@@ -158,7 +162,10 @@ export function GovernScreen() {
       </Pressable>
 
       {/* Holding tier — bought, not conferred. See the note above. */}
-      <Text style={styles.sectionTitle}>Holding tier</Text>
+      <View style={styles.sectionRow}>
+        <Text style={styles.sectionTitle}>Holding tier</Text>
+        <HelpTip topic="votingWeight" size={18} />
+      </View>
       <View style={styles.rewardCard}>
         <View style={styles.rewardRow}>
           <Text style={styles.rewardLabel}>Tier</Text>
@@ -244,6 +251,8 @@ const styles = StyleSheet.create({
     marginTop: spacing(6),
     marginBottom: spacing(3),
   },
+  // The two ideas this screen used to conflate now each carry their own explainer.
+  sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   rewardCard: { backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder, padding: spacing(4), gap: spacing(3) },
   rewardRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   rewardLabel: { color: colors.textMuted, fontSize: font.body },

@@ -75,4 +75,71 @@ export const EDU: Record<string, HelpTopic> = {
     danger:
       "Protect your recovery phrase like it's the cash it controls — because it is.",
   },
+
+  // ── The Association's own ideas ──────────────────────────────────────────────
+  //
+  // Everything above this line is about seed custody and treasury fees — real, and not what makes
+  // this app different. A member could hold a Gateway Membership and never learn what one is.
+  //
+  // The hard constraint in all six: **the wallet describes the agreement, it does not enforce it.**
+  // `property/deed.ts` puts it bluntly — "the copy in the UI must say what the app does, never that
+  // it prevents anything" — because even for a right the app acts on, it is withholding its own
+  // help rather than stopping a transfer that any other wallet could make. Copy that implies
+  // protection the app cannot give is worse than no copy.
+
+  keys: {
+    title: "Keys",
+    body: [
+      "A Key is a token in your wallet that carries its terms with it. Not a receipt held by a company that could change its mind — the terms travel with the key, and the key is yours.",
+      "There are two sorts, and telling them apart is the point of this app. STANDING is who you are: a membership, an office you hold, a certification you earned, a community you belong to. PROPERTY is what you own: a book, a course, music, software, a pass.",
+      "The same technology underneath, either way. But your ordination and your audiobook are not the same kind of fact, so the app does not file them together.",
+    ],
+  },
+
+  standing: {
+    title: "Standing",
+    body: [
+      "Standing is what you are within the Association — a Gateway Membership, an office you hold, a certification, a community you belong to.",
+      "It is granted, never bought. Someone confers it by issuing you a key. No amount of XGO changes it, and no tier is a substitute for it.",
+      "It lives in the key itself rather than in an account on a server. There is no username to look up and no role someone could quietly edit. Hold the key, hold the standing — and when the key expires or leaves your wallet, the standing goes with it.",
+    ],
+  },
+
+  deed: {
+    title: "The deed",
+    body: [
+      "Most Keys carry a deed: the terms the key was issued under. Who created it, what you may do with it, whether you may pass it on, how long it lasts.",
+      "A term can say three things, and the third is easy to miss. It can grant a right, deny it, or SAY NOTHING AT ALL. Silence is not denial — it means the issuer didn't address it, which is a different fact from “no”.",
+      "The deed is a record, not a lock. The chain is the authority on who owns a key; the deed states what was agreed about it. Most terms are between you and the creator, and are matters for the Association and the law rather than for this screen.",
+      "A few terms do change what this app does: it will decline to send a key whose deed forbids passing it on, and the deed decides whether a file may be kept on this device. Even then the app is withholding its own help — it cannot stop a key being moved with other software.",
+    ],
+  },
+
+  soulbound: {
+    title: "Keys that can't be sent",
+    body: [
+      "Some keys refuse to move. That is deliberate, not a fault or a setting someone forgot.",
+      "Standing is about you. A membership or an office that could be handed to a stranger would mean nothing — so those keys are issued permanently bound to the wallet holding them. The network itself refuses the transfer; nobody can override it, including us.",
+      "You'll see this on memberships, offices, credentials and community keys. Property — books, music, courses — can usually be sent, unless its own deed says otherwise.",
+    ],
+  },
+
+  vault: {
+    title: "The Vault",
+    body: [
+      "The Vault is where you read, watch and listen to what you own.",
+      "The files stay on the Association's server rather than in your wallet — a key is small, a film is not. What your wallet holds is the proof of ownership.",
+      "So opening something asks you to confirm: that proves the key is yours right now, and the server answers with the content. No password is involved, and nothing leaves your wallet.",
+      "Once something is open it stays open for a while, so stepping out of the app and coming back doesn't start you over.",
+    ],
+  },
+
+  votingWeight: {
+    title: "Voting weight",
+    body: [
+      "Holding XGO gives your vote weight in decisions about the mission. Holding more gives it more weight; holding longer multiplies it.",
+      "Your tokens never leave your wallet. No lock-up, no custody, and no payout — commitment is answered with a say, not with money.",
+      "Weight is not standing. A tier measures what you hold: it confers no office, grants no membership, and gives no claim on the treasury. Standing comes from Keys, and cannot be bought.",
+    ],
+  },
 };

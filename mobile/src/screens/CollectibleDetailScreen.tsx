@@ -35,6 +35,7 @@ import { sendPreflight, type SendPlan } from "../solana/sendable";
 import { requestBrowserUrl } from "../browser/openRequest";
 import { resolveAccess, accessVerb } from "../access/resolve";
 import { KINDS } from "../property/kinds";
+import { HelpTip } from "../components/HelpTip";
 import { parseDeed, propertyStatus, deedAllowsTransfer } from "../property/deed";
 import { withOnChainDeed, type Amendability } from "../property/onchainDeed";
 import { loadSeenDeed, recordSeenDeed } from "../property/deedHistory";
@@ -407,8 +408,13 @@ export function CollectibleDetailScreen() {
             />
           )}
           {chainRefusal ? (
-            // A fact about the token, in the token program's words rather than the app's.
-            <Text style={styles.noSend}>{chainRefusal.reason}</Text>
+            // A fact about the token, in the token program's words rather than the app's. The (?)
+            // explains WHY a key would be issued this way, which the refusal itself can't — a
+            // member meeting an unsendable membership for the first time reads it as a fault.
+            <View style={styles.noSendRow}>
+              <Text style={[styles.noSend, { flex: 1 }]}>{chainRefusal.reason}</Text>
+              <HelpTip topic="soulbound" size={18} />
+            </View>
           ) : deedTransfer === false ? (
             // Careful with this sentence. The wallet CANNOT stop a transfer — a plain SPL NFT moves
             // with any other wallet or a CLI. Withholding Send states the agreement; only a
@@ -570,6 +576,7 @@ const styles = StyleSheet.create({
   statusExpired: { color: colors.negative, fontSize: font.small, marginTop: spacing(1) },
   statusExpiring: { color: colors.warning, fontSize: font.small, marginTop: spacing(1) },
   noSend: { color: colors.textFaint, fontSize: font.small, textAlign: "center" },
+  noSendRow: { flexDirection: "row", alignItems: "center", gap: spacing(2) },
   backdrop: { flex: 1, backgroundColor: "#000000AA", justifyContent: "flex-end" },
   sheet: {
     backgroundColor: colors.bgElevated,

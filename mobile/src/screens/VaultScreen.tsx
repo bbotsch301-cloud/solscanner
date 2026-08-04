@@ -26,6 +26,7 @@ import { EmptyState } from "../components/EmptyState";
 import { IconChip } from "../components/IconChip";
 import { PressableScale } from "../components/PressableScale";
 import { ScreenHeader } from "../components/ScreenHeader";
+import { HelpTip } from "../components/HelpTip";
 import { vaultCount, vaultExperiences, type ExperienceId } from "../vault/experiences";
 import { cachedCollectibles, type Collectible } from "../solana/collectibles";
 import { marketUrl, openWebapp } from "../browser/openWebapp";
@@ -153,7 +154,11 @@ export function VaultScreen() {
   return (
     <View style={styles.screen}>
       {/* A tab root now — no back affordance, because there is nothing to pop to. */}
-      <ScreenHeader title="Vault" subtitle="What your keys open" />
+      <ScreenHeader
+        title="Vault"
+        subtitle="What your keys open"
+        right={<HelpTip topic="vault" size={22} />}
+      />
       <ScrollView
         contentContainerStyle={{ padding: spacing(4), paddingBottom: insets.bottom + spacing(8) }}
         showsVerticalScrollIndicator={false}
