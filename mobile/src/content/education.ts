@@ -142,4 +142,25 @@ export const EDU: Record<string, HelpTopic> = {
       "Weight is not standing. A tier measures what you hold: it confers no office, grants no membership, and gives no claim on the treasury. Standing comes from Keys, and cannot be bought.",
     ],
   },
+
+  gettingCrypto: {
+    title: "Getting your first crypto",
+    body: [
+      "A wallet starts empty, and nothing can put coins in it except a transfer from somewhere else. There is no deposit button, because there is nobody to deposit with — this app holds keys, not money.",
+      "So there are only two ways in. Someone sends you coins, or you buy them from a company that sells crypto for ordinary money and have that company send them to your address.",
+      "XGO is not that company and never will be. We don't sell crypto, don't hold it for you, don't take a fee on it, and can't see a purchase you make elsewhere. What we can do is explain the steps and show you your address.",
+      "You'll need a small amount of the network's own coin — SOL on Solana — no matter what else you hold, because that's what network fees are paid in.",
+    ],
+    dos: [
+      "Copy your address from the app, and paste it. Never retype it by hand.",
+      "Send a small amount first, and confirm it arrives before sending more.",
+      "Choose the right network when withdrawing — Solana coins over the Solana network.",
+    ],
+    donts: [
+      "Never send your recovery phrase to a service, for any reason.",
+      "Don't assume a company is available or trustworthy because it's well known — check for yourself.",
+    ],
+    danger:
+      "Coins sent over the wrong network, or to a mistyped address, are gone. No exchange and no wallet can reverse a transfer — including us.",
+  },
 };

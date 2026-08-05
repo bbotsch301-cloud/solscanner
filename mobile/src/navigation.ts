@@ -10,6 +10,8 @@ export type RootStackParamList = {
   /** asset is "native" or a token id (SPL mint / ERC-20 contract). */
   TokenDetail: { asset: string };
   Receive: undefined;
+  /** How to get crypto at all — explanation and a hand-off, never a purchase. */
+  GetCrypto: undefined;
   Swap: undefined;
   Backup: undefined;
   CreateWallet: undefined;

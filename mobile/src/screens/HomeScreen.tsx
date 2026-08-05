@@ -190,12 +190,20 @@ export function HomeScreen() {
           <Text style={styles.emptySub}>
             {isSolana && !IS_MAINNET
               ? "This is a fresh test-network wallet — airdrop 1 test SOL to get started. It’s free and not real money."
-              : "Send crypto to one of your addresses (tap Receive) to get started."}
+              : // "Send crypto to one of your addresses (tap Receive) to get started" was only an
+                // answer for someone who already had crypto. For everyone else it named the last
+                // step of a process nobody had explained, which is what `GetCrypto` now does.
+                "A wallet starts empty. Send crypto to one of your addresses — or, if you don’t have any yet, here’s how to get some."}
           </Text>
-          {isSolana && !IS_MAINNET && (
+          {isSolana && !IS_MAINNET ? (
             <Pressable onPress={airdrop} style={styles.emptyBtn}>
               <Ionicons name="water" size={16} color={colors.bg} />
               <Text style={styles.emptyBtnText}>Get test SOL</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => nav.navigate("GetCrypto")} style={styles.emptyBtn}>
+              <Ionicons name="cash-outline" size={16} color={colors.bg} />
+              <Text style={styles.emptyBtnText}>How to get crypto</Text>
             </Pressable>
           )}
         </View>

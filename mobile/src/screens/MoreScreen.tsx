@@ -118,6 +118,11 @@ export function MoreScreen() {
         <Row icon="people-circle" label="Multisig wallet" onPress={() => nav.navigate("Multisig")} />
         <View style={styles.divider} />
         <Row icon="book" label="Address book" onPress={() => nav.navigate("Contacts")} />
+        <View style={styles.divider} />
+        {/* Reachable without an empty balance. Someone who has spent everything, or who is helping
+            another member get started, needs the walkthrough as much as a first-run wallet does —
+            and the Home card that offers it disappears the moment a single coin arrives. */}
+        <Row icon="cash" label="How to get crypto" onPress={() => nav.navigate("GetCrypto")} />
       </View>
 
       <Text style={styles.sectionTitle}>The Association</Text>

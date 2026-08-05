@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
 import { useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import { ScreenHeader } from "../components/ScreenHeader";
@@ -88,6 +88,14 @@ export function ReceiveScreen() {
             ? `Only send Solana (SPL) assets to this address.${onTestNetwork ? " This is the test network — anything sent here isn't real." : ""}`
             : `Only send ${activeChain.name} assets — ${activeChain.symbol} and its tokens — to this address. Sending assets from another chain will lose them.`}
         </Text>
+
+        {/* This screen answers "where do I send it to". It has never answered the question
+            underneath that one — where the coins come from in the first place — and someone with
+            an empty wallet reaches an address before they reach anything that could tell them. */}
+        <Pressable onPress={() => nav.navigate("GetCrypto")} hitSlop={8} style={styles.help}>
+          <Text style={styles.helpText}>Don’t have any crypto yet?</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+        </Pressable>
       </View>
     </View>
   );
@@ -127,4 +135,6 @@ const styles = StyleSheet.create({
   address: { flex: 1, color: colors.text, fontSize: font.small, fontFamily: MONO, lineHeight: font.small * leading.relaxed },
   copyBtn: { alignSelf: "stretch", marginTop: spacing(1) },
   hint: { color: colors.textFaint, fontSize: font.small, textAlign: "center", marginTop: spacing(3), paddingHorizontal: spacing(4), lineHeight: font.small * leading.normal },
+  help: { flexDirection: "row", alignItems: "center", gap: spacing(1), marginTop: spacing(2), paddingVertical: spacing(2) },
+  helpText: { color: colors.primary, fontSize: font.small, fontWeight: weight.semibold },
 });

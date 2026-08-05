@@ -18,6 +18,7 @@ import { TransactionDetailScreen } from "./src/screens/TransactionDetailScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SendScreen } from "./src/screens/SendScreen";
 import { ReceiveScreen } from "./src/screens/ReceiveScreen";
+import { GetCryptoScreen } from "./src/screens/GetCryptoScreen";
 import { SwapScreen } from "./src/screens/SwapScreen";
 import { TokenDetailScreen } from "./src/screens/TokenDetailScreen";
 import { BackupScreen } from "./src/screens/BackupScreen";
@@ -281,6 +282,7 @@ function Root() {
         <Stack.Group screenOptions={{ presentation: "modal", animation: "slide_from_bottom" }}>
           <Stack.Screen name="Send" component={SendScreen} />
           <Stack.Screen name="Receive" component={ReceiveScreen} />
+          <Stack.Screen name="GetCrypto" component={GetCryptoScreen} />
           <Stack.Screen name="Swap" component={SwapScreen} />
           <Stack.Screen name="TokenDetail" component={TokenDetailScreen} />
           <Stack.Screen name="Backup" component={BackupScreen} />
